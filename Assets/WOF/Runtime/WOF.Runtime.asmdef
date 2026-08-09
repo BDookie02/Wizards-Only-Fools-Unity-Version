@@ -1,0 +1,19 @@
+{
+  "name": "WOF.Runtime",
+  "rootNamespace": "WOF",
+    "references": [
+    "Unity.InputSystem",
+    "Unity.Netcode.Runtime",
+    "Unity.Networking.Transport",
+    "UnityEngine.UI"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

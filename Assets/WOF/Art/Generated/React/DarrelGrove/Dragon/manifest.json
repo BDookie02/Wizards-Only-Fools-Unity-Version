@@ -1,0 +1,62 @@
+{
+  "sleep": [
+    "/sprites/darrel-dragon/sleep_00.png",
+    "/sprites/darrel-dragon/sleep_01.png",
+    "/sprites/darrel-dragon/sleep_02.png",
+    "/sprites/darrel-dragon/sleep_03.png",
+    "/sprites/darrel-dragon/sleep_04.png",
+    "/sprites/darrel-dragon/sleep_05.png",
+    "/sprites/darrel-dragon/sleep_06.png",
+    "/sprites/darrel-dragon/sleep_07.png"
+  ],
+  "wake": [
+    "/sprites/darrel-dragon/wake_00.png",
+    "/sprites/darrel-dragon/wake_01.png",
+    "/sprites/darrel-dragon/wake_02.png",
+    "/sprites/darrel-dragon/wake_03.png",
+    "/sprites/darrel-dragon/wake_04.png",
+    "/sprites/darrel-dragon/wake_05.png",
+    "/sprites/darrel-dragon/wake_06.png",
+    "/sprites/darrel-dragon/wake_07.png",
+    "/sprites/darrel-dragon/wake_08.png"
+  ],
+  "idle": [
+    "/sprites/darrel-dragon/idle_00.png",
+    "/sprites/darrel-dragon/idle_01.png",
+    "/sprites/darrel-dragon/idle_02.png",
+    "/sprites/darrel-dragon/idle_03.png",
+    "/sprites/darrel-dragon/idle_04.png",
+    "/sprites/darrel-dragon/idle_05.png",
+    "/sprites/darrel-dragon/idle_06.png",
+    "/sprites/darrel-dragon/idle_07.png",
+    "/sprites/darrel-dragon/idle_08.png",
+    "/sprites/darrel-dragon/idle_09.png",
+    "/sprites/darrel-dragon/idle_10.png"
+  ],
+  "sleepFrameMs": 240,
+  "wakeFrameMs": 115,
+  "idleFrameMs": 155,
+  "source": [
+    "0521.gif",
+    "daragon sttat.gif"
+  ],
+  "attack": [
+    "/sprites/darrel-dragon/attack_00.png",
+    "/sprites/darrel-dragon/attack_01.png",
+    "/sprites/darrel-dragon/attack_02.png",
+    "/sprites/darrel-dragon/attack_03.png",
+    "/sprites/darrel-dragon/attack_04.png",
+    "/sprites/darrel-dragon/attack_05.png",
+    "/sprites/darrel-dragon/attack_06.png",
+    "/sprites/darrel-dragon/attack_07.png",
+    "/sprites/darrel-dragon/attack_08.png",
+    "/sprites/darrel-dragon/attack_09.png",
+    "/sprites/darrel-dragon/attack_10.png",
+    "/sprites/darrel-dragon/attack_11.png",
+    "/sprites/darrel-dragon/attack_12.png",
+    "/sprites/darrel-dragon/attack_13.png",
+    "/sprites/darrel-dragon/attack_14.png",
+    "/sprites/darrel-dragon/attack_15.png"
+  ],
+  "attackFrameMs": 95
+}

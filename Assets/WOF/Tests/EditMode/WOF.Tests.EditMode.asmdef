@@ -1,0 +1,25 @@
+{
+  "name": "WOF.Tests.EditMode",
+  "rootNamespace": "WOF.Tests",
+  "references": [
+    "WOF.Runtime",
+    "Unity.InputSystem",
+    "Unity.InputSystem.TestFramework",
+    "Unity.Netcode.Runtime",
+    "Unity.Networking.Transport"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}
