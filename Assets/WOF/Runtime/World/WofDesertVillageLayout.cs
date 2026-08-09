@@ -159,6 +159,7 @@ namespace WOF
     public sealed class WofSerializedMeshRecord
     {
         public int vertexCount;
+        public int indexCount;
         public float[] positions;
         public float[] normals;
         public float[] colors;

@@ -7,6 +7,8 @@
     "src/game/systems/world/villages/baseVillageHutVisuals.ts": "b0a400bc307da24ac7958be9088389e971a9a815f726e6eac62072542aca7446",
     "src/game/systems/world/villages/treeHouseVillageTextures.ts": "517fb4bb402b689fcd999aa843a7407147ada2b7a0fd46d0e8cfd90225029c2c",
     "src/game/ui/launch/LaunchMenu.tsx": "7db3f233a12cc0ecac505029e5652ef3a78dc5fc71b65c7ee75e8f79b1a26a7a",
+    "public/sprites/misc/spellbook_icon.png": "cd9ade1f42ae87a5eb0eb8be0e1536a0b774658d17e9d6cb892aa1dc328341ef",
+    "src/game/ui/hud/SpellThumbnail.tsx": "91b955329f5b6de51624342f8adc3f4c08445b040c33e4d3fdb49643e2b67c23",
     "src/game/Bushes.tsx": "8d7b0e6857d87270fce8a8075598645a40b5b858c3463263e61553aece73bec1",
     "src/game/systems/world/villages/baseVillageHutLayout.ts": "a7f5e216d1f7cd83b19c92f36c51d5c46145c90ab884df386c1f26c9a965e039",
     "src/game/systems/world/villages/villagerCharacterRuntime.ts": "c26b6a0cd10fb02491405dab652aaef4ddda4c65eecbf1a75b889e883da79b8b",
@@ -79,7 +81,7 @@
     "src/game/systems/world/survival/survivalMath.ts": "9cdb487a22e0bc1b31e910cc23bfdaf44b9bba67038d508d18eebe431dfbede6",
     "src/game/systems/world/terrain/survivalTerrainTextures.ts": "56bdd4fc89b936cdd7efa54a234d07b68b1cadec12522e35f500eb3f4a2ee9b7"
   },
-  "outputCount": 1236,
+  "outputCount": 1239,
   "outputs": [
     {
       "path": "Avatar/Default/angry/d0_f0.png",
@@ -3975,6 +3977,21 @@
       "path": "HUD/Hands/idle_4.png",
       "bytes": 30961,
       "sha256": "032f732a43dabda1ba3d357a00807a56638d99a844f29a7d30efc08412dc4f46"
+    },
+    {
+      "path": "HUD/SpellMenu/jumpboost.png",
+      "bytes": 411,
+      "sha256": "37c9f36b874be7a91a8c90c40bfb102c6d85416bafa20222bd744affec8366f6"
+    },
+    {
+      "path": "HUD/SpellMenu/speedboost.png",
+      "bytes": 1775,
+      "sha256": "c7a17325deb2e31d396fe69e74096164cadc3e07a6adf8dbf2e1da3a75f694b9"
+    },
+    {
+      "path": "HUD/SpellMenu/spellbook_icon.png",
+      "bytes": 9449,
+      "sha256": "cd9ade1f42ae87a5eb0eb8be0e1536a0b774658d17e9d6cb892aa1dc328341ef"
     },
     {
       "path": "Huts/dirt_door.png",

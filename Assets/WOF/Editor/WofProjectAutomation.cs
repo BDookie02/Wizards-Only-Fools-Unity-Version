@@ -51,6 +51,7 @@ namespace WOF.Editor
         private const string WaterPlaneMeshPath = GeometryRoot + "/ReactBaseVillageWaterPlane.asset";
         private const string DesktopWaterRingMeshPath = GeometryRoot + "/ReactWaterRing32.asset";
         private const string MobileWaterRingMeshPath = GeometryRoot + "/ReactWaterRing18.asset";
+        private const string CircularUiMaskPath = GeometryRoot + "/CircularUiMask.asset";
         private const string BushGeometryJsonPath = "Assets/WOF/Art/Generated/React/Geometry/bush-dodecahedron.json";
         private const string BushMeshPath = GeometryRoot + "/ReactBushDodeca.asset";
         private const string VillagerLayoutJsonPath = "Assets/WOF/Art/Generated/React/Villagers/base-village.json";
@@ -222,7 +223,8 @@ namespace WOF.Editor
         {
             PlayerSettings.companyName = "Wizards Only Fools";
             PlayerSettings.productName = "Wizards Only Fools";
-            PlayerSettings.bundleVersion = "0.3.0-unity-react-art1";
+            PlayerSettings.bundleVersion = "0.3.1-unity-playable-fix1";
+            PlayerSettings.Android.bundleVersionCode = 2;
             PlayerSettings.runInBackground = true;
             PlayerSettings.colorSpace = ColorSpace.Linear;
             PlayerSettings.defaultScreenWidth = 1280;
@@ -953,9 +955,10 @@ namespace WOF.Editor
         {
             var world = new GameObject("World");
             CreateBaseVillageTerrain(world.transform, palette.Ground);
+            CreateSurvivalOpenWorldTerrain(world.transform);
             CreateBaseVillageWater(world.transform, palette);
             CreateBaseVillageBushes(world.transform, palette.Bushes);
-            CreateClosedArenaWalls(world.transform, palette.Stone);
+            CreateVillagePerimeterWalls(world.transform, palette.Stone);
             CreateBaseVillageHuts(world.transform, palette);
             CreateBaseVillageVillagers(world.transform, palette.Villager);
             CreateCampfire(world.transform, palette);
@@ -1068,23 +1071,72 @@ namespace WOF.Editor
             return mesh;
         }
 
-        private static void CreateClosedArenaWalls(Transform parent, Material material)
+        private static void CreateVillagePerimeterWalls(Transform parent, Material material)
         {
-            var walls = new GameObject("ClosedArenaWalls");
+            var walls = new GameObject("ReactVillagePerimeterWalls");
             walls.transform.SetParent(parent, false);
-            CreatePrimitive("NorthWall", PrimitiveType.Cube, walls.transform,
-                new Vector3(0f, 6f, -WofBaseVillageLayout.WallCenterOffset),
-                new Vector3(480f, WofBaseVillageLayout.WallHeight, WofBaseVillageLayout.WallThickness), material);
-            CreatePrimitive("SouthWall", PrimitiveType.Cube, walls.transform,
-                new Vector3(0f, 6f, WofBaseVillageLayout.WallCenterOffset),
-                new Vector3(480f, WofBaseVillageLayout.WallHeight, WofBaseVillageLayout.WallThickness), material);
-            CreatePrimitive("EastWall", PrimitiveType.Cube, walls.transform,
-                new Vector3(WofBaseVillageLayout.WallCenterOffset, 6f, 0f),
-                new Vector3(WofBaseVillageLayout.WallThickness, WofBaseVillageLayout.WallHeight, 468f), material);
-            CreatePrimitive("WestWall", PrimitiveType.Cube, walls.transform,
-                new Vector3(-WofBaseVillageLayout.WallCenterOffset, 6f, 0f),
-                new Vector3(WofBaseVillageLayout.WallThickness, WofBaseVillageLayout.WallHeight, 468f), material);
+
+            CreatePrimitive("NorthWallWest", PrimitiveType.Cube, walls.transform,
+                new Vector3(-136f, 6f, -238f), new Vector3(208f, 12f, 8f), material);
+            CreatePrimitive("NorthWallEast", PrimitiveType.Cube, walls.transform,
+                new Vector3(136f, 6f, -238f), new Vector3(208f, 12f, 8f), material);
+            CreatePrimitive("SouthWallWest", PrimitiveType.Cube, walls.transform,
+                new Vector3(-136f, 6f, 238f), new Vector3(208f, 12f, 8f), material);
+            CreatePrimitive("SouthWallEast", PrimitiveType.Cube, walls.transform,
+                new Vector3(136f, 6f, 238f), new Vector3(208f, 12f, 8f), material);
+            CreatePrimitive("WestWallNorth", PrimitiveType.Cube, walls.transform,
+                new Vector3(-238f, 6f, -136f), new Vector3(8f, 12f, 208f), material);
+            CreatePrimitive("WestWallSouth", PrimitiveType.Cube, walls.transform,
+                new Vector3(-238f, 6f, 136f), new Vector3(8f, 12f, 208f), material);
+            CreatePrimitive("EastWallNorth", PrimitiveType.Cube, walls.transform,
+                new Vector3(238f, 6f, -136f), new Vector3(8f, 12f, 208f), material);
+            CreatePrimitive("EastWallSouth", PrimitiveType.Cube, walls.transform,
+                new Vector3(238f, 6f, 136f), new Vector3(8f, 12f, 208f), material);
+
+            CreateVillageGateArch(walls.transform, "North", new Vector3(0f, 0f, -238f), true, material);
+            CreateVillageGateArch(walls.transform, "South", new Vector3(0f, 0f, 238f), true, material);
+            CreateVillageGateArch(walls.transform, "East", new Vector3(238f, 0f, 0f), false, material);
+            CreateVillageGateArch(walls.transform, "West", new Vector3(-238f, 0f, 0f), false, material);
             MarkStatic(walls);
+        }
+
+        private static void CreateVillageGateArch(
+            Transform parent,
+            string side,
+            Vector3 center,
+            bool northSouth,
+            Material material)
+        {
+            var gate = new GameObject($"VillageGateArch{side}");
+            gate.transform.SetParent(parent, false);
+            if (northSouth)
+            {
+                CreatePrimitive("LeftPillar", PrimitiveType.Cube, gate.transform,
+                    center + new Vector3(-38f, 8f, 0f), new Vector3(8f, 16f, 10f), material);
+                CreatePrimitive("RightPillar", PrimitiveType.Cube, gate.transform,
+                    center + new Vector3(38f, 8f, 0f), new Vector3(8f, 16f, 10f), material);
+                CreatePrimitive("Beam", PrimitiveType.Cube, gate.transform,
+                    center + new Vector3(0f, 17.5f, 0f), new Vector3(84f, 5f, 10f), material);
+                CreatePrimitive("Crown", PrimitiveType.Cube, gate.transform,
+                    center + new Vector3(0f, 21f, 0f), new Vector3(18f, 4f, 10f), material);
+                var diamond = CreatePrimitive("Diamond", PrimitiveType.Cube, gate.transform,
+                    center + new Vector3(0f, 15.25f, 0f), new Vector3(8f, 8f, 10f), material);
+                diamond.transform.localRotation = Quaternion.Euler(0f, 0f, 45f);
+            }
+            else
+            {
+                CreatePrimitive("LeftPillar", PrimitiveType.Cube, gate.transform,
+                    center + new Vector3(0f, 8f, -38f), new Vector3(10f, 16f, 8f), material);
+                CreatePrimitive("RightPillar", PrimitiveType.Cube, gate.transform,
+                    center + new Vector3(0f, 8f, 38f), new Vector3(10f, 16f, 8f), material);
+                CreatePrimitive("Beam", PrimitiveType.Cube, gate.transform,
+                    center + new Vector3(0f, 17.5f, 0f), new Vector3(10f, 5f, 84f), material);
+                CreatePrimitive("Crown", PrimitiveType.Cube, gate.transform,
+                    center + new Vector3(0f, 21f, 0f), new Vector3(10f, 4f, 18f), material);
+                var diamond = CreatePrimitive("Diamond", PrimitiveType.Cube, gate.transform,
+                    center + new Vector3(0f, 15.25f, 0f), new Vector3(10f, 8f, 8f), material);
+                diamond.transform.localRotation = Quaternion.Euler(45f, 0f, 0f);
+            }
         }
 
         private static void CreateBaseVillageHuts(Transform parent, WofMaterialPalette palette)
@@ -2060,6 +2112,24 @@ namespace WOF.Editor
             var commandConsole = canvasObject.AddComponent<WofCommandConsoleRuntime>();
             commandConsole.ConfigureGeneratedView(hud, font);
 
+            var spellMenu = canvasObject.AddComponent<WofSpellMenuRuntime>();
+            spellMenu.ConfigureGeneratedView(
+                hud,
+                canvasObject.transform,
+                mobileRoot.transform,
+                font,
+                LoadRequiredAsset<Sprite>("Assets/WOF/Art/Generated/React/HUD/SpellMenu/spellbook_icon.png"),
+                LoadRequiredAsset<Sprite>("Assets/WOF/Art/Generated/React/HUD/Fireball/fireball_1.png"),
+                LoadRequiredAsset<Sprite>("Assets/WOF/Art/Generated/React/HUD/SpellMenu/speedboost.png"),
+                LoadRequiredAsset<Sprite>("Assets/WOF/Art/Generated/React/HUD/SpellMenu/jumpboost.png"));
+
+            var navigationMap = canvasObject.AddComponent<WofNavigationMapRuntime>();
+            navigationMap.ConfigureGeneratedView(
+                hud,
+                canvasObject.transform,
+                font,
+                GetOrCreateCircularUiMaskSprite());
+
             return new WofUiReferences
             {
                 LaunchPanel = launchPanel,
@@ -2999,6 +3069,52 @@ namespace WOF.Editor
             image.sprite = sprite;
             image.color = color;
             return image;
+        }
+
+        private static Sprite GetOrCreateCircularUiMaskSprite()
+        {
+            var assets = AssetDatabase.LoadAllAssetsAtPath(CircularUiMaskPath);
+            var existing = assets.OfType<Sprite>().FirstOrDefault();
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            const int size = 128;
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false, true)
+            {
+                name = "CircularUiMaskTexture",
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp
+            };
+            var colors = new Color32[size * size];
+            var center = (size - 1) * 0.5f;
+            var radius = center - 1f;
+            for (var y = 0; y < size; y++)
+            {
+                for (var x = 0; x < size; x++)
+                {
+                    var distance = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
+                    var alpha = (byte)Mathf.RoundToInt(Mathf.Clamp01(radius + 1f - distance) * 255f);
+                    colors[y * size + x] = new Color32(255, 255, 255, alpha);
+                }
+            }
+            texture.SetPixels32(colors);
+            texture.Apply(false, true);
+            AssetDatabase.CreateAsset(texture, CircularUiMaskPath);
+            var sprite = Sprite.Create(
+                texture,
+                new Rect(0f, 0f, size, size),
+                new Vector2(0.5f, 0.5f),
+                100f,
+                0,
+                SpriteMeshType.FullRect);
+            sprite.name = "CircularUiMask";
+            AssetDatabase.AddObjectToAsset(sprite, texture);
+            EditorUtility.SetDirty(texture);
+            EditorUtility.SetDirty(sprite);
+            AssetDatabase.ImportAsset(CircularUiMaskPath, ImportAssetOptions.ForceSynchronousImport);
+            return AssetDatabase.LoadAllAssetsAtPath(CircularUiMaskPath).OfType<Sprite>().First();
         }
 
         private static Image CreateFilledBar(string name, Transform parent, Vector2 min, Vector2 max, Color color)

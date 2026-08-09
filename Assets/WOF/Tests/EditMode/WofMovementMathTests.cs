@@ -69,6 +69,75 @@ namespace WOF.Tests
             Assert.That(released.IsCrouching, Is.False);
         }
 
+        [Test]
+        public void JumpThrusterMatchesReactFuelImpulseAndReleaseLockRules()
+        {
+            var state = default(WofMovementRuntimeState);
+            WofMovementMath.Reset(ref state);
+            var velocity = 0f;
+
+            var jumped = WofMovementMath.ApplyJumpThruster(
+                ref state,
+                jumpHeld: true,
+                grounded: true,
+                effectiveGrounded: true,
+                jumpBoostActive: false,
+                ref velocity,
+                deltaTime: 0.02f);
+            Assert.That(jumped, Is.True);
+            Assert.That(velocity, Is.EqualTo(8f));
+            Assert.That(state.ThrusterFuel, Is.EqualTo(1f));
+
+            WofMovementMath.ApplyJumpThruster(
+                ref state,
+                jumpHeld: true,
+                grounded: false,
+                effectiveGrounded: false,
+                jumpBoostActive: false,
+                ref velocity,
+                deltaTime: 0.1f);
+            Assert.That(velocity, Is.EqualTo(11.5f).Within(0.0001f));
+            Assert.That(state.ThrusterFuel, Is.EqualTo(0.92f).Within(0.0001f));
+
+            WofMovementMath.ApplyJumpThruster(
+                ref state,
+                jumpHeld: false,
+                grounded: false,
+                effectiveGrounded: false,
+                jumpBoostActive: false,
+                ref velocity,
+                deltaTime: 0.1f);
+            Assert.That(state.ThrusterLocked, Is.False);
+        }
+
+        [Test]
+        public void JumpBoostDoublesReactJumpAndThrusterImpulse()
+        {
+            var state = default(WofMovementRuntimeState);
+            WofMovementMath.Reset(ref state);
+            var velocity = 0f;
+
+            WofMovementMath.ApplyJumpThruster(
+                ref state,
+                jumpHeld: true,
+                grounded: true,
+                effectiveGrounded: true,
+                jumpBoostActive: true,
+                ref velocity,
+                deltaTime: 0.02f);
+            Assert.That(velocity, Is.EqualTo(16f));
+
+            WofMovementMath.ApplyJumpThruster(
+                ref state,
+                jumpHeld: true,
+                grounded: false,
+                effectiveGrounded: false,
+                jumpBoostActive: true,
+                ref velocity,
+                deltaTime: 0.1f);
+            Assert.That(velocity, Is.EqualTo(23f).Within(0.0001f));
+        }
+
         private static WofMovementFrame Resolve(
             ref WofMovementRuntimeState state,
             Vector2 move,

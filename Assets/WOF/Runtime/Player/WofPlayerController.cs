@@ -62,16 +62,50 @@ namespace WOF
             false,
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Server);
+        private readonly NetworkVariable<bool> _isInLilyCoilTube = new(
+            false,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
+        private readonly NetworkVariable<float> _lilyCoilTubeT = new(
+            0f,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
+        private readonly NetworkVariable<float> _lilyCoilSurfaceAngle = new(
+            Mathf.PI,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
+        private readonly NetworkVariable<int> _leftEquippedSpell = new(
+            (int)WofSpellLoadout.ReactDefaultLeft,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
+        private readonly NetworkVariable<int> _rightEquippedSpell = new(
+            (int)WofSpellLoadout.ReactDefaultRight,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
+        private readonly NetworkVariable<double> _speedBoostUntil = new(
+            0d,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
+        private readonly NetworkVariable<double> _jumpBoostUntil = new(
+            0d,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
 
         private CharacterController _controller;
         private readonly HashSet<string> _activeMountainLadderZones = new();
         private WofInputCommand _latestServerInput;
         private WofMovementRuntimeState _serverMovementState;
         private WofMovementRuntimeState _predictedMovementState;
+        private WofLilyCoilMovementState _serverLilyCoilState;
+        private WofLilyCoilMovementState _predictedLilyCoilState;
         private float _serverVerticalVelocity;
         private float _predictedVerticalVelocity;
         private float _yaw;
         private float _pitch;
+        private float _lilyCoilViewYaw;
+        private float _lilyCoilViewPitch;
+        private bool _lastLilyCoilGrounded = true;
+        private bool _lastLilyCoilMoving;
         private float _lastGroundedAt;
         private double _nextServerCastAt;
         private uint _inputSequence;
@@ -96,7 +130,9 @@ namespace WOF
         public float Health => _health.Value;
         public float Armor => _armor.Value;
         public bool IsDead => _isDead.Value;
-        public bool IsGrounded => _controller != null && (!_controller.enabled || _controller.isGrounded);
+        public bool IsGrounded => IsLocalLilyCoilActive
+            ? _lastLilyCoilGrounded
+            : _controller != null && (!_controller.enabled || _controller.isGrounded);
         public bool IsCasting => IsSpawned && NetworkManager != null &&
                                  NetworkManager.ServerTime.Time < _castingUntil.Value;
         public bool IsSprinting => _isSprinting.Value;
@@ -111,14 +147,20 @@ namespace WOF
                     return false;
                 }
 
+                if (IsLocalLilyCoilActive) return _lastLilyCoilMoving;
                 var velocity = _controller.velocity;
                 return velocity.x * velocity.x + velocity.z * velocity.z > 0.0001f;
             }
         }
         public bool IsDarrelReturnArmed => _darrelReturnArmed;
+        public WofSpellId LeftEquippedSpell => ResolveSpell(_leftEquippedSpell.Value, WofSpellLoadout.ReactDefaultLeft);
+        public WofSpellId RightEquippedSpell => ResolveSpell(_rightEquippedSpell.Value, WofSpellLoadout.ReactDefaultRight);
         internal int ActiveMountainLadderZoneCount => _activeMountainLadderZones.Count;
-        public Vector3 DamageProbePosition => transform.position + Vector3.up *
+        public Vector3 DamageProbePosition => transform.position + transform.up *
                                               WofMovementMath.ResolveCameraHeight(_isSliding.Value, _isCrouching.Value);
+        private bool IsLocalLilyCoilActive => IsServer
+            ? _serverLilyCoilState.Active
+            : _predictedLilyCoilState.Active;
 
         private void Awake()
         {
@@ -196,6 +238,8 @@ namespace WOF
             _health.OnValueChanged += HandleHealthChanged;
             _armor.OnValueChanged += HandleArmorChanged;
             _isDead.OnValueChanged += HandleDeadChanged;
+            _leftEquippedSpell.OnValueChanged += HandleEquippedSpellChanged;
+            _rightEquippedSpell.OnValueChanged += HandleEquippedSpellChanged;
 
             var hasLocalControl = IsServer || IsOwner;
             _controller.enabled = hasLocalControl && !_isDead.Value;
@@ -256,6 +300,10 @@ namespace WOF
                 _armor.Value = 0;
                 _isDead.Value = false;
                 _castingUntil.Value = 0d;
+                _leftEquippedSpell.Value = (int)WofSpellLoadout.ReactDefaultLeft;
+                _rightEquippedSpell.Value = (int)WofSpellLoadout.ReactDefaultRight;
+                _speedBoostUntil.Value = 0d;
+                _jumpBoostUntil.Value = 0d;
             }
 
             if (IsOwner)
@@ -317,6 +365,8 @@ namespace WOF
             _health.OnValueChanged -= HandleHealthChanged;
             _armor.OnValueChanged -= HandleArmorChanged;
             _isDead.OnValueChanged -= HandleDeadChanged;
+            _leftEquippedSpell.OnValueChanged -= HandleEquippedSpellChanged;
+            _rightEquippedSpell.OnValueChanged -= HandleEquippedSpellChanged;
         }
 
         private void Update()
@@ -331,8 +381,21 @@ namespace WOF
                        _mountainVillageViewProbe
                 ? Vector2.zero
                 : WofInputRouter.ReadLook();
-            _yaw += look.x * WofGameConstants.MouseSensitivity;
-            _pitch = Mathf.Clamp(_pitch - look.y * WofGameConstants.MouseSensitivity, -82f, 82f);
+            if (IsLocalLilyCoilActive)
+            {
+                _lilyCoilViewYaw += look.x * WofGameConstants.MouseSensitivity;
+                _lilyCoilViewPitch = Mathf.Clamp(
+                    _lilyCoilViewPitch - look.y * WofGameConstants.MouseSensitivity,
+                    -82f,
+                    82f);
+                _yaw = _lilyCoilViewYaw;
+                _pitch = _lilyCoilViewPitch;
+            }
+            else
+            {
+                _yaw += look.x * WofGameConstants.MouseSensitivity;
+                _pitch = Mathf.Clamp(_pitch - look.y * WofGameConstants.MouseSensitivity, -82f, 82f);
+            }
             ApplyCameraRotation();
 
             var move = WofInputRouter.ReadMove();
@@ -357,6 +420,7 @@ namespace WOF
                 Simulate(
                     ref _predictedVerticalVelocity,
                     ref _predictedMovementState,
+                    ref _predictedLilyCoilState,
                     command,
                     Time.deltaTime);
             }
@@ -370,13 +434,15 @@ namespace WOF
                 WofHud.Instance?.PlayFiringPose(castingHand);
                 if (IsServer)
                 {
-                    TryCastFromAuthoritativePoseServer();
+                    TryCastFromAuthoritativePoseServer(castingHand);
                 }
                 else
                 {
-                    RequestCastRpc();
+                    RequestCastRpc(castingHand);
                 }
             }
+
+            PublishMovementHud();
 
             if (_treeHouseViewProbe && !_treeHouseViewProbeLogged && Time.realtimeSinceStartup > 1.5f)
             {
@@ -396,6 +462,7 @@ namespace WOF
             var movementFrame = Simulate(
                 ref _serverVerticalVelocity,
                 ref _serverMovementState,
+                ref _serverLilyCoilState,
                 _latestServerInput,
                 Time.fixedDeltaTime);
             _authoritativePosition.Value = transform.position;
@@ -404,6 +471,9 @@ namespace WOF
             _isSprinting.Value = movementFrame.IsSprinting;
             _isSliding.Value = movementFrame.IsSliding;
             _isCrouching.Value = movementFrame.IsCrouching;
+            _isInLilyCoilTube.Value = _serverLilyCoilState.Active;
+            _lilyCoilTubeT.Value = _serverLilyCoilState.T;
+            _lilyCoilSurfaceAngle.Value = _serverLilyCoilState.SurfaceAngle;
         }
 
         private void LateUpdate()
@@ -430,7 +500,20 @@ namespace WOF
 
             var blend = 1f - Mathf.Exp(-12f * Time.deltaTime);
             transform.position = Vector3.Lerp(transform.position, target, blend);
-            transform.rotation = Quaternion.Euler(0f, Mathf.LerpAngle(transform.eulerAngles.y, _authoritativeYaw.Value, blend), 0f);
+            if (_isInLilyCoilTube.Value)
+            {
+                var frame = WofLilyCoilLayout.GetFrame(_lilyCoilTubeT.Value);
+                var radial = WofLilyCoilLayout.GetRadial(frame, _lilyCoilSurfaceAngle.Value);
+                var tubeRotation = Quaternion.LookRotation(frame.Tangent, -radial);
+                transform.rotation = Quaternion.Slerp(transform.rotation, tubeRotation, blend);
+            }
+            else
+            {
+                transform.rotation = Quaternion.Euler(
+                    0f,
+                    Mathf.LerpAngle(transform.eulerAngles.y, _authoritativeYaw.Value, blend),
+                    0f);
+            }
         }
 
         [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner, Delivery = RpcDelivery.Unreliable)]
@@ -447,7 +530,7 @@ namespace WOF
         }
 
         [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
-        private void RequestCastRpc()
+        private void RequestCastRpc(WofHandSide hand = WofHandSide.Right)
         {
             if (_remainingAutomationServerCasts > 0)
             {
@@ -462,7 +545,46 @@ namespace WOF
                 return;
             }
 
-            TryCastFromAuthoritativePoseServer();
+            TryCastFromAuthoritativePoseServer(hand);
+        }
+
+        public void EquipSpell(WofHandSide hand, WofSpellId spell)
+        {
+            if (!IsOwner || !IsSpawned || !WofSpellLoadout.IsValid((int)spell))
+            {
+                return;
+            }
+
+            if (IsServer)
+            {
+                SetEquippedSpellServer(hand, spell);
+            }
+            else
+            {
+                EquipSpellRpc(hand, (int)spell);
+            }
+        }
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+        private void EquipSpellRpc(WofHandSide hand, int spellValue)
+        {
+            if (!WofSpellLoadout.IsValid(spellValue))
+            {
+                return;
+            }
+            SetEquippedSpellServer(hand, (WofSpellId)spellValue);
+        }
+
+        private void SetEquippedSpellServer(WofHandSide hand, WofSpellId spell)
+        {
+            if (!IsServer)
+            {
+                return;
+            }
+            if (hand == WofHandSide.Left) _leftEquippedSpell.Value = (int)spell;
+            else _rightEquippedSpell.Value = (int)spell;
+            Debug.Log($"[WOF] SPELL_EQUIPPED owner={OwnerClientId} hand={hand} spell={spell}");
+            if (IsOwner) PublishHud();
         }
 
         public void ApplyServerDamage(float amount, ulong sourceClientId, bool bypassArmor = false)
@@ -590,6 +712,7 @@ namespace WOF
         {
             _predictedVerticalVelocity = 0f;
             WofMovementMath.Reset(ref _predictedMovementState);
+            WofLilyCoilMovement.Reset(ref _predictedLilyCoilState);
             SetControllerPosition(position);
             transform.rotation = Quaternion.Euler(0f, yaw, 0f);
             _yaw = yaw;
@@ -605,6 +728,8 @@ namespace WOF
             _latestServerInput = default;
             WofMovementMath.Reset(ref _serverMovementState);
             WofMovementMath.Reset(ref _predictedMovementState);
+            WofLilyCoilMovement.Reset(ref _serverLilyCoilState);
+            WofLilyCoilMovement.Reset(ref _predictedLilyCoilState);
         }
 
         internal bool PrepareForAutomationCombatProbe(Vector3 position, float yaw)
@@ -625,6 +750,23 @@ namespace WOF
             _isDead.Value = false;
             _castingUntil.Value = 0d;
             Teleport(position, yaw);
+            return true;
+        }
+
+        internal bool PrepareForAutomationNorthGateProbe()
+        {
+            if (!IsServer || !IsOwner || !IsSpawned || _isDead.Value)
+            {
+                return false;
+            }
+
+            var position = new Vector3(0f, 5f, -216f);
+            const float yaw = 180f;
+            Teleport(position, yaw);
+            _yaw = yaw;
+            _pitch = 0f;
+            ApplyCameraRotation();
+            Debug.Log($"[WOF-AUTOMATION] NORTH_GATE_PROBE_READY position={transform.position} yaw={yaw:F1}");
             return true;
         }
 
@@ -785,8 +927,40 @@ namespace WOF
             }
         }
 
-        private bool TryCastFromAuthoritativePoseServer()
+        private bool TryCastFromAuthoritativePoseServer(WofHandSide hand = WofHandSide.Right)
         {
+            var equippedSpell = hand == WofHandSide.Left ? LeftEquippedSpell : RightEquippedSpell;
+            if (equippedSpell != WofSpellId.Fireball)
+            {
+                return TryApplySelfBuffServer(hand, equippedSpell);
+            }
+
+            if (_serverLilyCoilState.Active)
+            {
+                var frame = WofLilyCoilLayout.GetFrame(_serverLilyCoilState.T);
+                var radial = WofLilyCoilLayout.GetRadial(frame, _serverLilyCoilState.SurfaceAngle);
+                var playerUp = -radial;
+                var bodyRotation = Quaternion.LookRotation(frame.Tangent, playerUp);
+                var viewRotation = bodyRotation * Quaternion.Euler(
+                    _authoritativePitch.Value,
+                    _authoritativeYaw.Value,
+                    0f);
+                var eyeHeight = _isSliding.Value
+                    ? WofMovementMath.ReactLowCameraHeight
+                    : WofMovementMath.ReactStandingCameraHeight;
+                if (!WofFireballCastMath.TryResolveOrientedLaunch(
+                        _authoritativePosition.Value,
+                        playerUp,
+                        eyeHeight,
+                        viewRotation * Vector3.forward,
+                        out var tubeOrigin,
+                        out var tubeDirection))
+                {
+                    return false;
+                }
+                return TrySpawnFireballServer(tubeOrigin, tubeDirection);
+            }
+
             if (!WofFireballCastMath.TryResolveAuthoritativeLaunch(
                     _authoritativePosition.Value,
                     _authoritativeYaw.Value,
@@ -798,6 +972,36 @@ namespace WOF
             }
 
             return TrySpawnFireballServer(origin, direction);
+        }
+
+        private bool TryApplySelfBuffServer(WofHandSide hand, WofSpellId spell)
+        {
+            if (!IsServer || _isDead.Value ||
+                (spell != WofSpellId.SpeedBoost && spell != WofSpellId.JumpBoost))
+            {
+                return false;
+            }
+
+            var now = NetworkManager.ServerTime.Time;
+            if (now < _nextServerCastAt)
+            {
+                return false;
+            }
+            _nextServerCastAt = now + WofGameConstants.GeneralCastCooldownSeconds;
+            _castingUntil.Value = now + WofSpellLoadout.SelfBuffHandChargeSeconds;
+            if (spell == WofSpellId.SpeedBoost)
+            {
+                _speedBoostUntil.Value = now + WofSpellLoadout.SelfBuffDurationSeconds;
+            }
+            else
+            {
+                _jumpBoostUntil.Value = now + WofSpellLoadout.SelfBuffDurationSeconds;
+                _serverVerticalVelocity = Mathf.Max(
+                    _serverVerticalVelocity,
+                    WofGameConstants.JumpSpeed * WofSpellLoadout.JumpBoostMultiplier);
+            }
+            Debug.Log($"[WOF] SELF_BUFF_CAST owner={OwnerClientId} hand={hand} spell={spell} duration={WofSpellLoadout.SelfBuffDurationSeconds:F0}");
+            return true;
         }
 
         private bool TryCastFromServerDirection(Vector3 serverDirection)
@@ -846,6 +1050,7 @@ namespace WOF
         private WofMovementFrame Simulate(
             ref float verticalVelocity,
             ref WofMovementRuntimeState movementState,
+            ref WofLilyCoilMovementState lilyCoilState,
             WofInputCommand command,
             float deltaTime)
         {
@@ -856,6 +1061,29 @@ namespace WOF
                     false,
                     movementState.IsSliding,
                     movementState.IsCrouching);
+            }
+
+            if (WofLilyCoilLayout.IsInsideTubeRealm(transform.position))
+            {
+                return SimulateLilyCoilTube(
+                    ref verticalVelocity,
+                    ref movementState,
+                    ref lilyCoilState,
+                    command,
+                    deltaTime);
+            }
+
+            if (lilyCoilState.Active)
+            {
+                WofLilyCoilMovement.Reset(ref lilyCoilState);
+                _lastLilyCoilGrounded = true;
+                _lastLilyCoilMoving = false;
+                if (IsOwner)
+                {
+                    _yaw = transform.eulerAngles.y;
+                    _pitch = 0f;
+                    ApplyCameraHeight(false, false);
+                }
             }
 
             transform.rotation = Quaternion.Euler(0f, command.Yaw, 0f);
@@ -897,20 +1125,89 @@ namespace WOF
                 Time.time,
                 deltaTime);
 
-            if (command.Jump && (Time.time - _lastGroundedAt) <= WofGameConstants.GroundCoyoteSeconds)
+            var effectiveGrounded = (Time.time - _lastGroundedAt) <= WofGameConstants.GroundCoyoteSeconds;
+            if (WofMovementMath.ApplyJumpThruster(
+                    ref movementState,
+                    command.Jump,
+                    _controller.isGrounded,
+                    effectiveGrounded,
+                    IsJumpBoostActive,
+                    ref verticalVelocity,
+                    deltaTime))
             {
-                verticalVelocity = WofGameConstants.JumpSpeed;
                 _lastGroundedAt = float.NegativeInfinity;
             }
 
             verticalVelocity += WofGameConstants.Gravity * deltaTime;
             var heading = Quaternion.Euler(0f, command.Yaw, 0f);
             var planar = heading * (Vector3.right * command.Move.x + Vector3.forward * command.Move.y);
-            var velocity = planar * movementFrame.Speed + Vector3.up * verticalVelocity;
+            var movementSpeed = movementFrame.IsSliding
+                ? movementFrame.Speed
+                : movementFrame.Speed * (IsSpeedBoostActive ? WofSpellLoadout.SpeedBoostMultiplier : 1f);
+            var velocity = planar * movementSpeed + Vector3.up * verticalVelocity;
             _controller.Move(velocity * deltaTime);
             transform.rotation = Quaternion.Euler(0f, command.Yaw, 0f);
             ApplyCameraHeight(movementFrame.IsSliding, movementFrame.IsCrouching);
-            return movementFrame;
+            return new WofMovementFrame(
+                movementSpeed,
+                movementFrame.IsSprinting,
+                movementFrame.IsSliding,
+                movementFrame.IsCrouching);
+        }
+
+        private WofMovementFrame SimulateLilyCoilTube(
+            ref float verticalVelocity,
+            ref WofMovementRuntimeState movementState,
+            ref WofLilyCoilMovementState lilyCoilState,
+            WofInputCommand command,
+            float deltaTime)
+        {
+            var entering = !lilyCoilState.Active;
+            if (entering)
+            {
+                WofLilyCoilMovement.Enter(ref lilyCoilState, transform.position);
+                WofMovementMath.Reset(ref movementState);
+                verticalVelocity = 0f;
+                if (IsOwner)
+                {
+                    _lilyCoilViewYaw = 0f;
+                    _lilyCoilViewPitch = 0f;
+                    _yaw = 0f;
+                    _pitch = 0f;
+                }
+            }
+
+            var viewYaw = entering ? 0f : command.Yaw;
+            var viewPitch = entering ? 0f : command.Pitch;
+            var tubeFrame = WofLilyCoilMovement.Simulate(
+                ref lilyCoilState,
+                command.Move,
+                viewYaw,
+                viewPitch,
+                command.Sprint,
+                command.Slide,
+                command.Jump,
+                Time.time,
+                deltaTime);
+
+            SetControllerPose(tubeFrame.Position, tubeFrame.BodyRotation);
+            _lastLilyCoilGrounded = tubeFrame.IsGrounded;
+            _lastLilyCoilMoving = tubeFrame.IsMoving;
+            if (IsOwner && cameraPivot != null)
+            {
+                cameraPivot.localRotation = tubeFrame.CameraLocalRotation;
+                var cameraLocalPosition = cameraPivot.localPosition;
+                cameraLocalPosition.y = tubeFrame.IsSliding
+                    ? WofMovementMath.ReactLowCameraHeight
+                    : WofMovementMath.ReactStandingCameraHeight;
+                cameraPivot.localPosition = cameraLocalPosition;
+            }
+
+            return new WofMovementFrame(
+                tubeFrame.MoveSpeed,
+                tubeFrame.IsSprinting,
+                tubeFrame.IsSliding,
+                false);
         }
 
         public void SetMountainLadderZone(string zoneId, bool active)
@@ -924,6 +1221,12 @@ namespace WOF
         {
             if (cameraPivot == null)
             {
+                return;
+            }
+
+            if (IsLocalLilyCoilActive)
+            {
+                cameraPivot.localRotation = Quaternion.Euler(_lilyCoilViewPitch, _lilyCoilViewYaw, 0f);
                 return;
             }
 
@@ -966,6 +1269,10 @@ namespace WOF
         {
             WofMovementMath.Reset(ref _serverMovementState);
             WofMovementMath.Reset(ref _predictedMovementState);
+            WofLilyCoilMovement.Reset(ref _serverLilyCoilState);
+            WofLilyCoilMovement.Reset(ref _predictedLilyCoilState);
+            _lastLilyCoilGrounded = true;
+            _lastLilyCoilMoving = false;
             if (IsServer)
             {
                 _isSprinting.Value = false;
@@ -981,6 +1288,14 @@ namespace WOF
             _authoritativePosition.Value = position;
             _authoritativeYaw.Value = yaw;
             _authoritativePitch.Value = 0f;
+        }
+
+        private void SetControllerPose(Vector3 position, Quaternion rotation)
+        {
+            var wasEnabled = _controller.enabled;
+            _controller.enabled = false;
+            transform.SetPositionAndRotation(position, rotation);
+            _controller.enabled = wasEnabled;
         }
 
         private void SetControllerPosition(Vector3 position)
@@ -1001,6 +1316,14 @@ namespace WOF
         }
 
         private void HandleArmorChanged(float previous, float current)
+        {
+            if (IsOwner)
+            {
+                PublishHud();
+            }
+        }
+
+        private void HandleEquippedSpellChanged(int previous, int current)
         {
             if (IsOwner)
             {
@@ -1034,6 +1357,40 @@ namespace WOF
         private void PublishHud()
         {
             WofHud.Instance?.SetVitals(_health.Value, _armor.Value);
+            WofHud.Instance?.SetEquippedSpells(
+                WofSpellLoadout.GetDisplayName(LeftEquippedSpell),
+                WofSpellLoadout.GetDisplayName(RightEquippedSpell));
+            WofHud.Instance?.SetHeldSpellVisibility(
+                LeftEquippedSpell == WofSpellId.Fireball,
+                RightEquippedSpell == WofSpellId.Fireball);
+            PublishMovementHud();
+        }
+
+        private void PublishMovementHud()
+        {
+            if (!IsOwner)
+            {
+                return;
+            }
+            var fuel = IsServer ? _serverMovementState.ThrusterFuel : _predictedMovementState.ThrusterFuel;
+            if (IsLocalLilyCoilActive)
+            {
+                fuel = IsServer ? _serverLilyCoilState.ThrusterFuel : _predictedLilyCoilState.ThrusterFuel;
+            }
+            WofHud.Instance?.SetAether(fuel);
+        }
+
+        private bool IsSpeedBoostActive => IsTimedBuffActive(_speedBoostUntil.Value);
+        private bool IsJumpBoostActive => IsTimedBuffActive(_jumpBoostUntil.Value);
+
+        private bool IsTimedBuffActive(double until)
+        {
+            return IsSpawned && NetworkManager != null && NetworkManager.ServerTime.Time < until;
+        }
+
+        private static WofSpellId ResolveSpell(int value, WofSpellId fallback)
+        {
+            return WofSpellLoadout.IsValid(value) ? (WofSpellId)value : fallback;
         }
     }
 }

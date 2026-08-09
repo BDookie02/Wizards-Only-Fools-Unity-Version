@@ -152,6 +152,8 @@ $reactProjectPath = 'D:\CodexProjects\Wizards-Only-Fools-React-Latest'
 $nodeExecutable = 'D:\Program Files\nodejs\node.exe'
 $tsxCli = Join-Path $reactProjectPath 'node_modules\tsx\dist\cli.mjs'
 $reactVisualBaker = Join-Path $projectPath 'Tools\bake-react-visual-assets.mts'
+$lilyCoilBaker = Join-Path $projectPath 'Tools\bake-lily-coil-assets.mts'
+$survivalTerrainBaker = Join-Path $projectPath 'Tools\bake-survival-terrain-assets.mts'
 
 New-Item -ItemType Directory -Force -Path $taskRoot | Out-Null
 New-Item -ItemType Directory -Force -Path $logRoot | Out-Null
@@ -294,7 +296,7 @@ function Invoke-UnityBatch {
 }
 
 function Invoke-ReactVisualBaker {
-    foreach ($requiredPath in @($nodeExecutable, $tsxCli, $reactVisualBaker)) {
+    foreach ($requiredPath in @($nodeExecutable, $tsxCli, $reactVisualBaker, $lilyCoilBaker, $survivalTerrainBaker)) {
         if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
             throw "React visual baker dependency is missing: $requiredPath"
         }
@@ -312,6 +314,14 @@ function Invoke-ReactVisualBaker {
         & $nodeExecutable $tsxCli $reactVisualBaker
         if ($LASTEXITCODE -ne 0) {
             throw "React visual baker failed with exit code $LASTEXITCODE."
+        }
+        & $nodeExecutable $tsxCli $lilyCoilBaker
+        if ($LASTEXITCODE -ne 0) {
+            throw "Lily Coil baker failed with exit code $LASTEXITCODE."
+        }
+        & $nodeExecutable $tsxCli $survivalTerrainBaker
+        if ($LASTEXITCODE -ne 0) {
+            throw "Survival terrain baker failed with exit code $LASTEXITCODE."
         }
     }
     finally {

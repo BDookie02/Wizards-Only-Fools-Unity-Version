@@ -399,9 +399,12 @@ namespace WOF
                 : Vector2.zero;
         }
 
-        internal static bool ShouldShowTouchControls(bool isTouchGameplayDevice, bool forced)
+        internal static bool ShouldShowTouchControls(
+            bool isTouchGameplayDevice,
+            bool forced,
+            bool hasConnectedController)
         {
-            return isTouchGameplayDevice || forced;
+            return !hasConnectedController && (isTouchGameplayDevice || forced);
         }
 
         private static bool IsControllerInputActive(Gamepad gamepad)

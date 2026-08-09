@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace WOF
@@ -43,6 +44,8 @@ namespace WOF
         private float _rightFiringUntil;
 
         public static WofHud Instance { get; private set; }
+        public bool IsGameplayVisible => _gameplayVisible && !_gameplaySurfaceBlocked;
+        public bool AreMobileControlsVisible => mobileRoot != null && mobileRoot.activeInHierarchy;
 
         private void Awake()
         {
@@ -208,6 +211,12 @@ namespace WOF
             }
         }
 
+        public void SetHeldSpellVisibility(bool leftVisible, bool rightVisible)
+        {
+            if (leftHeldSpellImage != null) leftHeldSpellImage.gameObject.SetActive(leftVisible);
+            if (heldSpellImage != null) heldSpellImage.gameObject.SetActive(rightVisible);
+        }
+
         public void SetStatus(string message)
         {
             if (statusText != null)
@@ -233,7 +242,8 @@ namespace WOF
 
             var shouldShow = _gameplayVisible && !_gameplaySurfaceBlocked && WofInputRouter.ShouldShowTouchControls(
                 WofPerformanceModeRuntime.IsTouchGameplayDevice,
-                _forceMobileControls);
+                _forceMobileControls,
+                Gamepad.all.Count > 0);
             if (mobileRoot.activeSelf != shouldShow)
             {
                 mobileRoot.SetActive(shouldShow);

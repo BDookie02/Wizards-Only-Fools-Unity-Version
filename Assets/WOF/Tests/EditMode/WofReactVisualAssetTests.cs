@@ -14,7 +14,7 @@ namespace WOF.Tests
                 "Assets", "WOF", "Art", "Generated", "React", "react-visual-assets.json");
             var text = File.ReadAllText(manifestPath);
 
-            StringAssert.Contains("\"outputCount\": 1236", text);
+            StringAssert.Contains("\"outputCount\": 1239", text);
             StringAssert.Contains("Avatar/Default/launch-preview.png", text);
             StringAssert.Contains("HUD/Hands/idle_1.png", text);
             StringAssert.Contains("Huts/mushroom_cap_0.png", text);
@@ -25,6 +25,9 @@ namespace WOF.Tests
             StringAssert.Contains("HUD/Hands/Firing/left_idle_1.png", text);
             StringAssert.Contains("HUD/Hands/Firing/right_idle_1.png", text);
             StringAssert.Contains("HUD/Fireball/Equipped/right_fireballidle_1.png", text);
+            StringAssert.Contains("HUD/SpellMenu/spellbook_icon.png", text);
+            StringAssert.Contains("HUD/SpellMenu/speedboost.png", text);
+            StringAssert.Contains("HUD/SpellMenu/jumpboost.png", text);
             StringAssert.Contains("Geometry/bush-dodecahedron.json", text);
             StringAssert.Contains("Villagers/base-village.json", text);
             StringAssert.Contains("StreamingAssets/WOF/Villagers/Base/-224--224.wofavatar", text);

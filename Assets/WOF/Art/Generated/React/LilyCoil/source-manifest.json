@@ -1,0 +1,248 @@
+{
+  "schemaVersion": 1,
+  "generator": "Tools/bake-lily-coil-assets.mts",
+  "reactOracle": "D:\\CodexProjects\\Wizards-Only-Fools-React-Latest",
+  "sourceSignature": "50f48f75ddd68f65ae7cf651fad9615ac0c80d48141591af1c148bf3360d9266",
+  "sourceHashes": {
+    "src/game/systems/world/villages/survivalLilyCoilRendering.tsx": "1aff908cfb34044b2bf1fde8ebc55d376e4899d51906ebffe7f0c2b9e697a413",
+    "src/game/systems/world/villages/lilyCoilFloraRuntime.ts": "e99701730bc2232f5775d5eed0200a494b1e403f25e393dcbac24fe180540222",
+    "src/game/systems/world/villages/lilyCoilTextures.ts": "75b5361816f761e1b4c02f328e424a2f05e329b648265e218ee50d50363c66b1",
+    "src/game/systems/world/villages/lilyCoilTubeMotion.ts": "92ae06186c1ba4ee3d09fdde6511629dd628630533a822dc38b937abcce2ae85",
+    "src/game/systems/player/playerLilyCoilTubeRuntime.ts": "f7fcd0718ecdc4c28e1929d64fa480a5608665722dacfc32b8f8486e0e61bd80",
+    "src/game/systems/player/playerMovementConfig.ts": "06702b323ed1d44fdbb0b8be2d9c5bb6b442f54dbb2f208a749fa3bbdc281af3",
+    "src/game/systems/world/vegetation/survivalGrassTextures.ts": "80d8bab68bc827c6c640d302420e4ad84ca3254adb281c0cfdc30e3c080ee8a1",
+    "src/game/systems/rendering/textures/textureNoise.ts": "ea4557095e4c9121c2e25210ac633ec20d7c05922fa4225c4d10ed849a60fae0",
+    "src/game/systems/world/villages/darrelGroveTextures.ts": "943e7e067ed0aa7da85c20dabdd6f08dedd2269a3fc21e69c6edd8324399f31c",
+    "src/game/systems/world/villages/darrelGroveRuntime.ts": "3bafef4f1449031eff44ecf599200ca10505042fba995ab66bcd6488f8a7ef91",
+    "src/store/gameStore.ts": "8b3b59ab634f6e12b858b81d61d955125410a0cedc2fdab53c724acea83c7bb6",
+    "public/sprites/lily-coil/eye-cap-frames/manifest.json": "68a78c50eaa5f6918cd9c5acb299b1a694a8462e0524b66b037b0e35aa9d6588"
+  },
+  "outputCount": 45,
+  "outputs": [
+    {
+      "path": "EyeFrames/eye_000.png",
+      "bytes": 6208,
+      "sha256": "a5948be4a15610a8e11c02649e0a510aaad31808f15df000215faaefe01a21f5"
+    },
+    {
+      "path": "EyeFrames/eye_001.png",
+      "bytes": 6205,
+      "sha256": "eb9f560a2173ea76892b4970dc7e1211676ef447a209eacfdadcae0fa96652eb"
+    },
+    {
+      "path": "EyeFrames/eye_002.png",
+      "bytes": 6241,
+      "sha256": "684aad22d8c3c88c1ada03ce523d42f9330da0beeb1002ceba3f4e954d988bf9"
+    },
+    {
+      "path": "EyeFrames/eye_003.png",
+      "bytes": 6247,
+      "sha256": "ee006a418449c5503efe30af7c2266809ba1ba7eb5f22796109b36494e3b7ec5"
+    },
+    {
+      "path": "EyeFrames/eye_004.png",
+      "bytes": 6250,
+      "sha256": "b3f04f7be290ebdbaefb1b0a9d77fd10e5f69ca69d52183657cef4a6eb8b1e0f"
+    },
+    {
+      "path": "EyeFrames/eye_005.png",
+      "bytes": 6215,
+      "sha256": "a401c8ba77e83348d9c4700d2a8935bcd26e46916135e7ba744cd323f99a817e"
+    },
+    {
+      "path": "EyeFrames/eye_006.png",
+      "bytes": 6206,
+      "sha256": "a9ec82d071cdb0f970c59c39daaef47439abb5606d536f928a04a353e0fa0abb"
+    },
+    {
+      "path": "EyeFrames/eye_007.png",
+      "bytes": 6353,
+      "sha256": "f6f83389de24f707a38de27bec792d12231b57be4e962b5dff0e5f5371b756e0"
+    },
+    {
+      "path": "EyeFrames/eye_008.png",
+      "bytes": 6266,
+      "sha256": "98b8f3dd3047471ede8a9d13dc4fae203737071a48bd25e0c26d6546c9d9d258"
+    },
+    {
+      "path": "EyeFrames/eye_009.png",
+      "bytes": 6143,
+      "sha256": "70d466ff5ad83920cc6dea5d1fa8745ac2d1ad212409688c1047a25e66c68c69"
+    },
+    {
+      "path": "EyeFrames/eye_010.png",
+      "bytes": 6113,
+      "sha256": "daa652725b8fc9b68b27a61457ee02feca06b159bf640b45fb1fdb8863193727"
+    },
+    {
+      "path": "EyeFrames/eye_011.png",
+      "bytes": 6119,
+      "sha256": "9e9c22d5083055bffdd3170d1a501f1c3c9c9b876a87034de4a6c800907ffeca"
+    },
+    {
+      "path": "EyeFrames/eye_012.png",
+      "bytes": 6244,
+      "sha256": "57daa5412da786bf83d3a04f7ff7709a0b05ddc5a0ee66f8005e56c1f2611a01"
+    },
+    {
+      "path": "EyeFrames/eye_013.png",
+      "bytes": 6360,
+      "sha256": "150698c1f33d6d6fe3b3b5a92179c08aad8e34fbfc539b5b80670ffc2b1a6aa0"
+    },
+    {
+      "path": "EyeFrames/eye_014.png",
+      "bytes": 6270,
+      "sha256": "fc5caf3b8705061a60f0940d7e3d60d38e58f50e8ade404f2f08e8b4505ca0b5"
+    },
+    {
+      "path": "EyeFrames/eye_015.png",
+      "bytes": 6254,
+      "sha256": "c27e2b70299461aac3e62e8dd77257febe4d820b21a0d67f29baebc6af1ab180"
+    },
+    {
+      "path": "EyeFrames/eye_016.png",
+      "bytes": 6264,
+      "sha256": "0db87f3de567c811e4a46e9cd6202db292297dbfd50ae6dcc080b24d0c663a1e"
+    },
+    {
+      "path": "EyeFrames/eye_017.png",
+      "bytes": 6428,
+      "sha256": "cf37dc0f6d6de1b980041d201984ff6e00bffb8a327624e598d61ddbffabcc05"
+    },
+    {
+      "path": "EyeFrames/eye_018.png",
+      "bytes": 6181,
+      "sha256": "2936a4ce27ded3b15ecf429bdf42729bd1695d0bf9b00caca4d2b9b055aba33c"
+    },
+    {
+      "path": "EyeFrames/eye_019.png",
+      "bytes": 6171,
+      "sha256": "921c163de8d2b249817e4f3401f048c7982dcbe5aaa2a16c635d3f45bcf82907"
+    },
+    {
+      "path": "EyeFrames/eye_020.png",
+      "bytes": 6212,
+      "sha256": "f6df8d819dbbcb8cb957261f0c050fc60ff3f3eea8e8fb8a212440f6d27720f3"
+    },
+    {
+      "path": "EyeFrames/eye_021.png",
+      "bytes": 6284,
+      "sha256": "fae0d9771300068c4a24ab91b9092c8c4528fde53a8149a2c5e689f558d85bdc"
+    },
+    {
+      "path": "EyeFrames/eye_022.png",
+      "bytes": 6303,
+      "sha256": "77aa3b3d1d3722bba16827f134222a96f9beb9fcf1468b241e0a0e18c93c7fc3"
+    },
+    {
+      "path": "EyeFrames/eye_023.png",
+      "bytes": 6366,
+      "sha256": "30b579de31b2893a7cdfe467adccd08318d685e6c6addb74de2f042733f373e4"
+    },
+    {
+      "path": "EyeFrames/eye_024.png",
+      "bytes": 6386,
+      "sha256": "da7ef6f9b959f71777839a807e7eb38cc563ef135aa74f730b8fb868dc7e71aa"
+    },
+    {
+      "path": "EyeFrames/eye_025.png",
+      "bytes": 6363,
+      "sha256": "bb81596aa4c30fc3a047a1ef9f2c4d21b1f53c30485dad94a75ddbb75ead4e05"
+    },
+    {
+      "path": "EyeFrames/eye_026.png",
+      "bytes": 6336,
+      "sha256": "f41d5224f789aef54fb50cf9939eee838a0055c52925a459cf20b7af921cf843"
+    },
+    {
+      "path": "EyeFrames/eye_027.png",
+      "bytes": 6431,
+      "sha256": "ed6c1986d88383c24e15e197b36362a0e47c2820bfa0dd161b1f76c362a8f2d2"
+    },
+    {
+      "path": "EyeFrames/eye_028.png",
+      "bytes": 6380,
+      "sha256": "ba87686ad52aa85b34375d88ba4c32067dbbc8c33b91e62fb8934d288aaa468e"
+    },
+    {
+      "path": "EyeFrames/eye_029.png",
+      "bytes": 6343,
+      "sha256": "6a759ee41fd583aff0f1027f7287998dcd2ab4ed2a27acc9993382ab869fbf06"
+    },
+    {
+      "path": "EyeFrames/eye_030.png",
+      "bytes": 6420,
+      "sha256": "f9302e6e7012484b9421aa8c14d297d75b23506a7daa559d381f64e98b040401"
+    },
+    {
+      "path": "EyeFrames/eye_031.png",
+      "bytes": 6209,
+      "sha256": "b033fd4f26fc9f3f6bed138b82b46df6a58aef68315eadcd4bec6532a9f42129"
+    },
+    {
+      "path": "EyeFrames/eye_032.png",
+      "bytes": 6425,
+      "sha256": "f21efb09caedc5e8ed5047b9c60a898ed52fceacd5713477a8306d28374413f2"
+    },
+    {
+      "path": "EyeFrames/eye_033.png",
+      "bytes": 6101,
+      "sha256": "9d27ee906426ab97a0f611799bc1988b41ede982db894156e6b311439675b0ad"
+    },
+    {
+      "path": "EyeFrames/eye_034.png",
+      "bytes": 6117,
+      "sha256": "9bd5bd065c6fd7afd6f81ace6e73f2bde03f314b3a4eb7f9a137376048b5bc00"
+    },
+    {
+      "path": "EyeFrames/eye_035.png",
+      "bytes": 5918,
+      "sha256": "2a93fb952728f30b7de1b2276440e7ea0da6d076f5d2ddbe4258bc344bc35707"
+    },
+    {
+      "path": "runtime-layout.json",
+      "bytes": 6406497,
+      "sha256": "f47e3107a33d2913fa6e16ac74bb68ddb1cd9b1978101904743190e571ce6998"
+    },
+    {
+      "path": "Textures/calla-bloom.png",
+      "bytes": 8382,
+      "sha256": "f03a2189e28bcf293b336e4be35ba0ba2814c06849d81aa69f792823ff406828"
+    },
+    {
+      "path": "Textures/grass.png",
+      "bytes": 35912,
+      "sha256": "6e7a703890aab0a8130a90db3862218e7bb84b488139f5193c2d757519e44a6f"
+    },
+    {
+      "path": "Textures/ground-blade-alpha.png",
+      "bytes": 538,
+      "sha256": "dfc487638fd80dcec0eda2d254fed7ec8d21082738c88b3728516a8ba48cac59"
+    },
+    {
+      "path": "Textures/meadow-overlay.png",
+      "bytes": 241054,
+      "sha256": "406bf3e14a483b4c6cecc1e8468b62d8050949461d1b89fbe7b6af274b69c4d8"
+    },
+    {
+      "path": "Textures/ramp.png",
+      "bytes": 3521,
+      "sha256": "d581bfdadc2c2c147197ca43bba2e1637a8adab1dc78e507ddd84c31ce692916"
+    },
+    {
+      "path": "Textures/stone.png",
+      "bytes": 2758,
+      "sha256": "f3ed346bab44cfde44775ab6ec00eb7b4ed975541b20144ac5ccc7557ca447ad"
+    },
+    {
+      "path": "Textures/tube-grass-alpha.png",
+      "bytes": 6820,
+      "sha256": "d82372bd5cce23e8673ebf0ec42f2b219a0848bf8edaf0b84cf39c3a5ce94f5f"
+    },
+    {
+      "path": "Textures/wall.png",
+      "bytes": 4053,
+      "sha256": "58e26ab5dc6a23338c291fafab35c2b3cd777af5cda32cc2b5e7c93a207d0b4e"
+    }
+  ]
+}

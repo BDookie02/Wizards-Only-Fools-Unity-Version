@@ -35,6 +35,21 @@ const treeHouseTexturesPath = path.join(
   "treeHouseVillageTextures.ts",
 );
 const launchMenuPath = path.join(reactRoot, "src", "game", "ui", "launch", "LaunchMenu.tsx");
+const mobileSpellbookIconPath = path.join(
+  reactRoot,
+  "public",
+  "sprites",
+  "misc",
+  "spellbook_icon.png",
+);
+const spellThumbnailSourcePath = path.join(
+  reactRoot,
+  "src",
+  "game",
+  "ui",
+  "hud",
+  "SpellThumbnail.tsx",
+);
 const bushesPath = path.join(reactRoot, "src", "game", "Bushes.tsx");
 const baseVillageHutLayoutPath = path.join(
   reactRoot,
@@ -2797,12 +2812,52 @@ avatarFactory.drawPixelAvatarFrame(launchContext, {
 });
 await emitCanvas("Avatar/Default/launch-preview.png", launchPreview);
 
+// Exact React HUD sources used by the Unity spell-book and navigation-map surfaces.
+await emitBytes("HUD/SpellMenu/spellbook_icon.png", await readFile(mobileSpellbookIconPath));
+const makeExactBoostThumbnail = (kind: "jump" | "speed") => {
+  const canvas = createCanvas(64, 64);
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.imageSmoothingEnabled = false;
+  const blocks: Array<[number, number, number, number, string, number?]> = kind === "jump"
+    ? [
+      [29, 7, 6, 40, "rgba(190, 242, 100, 0.26)"], [21, 14, 22, 7, "#bef264"],
+      [16, 21, 32, 7, "#84cc16"], [24, 28, 16, 19, "#22c55e"],
+      [20, 47, 24, 6, "#14532d"], [14, 53, 12, 5, "#a3e635"],
+      [38, 53, 12, 5, "#a3e635"], [8, 35, 7, 7, "rgba(34,197,94,0.78)"],
+      [49, 32, 7, 7, "rgba(190,242,100,0.78)"], [27, 3, 10, 5, "#f7fee7"],
+    ]
+    : [
+      [7, 14, 34, 5, "#fef08a", -8], [19, 22, 38, 6, "#facc15", -8],
+      [11, 32, 44, 7, "#22d3ee", -8], [25, 42, 28, 5, "#fde047", -8],
+      [6, 49, 24, 4, "rgba(14,165,233,0.82)", -8], [45, 10, 7, 7, "#fefce8"],
+      [51, 27, 5, 5, "#fef08a"], [54, 39, 4, 4, "#67e8f9"],
+      [11, 24, 5, 5, "rgba(253,224,71,0.78)"],
+    ];
+  for (const [x, y, width, height, color, rotation = 0] of blocks) {
+    context.save();
+    context.fillStyle = color;
+    if (rotation) {
+      context.translate(x + width / 2, y + height / 2);
+      context.rotate((rotation * Math.PI) / 180);
+      context.fillRect(-width / 2, -height / 2, width, height);
+    } else {
+      context.fillRect(x, y, width, height);
+    }
+    context.restore();
+  }
+  return canvas;
+};
+await emitCanvas("HUD/SpellMenu/speedboost.png", makeExactBoostThumbnail("speed"));
+await emitCanvas("HUD/SpellMenu/jumpboost.png", makeExactBoostThumbnail("jump"));
+
 outputs.sort((left, right) => left.path.localeCompare(right.path, "en"));
 const sourceFiles = [
   avatarFactoryPath,
   hutVisualsPath,
   treeHouseTexturesPath,
   launchMenuPath,
+  mobileSpellbookIconPath,
+  spellThumbnailSourcePath,
   bushesPath,
   baseVillageHutLayoutPath,
   villagerCharacterRuntimePath,

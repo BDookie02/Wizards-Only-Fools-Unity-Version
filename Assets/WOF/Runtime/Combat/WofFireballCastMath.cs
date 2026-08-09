@@ -102,6 +102,30 @@ namespace WOF
             return true;
         }
 
+        public static bool TryResolveOrientedLaunch(
+            Vector3 authoritativePlayerPosition,
+            Vector3 playerUp,
+            float eyeHeight,
+            Vector3 serverDirection,
+            out Vector3 origin,
+            out Vector3 direction)
+        {
+            origin = Vector3.zero;
+            direction = Vector3.zero;
+            if (!IsFinite(authoritativePlayerPosition) || !IsFinite(playerUp) || !IsFinite(eyeHeight) ||
+                eyeHeight < 0f || !TryNormalizeFiniteDirection(playerUp, out var normalizedUp) ||
+                !TryNormalizeFiniteDirection(serverDirection, out direction))
+            {
+                return false;
+            }
+
+            origin = authoritativePlayerPosition + normalizedUp * eyeHeight + direction * SpawnForwardOffset;
+            if (IsFinite(origin)) return true;
+            origin = Vector3.zero;
+            direction = Vector3.zero;
+            return false;
+        }
+
         public static bool TryResolveTrustedServerTargetedLaunch(
             Vector3 authoritativePlayerPosition,
             Vector3 serverTargetPoint,

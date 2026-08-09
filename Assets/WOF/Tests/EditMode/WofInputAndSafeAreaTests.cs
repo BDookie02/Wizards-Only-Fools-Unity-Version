@@ -168,16 +168,22 @@ namespace WOF.Tests
             Assert.That(WofInputRouter.ResolveJoystickValue(Vector2.one, float.NaN), Is.EqualTo(Vector2.zero));
         }
 
-        [TestCase(false, false, false)]
-        [TestCase(true, false, true)]
-        [TestCase(false, true, true)]
-        public void TouchControlVisibilityAcceptsReactTouchDeviceOrAutomation(
+        [TestCase(false, false, false, false)]
+        [TestCase(true, false, false, true)]
+        [TestCase(false, true, false, true)]
+        [TestCase(true, false, true, false)]
+        [TestCase(false, true, true, false)]
+        public void TouchControlVisibilityRequiresTouchAndNoConnectedController(
             bool isTouchGameplayDevice,
             bool forced,
+            bool hasConnectedController,
             bool expected)
         {
             Assert.That(
-                WofInputRouter.ShouldShowTouchControls(isTouchGameplayDevice, forced),
+                WofInputRouter.ShouldShowTouchControls(
+                    isTouchGameplayDevice,
+                    forced,
+                    hasConnectedController),
                 Is.EqualTo(expected));
         }
 

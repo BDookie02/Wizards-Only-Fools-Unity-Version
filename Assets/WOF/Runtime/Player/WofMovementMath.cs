@@ -10,6 +10,9 @@ namespace WOF
         public float SlideSecondsRemaining;
         public float LastSlideAt;
         public float CrouchHoldStartedAt;
+        public float ThrusterFuel;
+        public bool ThrusterLocked;
+        public bool WasJumpHeld;
     }
 
     internal readonly struct WofMovementFrame
@@ -117,12 +120,65 @@ namespace WOF
             return isSliding || isCrouching ? UnityLowCameraHeight : UnityStandingCameraHeight;
         }
 
+        internal static bool ApplyJumpThruster(
+            ref WofMovementRuntimeState state,
+            bool jumpHeld,
+            bool grounded,
+            bool effectiveGrounded,
+            bool jumpBoostActive,
+            ref float verticalVelocity,
+            float deltaTime)
+        {
+            EnsureInitialized(ref state);
+            if (!IsFinite(verticalVelocity) || !IsFinite(deltaTime) || deltaTime < 0f)
+            {
+                state.WasJumpHeld = jumpHeld;
+                return false;
+            }
+
+            var jumpRequested = jumpHeld && !state.WasJumpHeld;
+            if (!jumpHeld)
+            {
+                state.ThrusterLocked = false;
+            }
+
+            var boost = jumpBoostActive ? WofSpellLoadout.JumpBoostMultiplier : 1f;
+            var jumped = false;
+            if (jumpHeld && grounded && verticalVelocity <= 1.6f && jumpRequested)
+            {
+                verticalVelocity = WofGameConstants.JumpSpeed * boost;
+                state.ThrusterLocked = false;
+                jumped = true;
+            }
+            else if (jumpHeld && !grounded && state.ThrusterFuel > 0f && !state.ThrusterLocked)
+            {
+                verticalVelocity += WofLilyCoilLayout.TubeThrusterImpulsePerSecond * boost * deltaTime;
+                state.ThrusterFuel = Mathf.Max(
+                    0f,
+                    state.ThrusterFuel - deltaTime * WofLilyCoilLayout.TubeThrusterFuelDrainPerSecond);
+                if (state.ThrusterFuel <= 0f)
+                {
+                    state.ThrusterLocked = true;
+                }
+            }
+
+            if (effectiveGrounded && state.ThrusterFuel < 1f)
+            {
+                state.ThrusterFuel = Mathf.Min(
+                    1f,
+                    state.ThrusterFuel + deltaTime * WofLilyCoilLayout.TubeThrusterFuelRechargePerSecond);
+            }
+            state.WasJumpHeld = jumpHeld;
+            return jumped;
+        }
+
         internal static void Reset(ref WofMovementRuntimeState state)
         {
             state = new WofMovementRuntimeState
             {
                 Initialized = true,
-                CrouchHoldStartedAt = float.NegativeInfinity
+                CrouchHoldStartedAt = float.NegativeInfinity,
+                ThrusterFuel = 1f
             };
         }
 
