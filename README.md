@@ -1,5 +1,13 @@
 # Wizards Only Fools - Unity Version
 
+## Playable downloads
+
+- [Download the Android APK](https://github.com/BDookie02/Wizards-Only-Fools-Unity-Version/releases/download/unity-version-v0.3.0/WizardsOnlyFools.apk)
+- [Download the Windows version](https://github.com/BDookie02/Wizards-Only-Fools-Unity-Version/releases/download/unity-version-v0.3.0/WizardsOnlyFools-Windows-Unity-Version.zip)
+- [View the Unity Version release and testing notes](https://github.com/BDookie02/Wizards-Only-Fools-Unity-Version/releases/tag/unity-version-v0.3.0)
+
+For Windows, extract the complete ZIP before launching `WizardsOnlyFools.exe`. On Android, download and install `WizardsOnlyFools.apk`.
+
 This is the clean Unity recreation of the verified React/Node game at:
 
 `D:\CodexProjects\Wizards-Only-Fools-React-Latest`
