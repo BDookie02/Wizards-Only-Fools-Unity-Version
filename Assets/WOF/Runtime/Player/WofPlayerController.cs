@@ -122,6 +122,7 @@ namespace WOF
         private bool _desertVillageViewProbe;
         private bool _chicagoCityViewProbe;
         private bool _mountainVillageViewProbe;
+        private bool _grassViewProbe;
         private bool _hasDarrelReturnPosition;
         private bool _darrelReturnArmed;
         private Vector3 _darrelReturnPosition;
@@ -206,6 +207,10 @@ namespace WOF
                 {
                     _mountainVillageViewProbe = true;
                 }
+                else if (argument.Equals("--wof-grass-view-probe", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    _grassViewProbe = true;
+                }
             }
             _villagerViewProbe = WofPerformanceModeRuntime.IsVillagerViewProbe;
             _darrelDialogProbe = WofPerformanceModeRuntime.IsDarrelDialogProbe;
@@ -263,12 +268,15 @@ namespace WOF
                     ? Vector3.zero
                     : new Vector3(Mathf.Sin(angle) * 4f, 0f, Mathf.Cos(angle) * 4f);
                 var useDarrelGroveProbeSpawn = OwnerClientId == 0 && _darrelGroveViewProbe;
+                var useGrassProbeSpawn = OwnerClientId == 0 && _grassViewProbe;
                 var useDarrelProbeSpawn = OwnerClientId == 0 && _darrelDialogProbe && !useDarrelGroveProbeSpawn;
                 var useVillagerProbeSpawn = OwnerClientId == 0 && _villagerViewProbe &&
                                             !useDarrelProbeSpawn && !useDarrelGroveProbeSpawn;
                 var useChicagoProbeSpawn = OwnerClientId == 0 && _chicagoCityViewProbe;
                 var useDesertProbeSpawn = OwnerClientId == 0 && _desertVillageViewProbe && !useChicagoProbeSpawn;
-                var spawn = useChicagoProbeSpawn
+                var spawn = useGrassProbeSpawn
+                    ? new Vector3(0f, 80f, -360f)
+                    : useChicagoProbeSpawn
                     ? WofChicagoCityLayout.ViewProbeSpawn
                     : useDesertProbeSpawn
                     ? WofDesertVillageLayout.ViewProbeSpawn
@@ -283,7 +291,9 @@ namespace WOF
                     : useVillagerProbeSpawn
                         ? VillagerViewProbeSpawn
                     : WofTreeHouseVillageLayout.DefaultPlayerSpawn + spawnOffset;
-                var spawnYaw = useChicagoProbeSpawn || useDesertProbeSpawn
+                var spawnYaw = useGrassProbeSpawn
+                    ? 180f
+                    : useChicagoProbeSpawn || useDesertProbeSpawn
                     ? 0f
                     : useDarrelGroveProbeSpawn
                     ? _darrelGroveWaterfallViewProbe ? 180f
@@ -316,6 +326,13 @@ namespace WOF
                     _pitch = -5f;
                     ApplyCameraRotation();
                     Debug.Log($"[WOF-AUTOMATION] CHICAGO_CITY_VIEW_PROBE_READY position={transform.position} yaw={_yaw} pitch={_pitch} origin={WofChicagoCityLayout.WorldOrigin}");
+                }
+                else if (_grassViewProbe)
+                {
+                    _yaw = 180f;
+                    _pitch = -8f;
+                    ApplyCameraRotation();
+                    Debug.Log($"[WOF-AUTOMATION] GRASS_VIEW_PROBE_READY position={transform.position} yaw={_yaw} pitch={_pitch}");
                 }
                 else if (_desertVillageViewProbe)
                 {
@@ -378,7 +395,7 @@ namespace WOF
 
             var look = _treeHouseViewProbe || _villagerViewProbe || _darrelDialogProbe ||
                        _darrelGroveViewProbe || _desertVillageViewProbe || _chicagoCityViewProbe ||
-                       _mountainVillageViewProbe
+                       _mountainVillageViewProbe || _grassViewProbe
                 ? Vector2.zero
                 : WofInputRouter.ReadLook();
             if (IsLocalLilyCoilActive)
@@ -643,6 +660,50 @@ namespace WOF
             }
             _darrelReturnArmed = true;
             return true;
+        }
+
+        public bool RequestMapFastTravel(WofMapDestination destination)
+        {
+            if (!IsOwner || !IsSpawned || _isDead.Value || !WofMapFastTravel.TryGet(destination, out _))
+            {
+                return false;
+            }
+
+            if (IsServer)
+            {
+                ApplyMapFastTravelServer(destination);
+            }
+            else
+            {
+                RequestMapFastTravelRpc((int)destination);
+            }
+            return true;
+        }
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+        private void RequestMapFastTravelRpc(int destinationValue)
+        {
+            if (!WofMapFastTravel.IsValid(destinationValue))
+            {
+                Debug.LogWarning($"[WOF-AUTOMATION] MAP_FAST_TRAVEL_REJECTED owner={OwnerClientId} destination={destinationValue}");
+                return;
+            }
+            ApplyMapFastTravelServer((WofMapDestination)destinationValue);
+        }
+
+        private void ApplyMapFastTravelServer(WofMapDestination destination)
+        {
+            if (!IsServer || !IsSpawned || _isDead.Value ||
+                !WofMapFastTravel.TryGet(destination, out var record))
+            {
+                return;
+            }
+
+            var yaw = _authoritativeYaw.Value;
+            ResetTeleportMotion();
+            Teleport(record.Position, yaw);
+            ApplyQuestTeleportOwnerRpc(record.Position, yaw);
+            Debug.Log($"[WOF-AUTOMATION] MAP_FAST_TRAVEL owner={OwnerClientId} destination={destination} position={record.Position} yaw={yaw:F1}");
         }
 
         public bool RequestDarrelReturnTeleport()

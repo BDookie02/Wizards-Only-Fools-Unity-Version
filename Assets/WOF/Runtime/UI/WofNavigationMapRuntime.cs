@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -19,6 +20,9 @@ namespace WOF
         private GameObject _compactRoot;
         private GameObject _expandedRoot;
         private RectTransform _expandedMapFrame;
+        private RectTransform _destinationPanel;
+        private readonly List<Button> _destinationButtons = new();
+        private Button _closeButton;
         private RectTransform _expandedArrow;
         private RectTransform _compactArrow;
         private Text _compactCoordinates;
@@ -196,13 +200,38 @@ namespace WOF
                 TextAnchor.MiddleLeft,
                 new Color32(207, 250, 254, 255));
             SetRect(_expandedCoordinates.rectTransform, new Vector2(0.04f, 0.84f), new Vector2(0.34f, 0.91f));
-            var close = CreateButton(
+            _closeButton = CreateButton(
                 "Close",
                 _expandedRoot.transform,
                 "CLOSE",
                 new Color32(85, 85, 85, 255));
-            SetRect(close.GetComponent<RectTransform>(), new Vector2(0.82f, 0.89f), new Vector2(0.96f, 0.97f));
-            close.onClick.AddListener(() => SetExpanded(false));
+            SetRect(_closeButton.GetComponent<RectTransform>(), new Vector2(0.82f, 0.89f), new Vector2(0.96f, 0.97f));
+            _closeButton.onClick.AddListener(() => SetExpanded(false));
+
+            var destinations = CreatePanel(
+                "FastTravelDestinations",
+                _expandedRoot.transform,
+                new Color32(21, 12, 31, 242));
+            _destinationPanel = destinations.GetComponent<RectTransform>();
+            var travelTitle = CreateText(
+                "FastTravelTitle",
+                destinations.transform,
+                "FAST TRAVEL",
+                20,
+                TextAnchor.MiddleCenter,
+                new Color32(251, 191, 36, 255));
+            SetRect(travelTitle.rectTransform, new Vector2(0.06f, 0.86f), new Vector2(0.94f, 0.98f));
+            foreach (var record in WofMapFastTravel.Destinations)
+            {
+                var capturedDestination = record.Destination;
+                var button = CreateButton(
+                    $"Travel{record.Destination}",
+                    destinations.transform,
+                    record.Label,
+                    new Color32(88, 56, 112, 255));
+                button.onClick.AddListener(() => TravelTo(capturedDestination));
+                _destinationButtons.Add(button);
+            }
 
             var mapFrame = CreatePanel(
                 "MapFrame",
@@ -222,6 +251,19 @@ namespace WOF
 
             _expandedRoot.SetActive(false);
             _compactRoot.SetActive(false);
+        }
+
+        private void TravelTo(WofMapDestination destination)
+        {
+            ResolveLocalPlayer();
+            if (_localPlayer == null || !_localPlayer.RequestMapFastTravel(destination))
+            {
+                Debug.LogWarning($"[WOF-AUTOMATION] MAP_FAST_TRAVEL_UI_FAILED destination={destination}");
+                return;
+            }
+
+            SetExpanded(false);
+            Debug.Log($"[WOF-AUTOMATION] MAP_FAST_TRAVEL_UI destination={destination}");
         }
 
         private void BuildMapCamera()
@@ -253,6 +295,7 @@ namespace WOF
             _mapCamera.backgroundColor = new Color32(9, 5, 16, 255);
             _mapCamera.allowHDR = false;
             _mapCamera.allowMSAA = false;
+            _mapCamera.cullingMask &= ~(1 << WofSurvivalBotwGrassRuntime.RenderLayer);
             _mapCamera.targetTexture = _mapTexture;
 
             foreach (var rawImage in GetComponentsInChildren<RawImage>(true))
@@ -335,7 +378,10 @@ namespace WOF
             _nextRenderAt = 0f;
             if (expanded)
             {
-                EventSystem.current?.SetSelectedGameObject(_expandedRoot.transform.Find("Close")?.gameObject);
+                var selection = _destinationButtons.Count > 0
+                    ? _destinationButtons[0].gameObject
+                    : _closeButton?.gameObject;
+                EventSystem.current?.SetSelectedGameObject(selection);
             }
             else
             {
@@ -361,13 +407,49 @@ namespace WOF
             var compactRect = _compactRoot.GetComponent<RectTransform>();
             compactRect.sizeDelta = new Vector2(size / canvasScale, size / canvasScale);
             compactRect.anchoredPosition = new Vector2(-16f / canvasScale, -16f / canvasScale);
-            var expandedSize = Mathf.Min(Screen.width * 0.80f, Screen.height * 0.76f, 800f);
+            var portrait = Screen.height > Screen.width;
+            var expandedSize = portrait
+                ? Mathf.Min(Screen.width * 0.88f, Screen.height * 0.43f, 760f)
+                : Mathf.Min(Screen.width * 0.60f, Screen.height * 0.76f, 800f);
             if (_expandedMapFrame != null)
             {
+                var mapCenter = portrait ? new Vector2(0.5f, 0.61f) : new Vector2(0.65f, 0.48f);
+                _expandedMapFrame.anchorMin = mapCenter;
+                _expandedMapFrame.anchorMax = mapCenter;
+                _expandedMapFrame.anchoredPosition = Vector2.zero;
                 _expandedMapFrame.sizeDelta = new Vector2(expandedSize / canvasScale, expandedSize / canvasScale);
+            }
+            if (_destinationPanel != null)
+            {
+                SetRect(
+                    _destinationPanel,
+                    portrait ? new Vector2(0.06f, 0.05f) : new Vector2(0.04f, 0.10f),
+                    portrait ? new Vector2(0.94f, 0.35f) : new Vector2(0.30f, 0.82f));
+                LayoutDestinationButtons(portrait);
             }
             ScaleMapTypographyToPhysicalPixels(_compactRoot, canvasScale, false);
             ScaleMapTypographyToPhysicalPixels(_expandedRoot, canvasScale, true);
+        }
+
+        private void LayoutDestinationButtons(bool portrait)
+        {
+            for (var index = 0; index < _destinationButtons.Count; index++)
+            {
+                var rect = _destinationButtons[index].GetComponent<RectTransform>();
+                if (portrait)
+                {
+                    var column = index % 2;
+                    var row = index / 2;
+                    var left = 0.04f + column * 0.48f;
+                    var top = 0.82f - row * 0.245f;
+                    SetRect(rect, new Vector2(left, top - 0.20f), new Vector2(left + 0.44f, top));
+                }
+                else
+                {
+                    var top = 0.84f - index * 0.128f;
+                    SetRect(rect, new Vector2(0.08f, top - 0.098f), new Vector2(0.92f, top));
+                }
+            }
         }
 
         private static void ScaleMapTypographyToPhysicalPixels(GameObject root, float canvasScale, bool expanded)
@@ -381,6 +463,7 @@ namespace WOF
                     "Coordinates" => expanded ? 13 : 9,
                     "North" or "South" or "East" or "West" => expanded ? 15 : 11,
                     "OpenHint" => 9,
+                    "FastTravelTitle" => expanded ? 18 : 10,
                     _ => expanded ? 12 : 9
                 };
                 label.fontSize = Mathf.Max(8, Mathf.RoundToInt(physicalSize / canvasScale));

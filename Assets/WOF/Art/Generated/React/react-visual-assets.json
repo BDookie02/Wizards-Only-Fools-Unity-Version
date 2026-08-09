@@ -79,9 +79,10 @@
     "src/game/systems/world/survival/survivalBiome.ts": "7dd8f5b92e737fae4375062d6d2a4ed9b72e2c5a578d29165b490f2fb37158af",
     "src/game/systems/world/survival/survivalRivers.ts": "b86bd711803f737da5809880cc6bbf846d94371857c3823e0a0a80db573397a1",
     "src/game/systems/world/survival/survivalMath.ts": "9cdb487a22e0bc1b31e910cc23bfdaf44b9bba67038d508d18eebe431dfbede6",
-    "src/game/systems/world/terrain/survivalTerrainTextures.ts": "56bdd4fc89b936cdd7efa54a234d07b68b1cadec12522e35f500eb3f4a2ee9b7"
+    "src/game/systems/world/terrain/survivalTerrainTextures.ts": "56bdd4fc89b936cdd7efa54a234d07b68b1cadec12522e35f500eb3f4a2ee9b7",
+    "src/game/systems/world/vegetation/survivalGrassTextures.ts": "80d8bab68bc827c6c640d302420e4ad84ca3254adb281c0cfdc30e3c080ee8a1"
   },
-  "outputCount": 1239,
+  "outputCount": 1240,
   "outputs": [
     {
       "path": "Avatar/Default/angry/d0_f0.png",
@@ -6272,6 +6273,11 @@
       "path": "TreeHouse/plank.png",
       "bytes": 1031,
       "sha256": "8cefe3a78857b1a75df1aa418aaf59676f41da2a2543e18a596859e55a51eaf9"
+    },
+    {
+      "path": "Vegetation/botw-grass.png",
+      "bytes": 12288,
+      "sha256": "d9532dcbef80ce0691e7dfeac60fb2faab42781ff00a7d5a3ea278671488a888"
     },
     {
       "path": "Villagers/base-village.json",

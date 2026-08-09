@@ -288,6 +288,7 @@ namespace WOF
         public static readonly Vector3 WorldOrigin = new(ChunkX * SurvivalBlockSize, 0f, ChunkZ * SurvivalBlockSize);
         public static readonly Vector3 SpawnPosition = WorldOrigin + new Vector3(237.11f, 72.15f, -20.54f);
         public static readonly float SpawnYawDegrees = Mathf.Repeat(3.055f * Mathf.Rad2Deg + 180f, 360f);
+        public static readonly Vector3 ExteriorViewProbeSpawn = WorldOrigin + new Vector3(0f, 350f, -720f);
 
         public static bool HasExactCounts(WofLilyCoilCountsRecord counts)
         {
@@ -341,6 +342,23 @@ namespace WOF
             var surfaceRadiusSquared = upAmount * upAmount + sideAmount * sideAmount;
             var surfaceAngle = surfaceRadiusSquared > 0.0001f ? Mathf.Atan2(sideAmount, upAmount) : Mathf.PI;
             return new WofLilyCoilNearestState(bestT, surfaceAngle);
+        }
+
+        public static Vector3 GetTunnelViewProbeSpawn(float t = 0.34f)
+        {
+            var frame = GetFrame(t);
+            return frame.Center + GetRadial(frame, Mathf.PI) * TubePlayerRadius;
+        }
+
+        public static float GetTunnelViewProbeYaw(float t = 0.34f)
+        {
+            var tangent = GetFrame(t).Tangent;
+            return Mathf.Atan2(tangent.x, tangent.z) * Mathf.Rad2Deg;
+        }
+
+        public static float GetTunnelViewProbePitch(float t = 0.34f)
+        {
+            return -Mathf.Asin(GetFrame(t).Tangent.y) * Mathf.Rad2Deg;
         }
 
         public static bool IsInsideTubeRealm(Vector3 position)

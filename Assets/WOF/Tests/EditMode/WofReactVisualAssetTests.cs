@@ -14,12 +14,13 @@ namespace WOF.Tests
                 "Assets", "WOF", "Art", "Generated", "React", "react-visual-assets.json");
             var text = File.ReadAllText(manifestPath);
 
-            StringAssert.Contains("\"outputCount\": 1239", text);
+            StringAssert.Contains("\"outputCount\": 1240", text);
             StringAssert.Contains("Avatar/Default/launch-preview.png", text);
             StringAssert.Contains("HUD/Hands/idle_1.png", text);
             StringAssert.Contains("Huts/mushroom_cap_0.png", text);
             StringAssert.Contains("TreeHouse/bark.png", text);
             StringAssert.Contains("TreeHouse/plank.png", text);
+            StringAssert.Contains("Vegetation/botw-grass.png", text);
             StringAssert.Contains("Launch/press-background.png", text);
             StringAssert.Contains("HUD/Hands/Equipped/right_idle_1.png", text);
             StringAssert.Contains("HUD/Hands/Firing/left_idle_1.png", text);
@@ -89,6 +90,7 @@ namespace WOF.Tests
         [TestCase("Huts/grass.png", 128, 128)]
         [TestCase("TreeHouse/bark.png", 64, 64)]
         [TestCase("TreeHouse/plank.png", 64, 64)]
+        [TestCase("Vegetation/botw-grass.png", 128, 128)]
         [TestCase("DarrelGrove/Textures/Repeating/ground.png", 128, 128)]
         [TestCase("DarrelGrove/Textures/Clamped/blossom.png", 64, 64)]
         [TestCase("DarrelGrove/Textures/Clamped/petal.png", 32, 32)]
@@ -167,6 +169,22 @@ namespace WOF.Tests
             Assert.That(importer.filterMode, Is.EqualTo(FilterMode.Trilinear));
             Assert.That(importer.wrapMode, Is.EqualTo(TextureWrapMode.Repeat));
             Assert.That(importer.textureCompression, Is.EqualTo(TextureImporterCompression.Uncompressed));
+            Assert.That(importer.sRGBTexture, Is.True);
+        }
+
+        [Test]
+        public void BotwGrassTextureImportMatchesReactLinearClampSettings()
+        {
+            var importer = AssetImporter.GetAtPath(
+                "Assets/WOF/Art/Generated/React/Vegetation/botw-grass.png") as TextureImporter;
+
+            Assert.That(importer, Is.Not.Null);
+            Assert.That(importer.textureType, Is.EqualTo(TextureImporterType.Default));
+            Assert.That(importer.mipmapEnabled, Is.False);
+            Assert.That(importer.filterMode, Is.EqualTo(FilterMode.Bilinear));
+            Assert.That(importer.wrapMode, Is.EqualTo(TextureWrapMode.Clamp));
+            Assert.That(importer.textureCompression, Is.EqualTo(TextureImporterCompression.Uncompressed));
+            Assert.That(importer.alphaIsTransparency, Is.True);
             Assert.That(importer.sRGBTexture, Is.True);
         }
 

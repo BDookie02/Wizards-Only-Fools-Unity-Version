@@ -148,6 +148,26 @@ namespace WOF
             yield return new WaitForSecondsRealtime(0.6f);
             yield return CaptureProbeScreenshot("controller-navigation-map.png");
 
+            var playerObject = NetworkManager.Singleton?.LocalClient?.PlayerObject;
+            var player = playerObject == null ? null : playerObject.GetComponent<WofPlayerController>();
+            if (player == null)
+            {
+                FailProbe("controller-fast-travel-player-not-ready");
+                yield break;
+            }
+            yield return TapControllerButtonUntil(GamepadButton.A, () => !WofNavigationMapRuntime.IsExpanded, 5f);
+            var travelDeadline = Time.realtimeSinceStartup + 5f;
+            var basePosition = new Vector3(0f, 15f, 30f);
+            while ((player.transform.position - basePosition).sqrMagnitude > 4f &&
+                   Time.realtimeSinceStartup < travelDeadline) yield return null;
+            if (WofNavigationMapRuntime.IsExpanded || (player.transform.position - basePosition).sqrMagnitude > 4f)
+            {
+                FailProbe($"controller-fast-travel-failed position={player.transform.position}");
+                yield break;
+            }
+            Debug.Log($"[WOF-AUTOMATION] CONTROLLER_FAST_TRAVEL_PASS destination=Base position={player.transform.position}");
+
+            yield return TapControllerButtonUntil(GamepadButton.DpadLeft, () => WofNavigationMapRuntime.IsExpanded, 5f);
             yield return TapControllerButtonUntil(GamepadButton.B, () => !WofNavigationMapRuntime.IsExpanded, 5f);
             if (WofNavigationMapRuntime.IsExpanded)
             {
@@ -155,8 +175,6 @@ namespace WOF
                 yield break;
             }
 
-            var playerObject = NetworkManager.Singleton?.LocalClient?.PlayerObject;
-            var player = playerObject == null ? null : playerObject.GetComponent<WofPlayerController>();
             if (player == null || !player.PrepareForAutomationNorthGateProbe())
             {
                 FailProbe("north-gate-player-not-ready");

@@ -356,6 +356,15 @@ const survivalTerrainTexturesPath = path.join(
   "terrain",
   "survivalTerrainTextures.ts",
 );
+const survivalGrassTexturesPath = path.join(
+  reactRoot,
+  "src",
+  "game",
+  "systems",
+  "world",
+  "vegetation",
+  "survivalGrassTextures.ts",
+);
 const streamingAssetsRoot = path.join(
   unityRoot,
   "Assets",
@@ -471,6 +480,7 @@ const survivalBiome = await import(pathToFileURL(survivalBiomePath).href);
 const survivalRivers = await import(pathToFileURL(survivalRiversPath).href);
 const survivalMath = await import(pathToFileURL(survivalMathPath).href);
 const survivalTerrainTextures = await import(pathToFileURL(survivalTerrainTexturesPath).href);
+const survivalGrassTextures = await import(pathToFileURL(survivalGrassTexturesPath).href);
 
 const outputs: Array<{ path: string; bytes: number; sha256: string }> = [];
 let changedCount = 0;
@@ -922,6 +932,10 @@ for (const [relativePath, createTexture] of hutTextureEntries) {
 
 await emitCanvas("TreeHouse/bark.png", treeHouseTextures.getTreeHouseBarkTexture().image);
 await emitCanvas("TreeHouse/plank.png", treeHouseTextures.getTreeHousePlankTexture().image);
+await emitCanvas(
+  "Vegetation/botw-grass.png",
+  survivalGrassTextures.getSurvivalBotwGrassTexture().image as Canvas,
+);
 
 // Mirrors LaunchMenu.tsx's press-stage CSS radial gradient at the Unity UI's
 // 1920x1080 reference resolution. The browser composites the translucent
@@ -2883,6 +2897,7 @@ const sourceFiles = [
   survivalRiversPath,
   survivalMathPath,
   survivalTerrainTexturesPath,
+  survivalGrassTexturesPath,
 ];
 const sourceHashes = Object.fromEntries(
   await Promise.all(sourceFiles.map(async (sourcePath) => [

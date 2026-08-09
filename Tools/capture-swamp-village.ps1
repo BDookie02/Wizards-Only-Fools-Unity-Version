@@ -11,6 +11,11 @@ if (-not $resolvedBuildRoot.StartsWith('D:\', [System.StringComparison]::Ordinal
     throw 'Swamp village capture paths must stay on D:.'
 }
 
+$powerShellTempRoot = Join-Path $resolvedOutputRoot 'powershell-temp'
+New-Item -ItemType Directory -Force -Path $powerShellTempRoot | Out-Null
+$env:TEMP = $powerShellTempRoot
+$env:TMP = $powerShellTempRoot
+
 Add-Type -AssemblyName System.Drawing
 Add-Type @'
 using System;

@@ -420,8 +420,8 @@ function Assert-BuildReceipt {
             throw "Windows build receipt must use scene-payload schema 2: $ReceiptPath"
         }
         $scenePayloads = @($receipt.scenePayloads)
-        if ($scenePayloads.Count -ne 5) {
-            throw "Windows build receipt must identify all 5 current scene payloads: $ReceiptPath"
+        if ($scenePayloads.Count -ne 6) {
+            throw "Windows build receipt must identify all 6 current scene payloads: $ReceiptPath"
         }
         for ($sceneIndex = 0; $sceneIndex -lt $scenePayloads.Count; $sceneIndex++) {
             $scenePayload = $scenePayloads[$sceneIndex]

@@ -13,6 +13,11 @@ if (-not $resolvedBuildRoot.StartsWith('D:\', [System.StringComparison]::Ordinal
     throw 'Urgent playable probe paths must stay on D:.'
 }
 
+$playerTempRoot = Join-Path $resolvedOutputRoot 'player-temp'
+New-Item -ItemType Directory -Force -Path $playerTempRoot | Out-Null
+$env:TEMP = $playerTempRoot
+$env:TMP = $playerTempRoot
+
 $executable = Join-Path $resolvedBuildRoot 'WizardsOnlyFools.exe'
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
     throw "Windows player is missing: $executable"
@@ -67,6 +72,7 @@ foreach ($marker in @(
     'MOBILE_CONTROLLER_UI_PASS',
     'CONTROLLER_SPELL_MENU_PASS',
     'CONTROLLER_NAVIGATION_MAP_PASS',
+    'CONTROLLER_FAST_TRAVEL_PASS',
     'NORTH_GATE_TRAVERSAL_PASS',
     'JUMP_THRUSTER_PASS',
     'URGENT_PLAYABLE_PROBE_PASS')) {

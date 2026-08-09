@@ -37,6 +37,7 @@ namespace WOF.Editor
         private const string SwampScenePath = ScenesRoot + "/WofSwampVillage.unity";
         private const string MountainScenePath = ScenesRoot + "/WofMountainVillage.unity";
         private const string GraveyardScenePath = ScenesRoot + "/WofGraveyardVillage.unity";
+        private const string LilyCoilScenePath = ScenesRoot + "/WofLilyCoil.unity";
         private const string PlayerPrefabPath = PrefabsRoot + "/WofNetworkPlayer.prefab";
         private const string FireballPrefabPath = PrefabsRoot + "/WofFireball.prefab";
         private const string NetworkPrefabsPath = SettingsRoot + "/WofNetworkPrefabs.asset";
@@ -103,7 +104,8 @@ namespace WOF.Editor
             ChicagoScenePath,
             SwampScenePath,
             MountainScenePath,
-            GraveyardScenePath
+            GraveyardScenePath,
+            LilyCoilScenePath
         };
 
         private static readonly string[] RequiredNetworkPrefabPaths =
@@ -133,6 +135,7 @@ namespace WOF.Editor
             CreateSwampVillageScene();
             CreateMountainVillageScene();
             CreateGraveyardVillageScene();
+            CreateLilyCoilScene();
             ConfigureBuildSettings();
 
             AssetDatabase.SaveAssets();
@@ -198,6 +201,7 @@ namespace WOF.Editor
             EnsureAssetFolder(ChicagoGeometryRoot);
             EnsureAssetFolder(MountainGeometryRoot);
             EnsureAssetFolder(GraveyardGeometryRoot);
+            EnsureAssetFolder(LilyCoilGeometryRoot);
             EnsureAssetFolder(SettingsRoot);
             EnsureAssetFolder(PrefabsRoot);
             EnsureAssetFolder(ScenesRoot);
@@ -223,8 +227,8 @@ namespace WOF.Editor
         {
             PlayerSettings.companyName = "Wizards Only Fools";
             PlayerSettings.productName = "Wizards Only Fools";
-            PlayerSettings.bundleVersion = "0.3.1-unity-playable-fix1";
-            PlayerSettings.Android.bundleVersionCode = 2;
+            PlayerSettings.bundleVersion = "0.4.0";
+            PlayerSettings.Android.bundleVersionCode = 3;
             PlayerSettings.runInBackground = true;
             PlayerSettings.colorSpace = ColorSpace.Linear;
             PlayerSettings.defaultScreenWidth = 1280;
@@ -255,6 +259,8 @@ namespace WOF.Editor
             ConfigureRepeatingTextureFolder("Assets/WOF/Art/Generated/React/SwampVillage/Textures");
             ConfigureMountainTextureImports();
             ConfigureGraveyardTextureImports();
+            ConfigureLilyCoilTextureImports();
+            ConfigureBotwGrassTextureImport();
             ConfigureSpriteFolder("Assets/WOF/Art/Generated/React/SwampVillage/Toad", 288f);
             ConfigureChicagoTextureImports();
             ConfigureSpriteFolder("Assets/WOF/Art/Generated/React/ChicagoCity/Operators", 512f / 2.95f);
@@ -320,6 +326,28 @@ namespace WOF.Editor
                     importer.SaveAndReimport();
                 }
             }
+        }
+
+        private static void ConfigureBotwGrassTextureImport()
+        {
+            const string path = "Assets/WOF/Art/Generated/React/Vegetation/botw-grass.png";
+            if (AssetImporter.GetAtPath(path) is not TextureImporter importer)
+            {
+                throw new InvalidOperationException($"Required exact React BOTW grass texture importer is missing: {path}");
+            }
+
+            var changed = importer.textureType != TextureImporterType.Default || importer.mipmapEnabled ||
+                          importer.filterMode != FilterMode.Bilinear || importer.wrapMode != TextureWrapMode.Clamp ||
+                          importer.textureCompression != TextureImporterCompression.Uncompressed ||
+                          !importer.alphaIsTransparency || !importer.sRGBTexture;
+            importer.textureType = TextureImporterType.Default;
+            importer.mipmapEnabled = false;
+            importer.filterMode = FilterMode.Bilinear;
+            importer.wrapMode = TextureWrapMode.Clamp;
+            importer.textureCompression = TextureImporterCompression.Uncompressed;
+            importer.alphaIsTransparency = true;
+            importer.sRGBTexture = true;
+            if (changed) importer.SaveAndReimport();
         }
 
         private static void ConfigureMountainTextureImports()
@@ -917,6 +945,7 @@ namespace WOF.Editor
             networkObject.AddComponent<WofSwampVillageSceneLoader>();
             networkObject.AddComponent<WofMountainVillageSceneLoader>();
             networkObject.AddComponent<WofGraveyardVillageSceneLoader>();
+            networkObject.AddComponent<WofLilyCoilSceneLoader>();
             transport.UseWebSockets = true;
             transport.UseEncryption = false;
             transport.SetConnectionData("127.0.0.1", WofGameConstants.DefaultPort, "0.0.0.0");
@@ -967,6 +996,9 @@ namespace WOF.Editor
             CreateQuestNavigation(world.transform);
             CreateDesertVillage(world.transform, palette.Villager);
 
+            world.AddComponent<WofSurvivalBotwGrassRuntime>().Configure(
+                LoadRequiredAsset<Texture2D>("Assets/WOF/Art/Generated/React/Vegetation/botw-grass.png"));
+
             var sunlightObject = new GameObject("Sun");
             sunlightObject.transform.position = WofGameWorldLightingLayout.DirectionalLightPosition;
             sunlightObject.transform.rotation = WofGameWorldLightingLayout.GetDirectionalLightRotation();
@@ -975,7 +1007,7 @@ namespace WOF.Editor
             sunlight.color = Color.white;
             sunlight.intensity = WofGameWorldLightingLayout.ClassicDirectionalIntensity;
             sunlight.shadows = LightShadows.None;
-            sunlightObject.AddComponent<WofGameWorldLightingRuntime>().Configure(sunlight);
+            sunlightObject.AddComponent<WofSurvivalSkyRuntime>().Configure(sunlight);
 
             RenderSettings.ambientMode = AmbientMode.Flat;
             RenderSettings.ambientLight = WofGameWorldLightingLayout.GetClassicAmbientColor();
@@ -2531,7 +2563,8 @@ namespace WOF.Editor
                 new EditorBuildSettingsScene(ChicagoScenePath, true),
                 new EditorBuildSettingsScene(SwampScenePath, true),
                 new EditorBuildSettingsScene(MountainScenePath, true),
-                new EditorBuildSettingsScene(GraveyardScenePath, true)
+                new EditorBuildSettingsScene(GraveyardScenePath, true),
+                new EditorBuildSettingsScene(LilyCoilScenePath, true)
             };
         }
 

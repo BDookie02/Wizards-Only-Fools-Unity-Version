@@ -39,6 +39,7 @@ Shader "WOF/Vertex Color Texture"
                 float4 _BaseMap_ST;
                 float4 _BaseColor;
             CBUFFER_END
+            float4 _WofSurvivalTerrainTint;
 
             Varyings Vert(Attributes input)
             {
@@ -51,7 +52,7 @@ Shader "WOF/Vertex Color Texture"
 
             half4 Frag(Varyings input) : SV_Target
             {
-                return SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, input.uv) * _BaseColor * input.color;
+                return SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, input.uv) * _BaseColor * input.color * _WofSurvivalTerrainTint;
             }
             ENDHLSL
         }
