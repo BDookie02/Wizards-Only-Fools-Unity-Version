@@ -22,6 +22,14 @@ namespace WOF
         public const float FlowerBloomMinimum = 0.56f;
         public const float FlowerBloomMaximum = 0.76f;
         public const float BladeAlphaCutoff = 0.14f;
+        public const int GrassClusterCardCount = 3;
+        public const int GrassClusterCanopyBladeCount = 7;
+        public const float CanopyLodNearDistance = 32f;
+        public const float CanopyLodFarDistance = 104f;
+        public const float CanopyFarScale = 4.2f;
+        public const int BuildBudgetCheckInterval = 4;
+        public const float TerrainGrassDetailStrength = 0.26f;
+        public const float TerrainGrassDetailScale = 0.2f;
         private const int InstancesPerBatch = 1023;
         public const int MaxCandidatesPerFrameDesktop = 384;
         public const int MaxCandidatesPerFrameMobile = 256;
@@ -109,12 +117,28 @@ namespace WOF
             _grassMaterial.SetFloat("_Radius", Radius + EdgeFade * 0.72f);
             _grassMaterial.SetFloat("_FadeWidth", EdgeFade);
             _grassMaterial.SetFloat("_Cutoff", BladeAlphaCutoff);
+            _grassMaterial.SetFloat("_CanopyLodNear", CanopyLodNearDistance);
+            _grassMaterial.SetFloat("_CanopyLodFar", CanopyLodFarDistance);
+            _grassMaterial.SetFloat("_CanopyFarScale", CanopyFarScale);
+            ConfigureTerrainGrassDetail();
             _flowerMaterial = new Material(foliageShader)
             {
                 name = "ReactBotwWildflowerRuntimeMaterial",
                 enableInstancing = true
             };
             Debug.Log($"[WOF-AUTOMATION] BOTW_GRASS_RUNTIME_READY radius={Radius:F0} blades={BladeCount} flowers={FlowerCount}");
+        }
+
+        private static void ConfigureTerrainGrassDetail()
+        {
+            var terrain = GameObject.Find(OpenWorldTerrainName);
+            var material = terrain?.GetComponent<MeshRenderer>()?.sharedMaterial;
+            if (material == null || !material.HasProperty("_SurvivalGrassDetailStrength") ||
+                !material.HasProperty("_SurvivalGrassDetailScale"))
+                return;
+
+            material.SetFloat("_SurvivalGrassDetailStrength", TerrainGrassDetailStrength);
+            material.SetFloat("_SurvivalGrassDetailScale", TerrainGrassDetailScale);
         }
 
         private void OnDestroy()
@@ -191,7 +215,8 @@ namespace WOF
                 }
 
                 processed++;
-                if ((processed & 15) == 0 && timer.Elapsed.TotalMilliseconds >= budgetMilliseconds) break;
+                if (processed % BuildBudgetCheckInterval == 0 &&
+                    timer.Elapsed.TotalMilliseconds >= budgetMilliseconds) break;
             }
             timer.Stop();
             _maxBuildSliceMilliseconds = Math.Max(_maxBuildSliceMilliseconds, timer.Elapsed.TotalMilliseconds);
@@ -491,18 +516,18 @@ namespace WOF
             return t * t * (3f - 2f * t);
         }
 
-        private static Mesh CreateGrassClusterMesh()
+        internal static Mesh CreateGrassClusterMesh()
         {
-            const int cards = 3;
-            var vertices = new Vector3[cards * 4];
-            var colors = new Color[cards * 4];
-            var uvs = new Vector2[cards * 4];
-            var triangles = new int[cards * 6];
+            var vertices = new List<Vector3>(GrassClusterCardCount * 4 + GrassClusterCanopyBladeCount * 3);
+            var colors = new List<Color>(vertices.Capacity);
+            var uvs = new List<Vector2>(vertices.Capacity);
+            var surfaceFlags = new List<Vector2>(vertices.Capacity);
+            var triangles = new List<int>(GrassClusterCardCount * 6 + GrassClusterCanopyBladeCount * 3);
             var root = GrassMeshRoot;
             var tip = GrassMeshTip;
-            for (var card = 0; card < cards; card++)
+            for (var card = 0; card < GrassClusterCardCount; card++)
             {
-                var angle = card / (float)cards * Mathf.PI + card * 0.13f;
+                var angle = card / (float)GrassClusterCardCount * Mathf.PI + card * 0.13f;
                 var side = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
                 var forward = new Vector3(-side.z, 0f, side.x);
                 var width = card == 0 ? 0.46f : card == 1 ? 0.4f : 0.35f;
@@ -510,26 +535,53 @@ namespace WOF
                 var offset = forward * (card == 0 ? -0.07f : card == 1 ? 0.1f : -0.12f) +
                              side * (card == 2 ? 0.07f : -0.03f);
                 var tipOffset = forward * (card == 0 ? 0.03f : card == 1 ? -0.04f : 0.055f);
-                var vertex = card * 4;
-                vertices[vertex] = offset - side * width;
-                vertices[vertex + 1] = offset + side * width;
-                vertices[vertex + 2] = offset + tipOffset - side * width * 0.94f + Vector3.up * height;
-                vertices[vertex + 3] = offset + tipOffset + side * width * 0.94f + Vector3.up * height;
-                colors[vertex] = colors[vertex + 1] = root;
-                colors[vertex + 2] = colors[vertex + 3] = tip;
-                uvs[vertex] = new Vector2(0f, 0f);
-                uvs[vertex + 1] = new Vector2(1f, 0f);
-                uvs[vertex + 2] = new Vector2(0f, 1f);
-                uvs[vertex + 3] = new Vector2(1f, 1f);
-                var triangle = card * 6;
-                triangles[triangle] = vertex;
-                triangles[triangle + 1] = vertex + 2;
-                triangles[triangle + 2] = vertex + 1;
-                triangles[triangle + 3] = vertex + 1;
-                triangles[triangle + 4] = vertex + 2;
-                triangles[triangle + 5] = vertex + 3;
+                var vertex = vertices.Count;
+                vertices.Add(offset - side * width);
+                vertices.Add(offset + side * width);
+                vertices.Add(offset + tipOffset - side * width * 0.94f + Vector3.up * height);
+                vertices.Add(offset + tipOffset + side * width * 0.94f + Vector3.up * height);
+                colors.Add(root); colors.Add(root); colors.Add(tip); colors.Add(tip);
+                uvs.Add(new Vector2(0f, 0f)); uvs.Add(new Vector2(1f, 0f));
+                uvs.Add(new Vector2(0f, 1f)); uvs.Add(new Vector2(1f, 1f));
+                surfaceFlags.Add(Vector2.zero); surfaceFlags.Add(Vector2.zero);
+                surfaceFlags.Add(Vector2.zero); surfaceFlags.Add(Vector2.zero);
+                triangles.Add(vertex); triangles.Add(vertex + 2); triangles.Add(vertex + 1);
+                triangles.Add(vertex + 1); triangles.Add(vertex + 2); triangles.Add(vertex + 3);
             }
-            var mesh = new Mesh { name = "ReactBotwGrassCluster", vertices = vertices, colors = colors, uv = uvs, triangles = triangles };
+
+            // The React texture supplies the dense upright silhouette. These
+            // tapered, upward-growing leaves give that same tuft a readable
+            // canopy from map/flight angles without adding flat carpet cards.
+            for (var blade = 0; blade < GrassClusterCanopyBladeCount; blade++)
+            {
+                var angle = blade / (float)GrassClusterCanopyBladeCount * Mathf.PI * 2f + blade * 0.071f;
+                var direction = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+                var side = new Vector3(-direction.z, 0f, direction.x);
+                var alternating = blade % 3;
+                var baseDistance = 0.035f + alternating * 0.012f;
+                var halfWidth = 0.052f + alternating * 0.009f;
+                var tipDistance = 0.34f + alternating * 0.055f;
+                var baseY = 0.1f + (blade & 1) * 0.035f;
+                var tipY = 0.76f + alternating * 0.095f;
+                var vertex = vertices.Count;
+                vertices.Add(direction * baseDistance - side * halfWidth + Vector3.up * baseY);
+                vertices.Add(direction * baseDistance + side * halfWidth + Vector3.up * baseY);
+                vertices.Add(direction * tipDistance + Vector3.up * tipY);
+                colors.Add(root); colors.Add(root); colors.Add(tip);
+                uvs.Add(new Vector2(0f, 0f)); uvs.Add(new Vector2(1f, 0f)); uvs.Add(new Vector2(0.5f, 1f));
+                surfaceFlags.Add(Vector2.right); surfaceFlags.Add(Vector2.right); surfaceFlags.Add(Vector2.right);
+                triangles.Add(vertex); triangles.Add(vertex + 2); triangles.Add(vertex + 1);
+            }
+
+            var mesh = new Mesh
+            {
+                name = "ReactBotwGrassCluster",
+                vertices = vertices.ToArray(),
+                colors = colors.ToArray(),
+                uv = uvs.ToArray(),
+                uv2 = surfaceFlags.ToArray(),
+                triangles = triangles.ToArray()
+            };
             mesh.RecalculateBounds();
             mesh.bounds = new Bounds(new Vector3(0f, 0.5f, 0f), new Vector3(4f, 3f, 4f));
             return mesh;

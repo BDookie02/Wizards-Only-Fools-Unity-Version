@@ -62,6 +62,12 @@ namespace WOF.Tests.EditMode
             Assert.That(WofSurvivalBotwGrassRuntime.MaxCandidatesPerFrameMobile, Is.LessThanOrEqualTo(256));
             Assert.That(WofSurvivalBotwGrassRuntime.DesktopBuildBudgetMilliseconds, Is.LessThanOrEqualTo(4d));
             Assert.That(WofSurvivalBotwGrassRuntime.MobileBuildBudgetMilliseconds, Is.LessThanOrEqualTo(2d));
+            Assert.That(WofSurvivalBotwGrassRuntime.BuildBudgetCheckInterval, Is.LessThanOrEqualTo(4));
+            Assert.That(WofSurvivalBotwGrassRuntime.CanopyLodNearDistance,
+                Is.LessThan(WofSurvivalBotwGrassRuntime.CanopyLodFarDistance));
+            Assert.That(WofSurvivalBotwGrassRuntime.CanopyFarScale, Is.InRange(3f, 5f));
+            Assert.That(WofSurvivalBotwGrassRuntime.TerrainGrassDetailStrength, Is.InRange(0.2f, 0.35f));
+            Assert.That(WofSurvivalBotwGrassRuntime.TerrainGrassDetailScale, Is.InRange(0.15f, 0.3f));
         }
 
         [Test]
@@ -107,6 +113,41 @@ namespace WOF.Tests.EditMode
                 Is.LessThan(Vector3.Angle(surfaceNormal, Vector3.up)));
             Assert.That(Vector3.Angle(growth, surfaceNormal),
                 Is.LessThan(Vector3.Angle(Vector3.up, surfaceNormal)));
+        }
+
+        [Test]
+        public void GrassClusterRetainsAnUpwardCanopyFromOverheadViews()
+        {
+            var mesh = WofSurvivalBotwGrassRuntime.CreateGrassClusterMesh();
+            try
+            {
+                var texturedVertexCount = WofSurvivalBotwGrassRuntime.GrassClusterCardCount * 4;
+                Assert.That(mesh.vertexCount, Is.EqualTo(
+                    texturedVertexCount + WofSurvivalBotwGrassRuntime.GrassClusterCanopyBladeCount * 3));
+                Assert.That(mesh.uv2, Has.Length.EqualTo(mesh.vertexCount));
+                Assert.That(mesh.triangles, Has.Length.EqualTo(
+                    WofSurvivalBotwGrassRuntime.GrassClusterCardCount * 6 +
+                    WofSurvivalBotwGrassRuntime.GrassClusterCanopyBladeCount * 3));
+
+                var vertices = mesh.vertices;
+                var flags = mesh.uv2;
+                var canopyVertices = 0;
+                var outwardTips = 0;
+                for (var index = texturedVertexCount; index < vertices.Length; index++)
+                {
+                    if (flags[index].x > 0.5f) canopyVertices++;
+                    if (vertices[index].y > 0.7f &&
+                        new Vector2(vertices[index].x, vertices[index].z).magnitude > 0.3f)
+                        outwardTips++;
+                }
+
+                Assert.That(canopyVertices, Is.EqualTo(WofSurvivalBotwGrassRuntime.GrassClusterCanopyBladeCount * 3));
+                Assert.That(outwardTips, Is.EqualTo(WofSurvivalBotwGrassRuntime.GrassClusterCanopyBladeCount));
+            }
+            finally
+            {
+                Object.DestroyImmediate(mesh);
+            }
         }
 
         [Test]

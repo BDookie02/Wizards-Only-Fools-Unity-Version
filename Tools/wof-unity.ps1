@@ -368,6 +368,12 @@ function Assert-BuildLogMarker {
         -not (Select-String -LiteralPath $LogPath -Pattern $pattern -Quiet)) {
         throw "Unity exited without the current WOF build-complete marker for $ExpectedTarget. Log: $LogPath"
     }
+
+    $shaderErrors = @(Select-String -LiteralPath $LogPath -SimpleMatch 'Shader error in' -ErrorAction SilentlyContinue)
+    if ($shaderErrors.Count -gt 0) {
+        $details = $shaderErrors | Select-Object -First 12 | ForEach-Object { $_.Line }
+        throw "Unity reported player shader compilation errors for $ExpectedTarget.`n$($details -join [Environment]::NewLine)"
+    }
 }
 
 function Assert-BuildReceipt {
