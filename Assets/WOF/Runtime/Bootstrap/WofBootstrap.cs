@@ -134,6 +134,11 @@ namespace WOF
                 hud = FindFirstObjectByType<WofHud>();
             }
 
+            if (GetComponent<WofSurvivalAutosaveRuntime>() == null)
+            {
+                gameObject.AddComponent<WofSurvivalAutosaveRuntime>();
+            }
+
             if (addressInput != null && string.IsNullOrWhiteSpace(addressInput.text))
             {
                 addressInput.text = "127.0.0.1";
