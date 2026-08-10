@@ -52,6 +52,37 @@ namespace WOF
 
         public void Render(string topHex, string skinHex, string hairHex, string hatStyle, string hairStyle)
         {
+            Render(topHex, skinHex, "#334155", "#1f2937", topHex, hairHex, hairHex,
+                "simple", "pants", "boots", hatStyle, hairStyle, "none", "calm", "neutral");
+        }
+
+        public void Render(WofSurvivalProfile profile)
+        {
+            if (profile == null) return;
+            WofCharacterCustomizationRules.Normalize(profile);
+            Render(profile.topColor, profile.skinColor, profile.pantsColor, profile.shoesColor,
+                profile.hatColor, profile.hairColor, profile.facialHairColor, profile.topStyle,
+                profile.pantsStyle, profile.shoesStyle, profile.hatStyle, profile.hairStyle,
+                profile.facialHairStyle, profile.eyeStyle, profile.mouthStyle);
+        }
+
+        public void Render(
+            string topHex,
+            string skinHex,
+            string pantsHex,
+            string shoesHex,
+            string hatHex,
+            string hairHex,
+            string facialHairHex,
+            string topStyle,
+            string pantsStyle,
+            string shoesStyle,
+            string hatStyle,
+            string hairStyle,
+            string facialHairStyle,
+            string eyeStyle,
+            string mouthStyle)
+        {
             _image ??= GetComponent<Image>();
             EnsureTexture();
             Array.Fill(_pixels, _inventoryStyle
@@ -88,18 +119,25 @@ namespace WOF
             var skin = ParseHex(skinHex, new Color32(214, 207, 145, 255));
             var top = ParseHex(topHex, new Color32(124, 58, 237, 255));
             var hair = ParseHex(hairHex, new Color32(63, 42, 29, 255));
-            var pants = new Color32(51, 65, 85, 255);
-            var shoes = new Color32(31, 41, 55, 255);
+            var pants = ParseHex(pantsHex, new Color32(51, 65, 85, 255));
+            var shoes = ParseHex(shoesHex, new Color32(31, 41, 55, 255));
+            var hat = ParseHex(hatHex, top);
+            var facialHair = ParseHex(facialHairHex, hair);
+            if (string.Equals(shoesStyle, "barefoot", StringComparison.OrdinalIgnoreCase)) shoes = skin;
 
             DrawPixelEllipse(18f, 56f, 28f, 5f, new Color32(0, 0, 0, 64));
             DrawLeg(28f, 50f, 25f, 55f, Shade(pants, -0.16f), shoes);
             DrawLeg(36f, 50f, 39f, 55f, pants, Shade(shoes, -0.08f));
-            DrawArm(23f, 37f, 15f, 55f, skin, top);
-            DrawArm(41f, 37f, 49f, 55f, skin, top);
+            var sleeve = string.Equals(topStyle, "vest", StringComparison.OrdinalIgnoreCase) ? skin : top;
+            DrawArm(23f, 37f, 15f, 55f, skin, sleeve);
+            DrawArm(41f, 37f, 49f, 55f, skin, sleeve);
 
             Block(22f, 34f, 20f, 19f, top);
             Block(24f, 34f, 16f, 3f, Shade(top, 0.16f));
             Block(38f, 37f, 3f, 13f, Shade(top, -0.14f));
+            DrawTopStyle(topStyle, top);
+            DrawPantsStyle(pantsStyle, top, pants);
+            DrawShoesStyle(shoesStyle, skin, shoes);
 
             var lightSkin = Shade(skin, 0.16f);
             var darkSkin = Shade(skin, -0.18f);
@@ -110,19 +148,163 @@ namespace WOF
             Block(44.5f, 21f, 4f, 7f, darkSkin);
 
             DrawHair(hairStyle, hair, 32f, 6f);
-            DrawHat(hatStyle, top, 32f, 6f);
+            DrawHat(hatStyle, hat, 32f, 6f);
 
             var eyeWhite = Shade(skin, 0.72f);
             var face = new Color32(23, 23, 23, 255);
-            DrawEyeOval(24f, 24f, 12f, 14f, eyeWhite, face);
-            DrawEyeOval(40f, 24f, 12f, 14f, eyeWhite, face);
-            Block(29f, 31f, 6f, 1f, face);
+            DrawEyes(eyeStyle, eyeWhite, face);
+            DrawMouth(mouthStyle, face);
+            DrawFacialHair(facialHairStyle, facialHair);
 
             _texture.SetPixels32(_pixels);
             _texture.Apply(false, false);
             _image.sprite = _sprite;
             _image.color = Color.white;
             _image.preserveAspect = true;
+        }
+
+        private void DrawTopStyle(string style, Color32 top)
+        {
+            switch ((style ?? string.Empty).ToLowerInvariant())
+            {
+                case "robe":
+                    Block(20f, 47f, 24f, 13f, Shade(top, -0.08f));
+                    Block(24f, 47f, 16f, 2f, Shade(top, 0.12f));
+                    break;
+                case "vest":
+                    Block(22f, 34f, 4f, 18f, Shade(top, -0.15f));
+                    Block(38f, 34f, 4f, 18f, Shade(top, -0.15f));
+                    Block(31f, 35f, 2f, 16f, Shade(top, 0.12f));
+                    break;
+                case "tunic":
+                    Block(20f, 49f, 24f, 7f, Shade(top, -0.08f));
+                    Block(21f, 47f, 22f, 2f, Shade(top, 0.18f));
+                    break;
+            }
+        }
+
+        private void DrawPantsStyle(string style, Color32 top, Color32 pants)
+        {
+            switch ((style ?? string.Empty).ToLowerInvariant())
+            {
+                case "shorts":
+                    Block(24f, 50f, 16f, 5f, pants);
+                    break;
+                case "skirt":
+                    Block(22f, 48f, 20f, 11f, pants);
+                    Block(20f, 56f, 24f, 4f, Shade(pants, -0.08f));
+                    break;
+                case "robe":
+                    Block(21f, 47f, 22f, 14f, Shade(top, -0.10f));
+                    Block(19f, 58f, 26f, 3f, Shade(top, -0.18f));
+                    break;
+            }
+        }
+
+        private void DrawShoesStyle(string style, Color32 skin, Color32 shoes)
+        {
+            switch ((style ?? string.Empty).ToLowerInvariant())
+            {
+                case "boots":
+                    Block(20f, 54f, 9f, 7f, Shade(shoes, -0.08f));
+                    Block(36f, 54f, 9f, 7f, shoes);
+                    break;
+                case "sandals":
+                    Block(20f, 58f, 10f, 2f, shoes);
+                    Block(36f, 58f, 10f, 2f, shoes);
+                    Block(24f, 55f, 2f, 4f, Shade(shoes, -0.1f));
+                    Block(40f, 55f, 2f, 4f, Shade(shoes, -0.1f));
+                    break;
+                case "barefoot":
+                    Block(20f, 57f, 10f, 4f, skin);
+                    Block(36f, 57f, 10f, 4f, Shade(skin, -0.05f));
+                    break;
+            }
+        }
+
+        private void DrawEyes(string style, Color32 eyeWhite, Color32 face)
+        {
+            style = (style ?? string.Empty).ToLowerInvariant();
+            if (style == "hard-shut" || style == "happy")
+            {
+                Block(19f, 24f, 10f, 2f, face);
+                Block(35f, 24f, 10f, 2f, face);
+                if (style == "happy")
+                {
+                    Block(21f, 22f, 6f, 2f, face);
+                    Block(37f, 22f, 6f, 2f, face);
+                }
+                return;
+            }
+
+            var height = style == "dull" || style == "done" ? 9f : style == "terrified" ? 16f : 14f;
+            DrawEyeOval(24f, 24f, 12f, height, eyeWhite, face);
+            DrawEyeOval(40f, 24f, 12f, height, eyeWhite, face);
+            if (style == "angry")
+            {
+                Block(19f, 18f, 10f, 2f, face);
+                Block(35f, 18f, 10f, 2f, face);
+            }
+            else if (style == "sad" || style.StartsWith("nervous", StringComparison.Ordinal))
+            {
+                Block(19f, 18f, 8f, 1f, face);
+                Block(37f, 18f, 8f, 1f, face);
+                if (style == "nervous-teary")
+                {
+                    Block(18f, 31f, 2f, 4f, new Color32(96, 165, 250, 210));
+                    Block(44f, 31f, 2f, 4f, new Color32(96, 165, 250, 210));
+                }
+            }
+            else if (style == "content")
+            {
+                Block(20f, 27f, 8f, 2f, face);
+                Block(36f, 27f, 8f, 2f, face);
+            }
+            else if (style.StartsWith("sus", StringComparison.Ordinal))
+            {
+                Block(18f, 19f, 12f, 4f, face);
+                Block(34f, 19f, 12f, 4f, face);
+            }
+        }
+
+        private void DrawMouth(string style, Color32 face)
+        {
+            switch ((style ?? string.Empty).ToLowerInvariant())
+            {
+                case "smile":
+                    Block(28f, 31f, 2f, 1f, face);
+                    Block(30f, 32f, 7f, 1f, face);
+                    break;
+                case "frown":
+                    Block(28f, 32f, 2f, 1f, face);
+                    Block(30f, 31f, 7f, 1f, face);
+                    break;
+                case "open":
+                    Block(29f, 30f, 7f, 5f, new Color32(43, 16, 16, 255));
+                    Block(31f, 33f, 4f, 1f, new Color32(252, 165, 165, 255));
+                    break;
+                default:
+                    Block(29f, 31f, 6f, 1f, face);
+                    break;
+            }
+        }
+
+        private void DrawFacialHair(string style, Color32 color)
+        {
+            switch ((style ?? string.Empty).ToLowerInvariant())
+            {
+                case "mustache":
+                    Block(26f, 29f, 6f, 2f, color);
+                    Block(33f, 29f, 6f, 2f, Shade(color, -0.08f));
+                    break;
+                case "goatee":
+                    Block(29f, 33f, 7f, 5f, color);
+                    break;
+                case "beard":
+                    Block(23f, 31f, 18f, 8f, color);
+                    Block(26f, 39f, 12f, 5f, Shade(color, -0.12f));
+                    break;
+            }
         }
 
         private void EnsureTexture()

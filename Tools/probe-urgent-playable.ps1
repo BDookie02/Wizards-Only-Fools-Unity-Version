@@ -32,7 +32,7 @@ if (Test-Path -LiteralPath $logPath -PathType Leaf) {
 $arguments = @(
     '-force-d3d11', '-screen-width', $Width, '-screen-height', $Height, '-screen-fullscreen', '0',
     '--wof-solo', '--wof-mobile-ui', "--wof-urgent-controller-probe=$resolvedOutputRoot",
-    '--wof-auto-exit=55', '-logFile', $logPath
+    '--wof-auto-exit=90', '-logFile', $logPath
 )
 $process = Start-Process -FilePath $executable -ArgumentList $arguments -WorkingDirectory $resolvedBuildRoot -PassThru
 $windowDeadline = [DateTime]::UtcNow.AddSeconds(25)
@@ -46,7 +46,7 @@ if ($process.MainWindowHandle -eq [IntPtr]::Zero) {
 $shell = New-Object -ComObject WScript.Shell
 $shell.AppActivate($process.Id) | Out-Null
 Start-Sleep -Milliseconds 350
-$deadline = [DateTime]::UtcNow.AddSeconds(75)
+$deadline = [DateTime]::UtcNow.AddSeconds(115)
 do {
     Start-Sleep -Milliseconds 250
     $process.Refresh()
@@ -73,6 +73,7 @@ foreach ($marker in @(
     'CONTROLLER_SPELL_MENU_PASS',
     'CONTROLLER_NAVIGATION_MAP_PASS',
     'CONTROLLER_FAST_TRAVEL_PASS',
+    'CONTROLLER_LILY_COIL_FAST_TRAVEL_PASS',
     'NORTH_GATE_TRAVERSAL_PASS',
     'JUMP_THRUSTER_PASS',
     'URGENT_PLAYABLE_PROBE_PASS')) {
@@ -85,6 +86,7 @@ $screenshots = @(
     'mobile-controller-hud-hidden.png',
     'controller-spell-menu.png',
     'controller-navigation-map.png',
+    'controller-lily-coil-fast-travel.png',
     'north-gate-traversed.png',
     'controller-thruster.png'
 ) | ForEach-Object {

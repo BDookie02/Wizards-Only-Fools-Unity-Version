@@ -42,6 +42,14 @@ namespace WOF
             0,
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Server);
+        private readonly NetworkVariable<float> _leftMana = new(
+            0,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
+        private readonly NetworkVariable<float> _rightMana = new(
+            0,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
         private readonly NetworkVariable<bool> _isDead = new(
             false,
             NetworkVariableReadPermission.Everyone,
@@ -166,9 +174,15 @@ namespace WOF
         private float _darrelReturnYaw;
         private bool? _pendingVClipEnabled;
         private bool _vclipMovementLogged;
+        private double _nextManaDecayAt;
+        private readonly Dictionary<string, double> _manaFlowerCooldowns = new();
 
         public float Health => _health.Value;
         public float Armor => _armor.Value;
+        public float LeftMana => _leftMana.Value;
+        public float RightMana => _rightMana.Value;
+        public bool CanRechargeMana => _leftMana.Value < WofManaRules.MaximumPower ||
+                                       _rightMana.Value < WofManaRules.MaximumPower;
         public bool IsDead => _isDead.Value;
         public bool HasActiveSpellShield => IsTimedBuffActive(_discShieldUntil.Value) ||
                                             IsTimedBuffActive(_orbShieldUntil.Value);
@@ -305,6 +319,8 @@ namespace WOF
         {
             _health.OnValueChanged += HandleHealthChanged;
             _armor.OnValueChanged += HandleArmorChanged;
+            _leftMana.OnValueChanged += HandleManaChanged;
+            _rightMana.OnValueChanged += HandleManaChanged;
             _isDead.OnValueChanged += HandleDeadChanged;
             _isVClipEnabled.OnValueChanged += HandleVClipEnabledChanged;
             _leftEquippedSpell.OnValueChanged += HandleEquippedSpellChanged;
@@ -373,6 +389,10 @@ namespace WOF
                 Debug.Log($"[WOF-AUTOMATION] PLAYER_SPAWN id={OwnerClientId} position={spawn}");
                 _health.Value = WofGameConstants.MaxHealth;
                 _armor.Value = 0;
+                _leftMana.Value = 0f;
+                _rightMana.Value = 0f;
+                _nextManaDecayAt = NetworkManager.ServerTime.Time + 1d;
+                _manaFlowerCooldowns.Clear();
                 _isDead.Value = false;
                 _castingUntil.Value = 0d;
                 _leftEquippedSpell.Value = (int)WofSpellLoadout.ReactDefaultLeft;
@@ -453,6 +473,8 @@ namespace WOF
         {
             _health.OnValueChanged -= HandleHealthChanged;
             _armor.OnValueChanged -= HandleArmorChanged;
+            _leftMana.OnValueChanged -= HandleManaChanged;
+            _rightMana.OnValueChanged -= HandleManaChanged;
             _isDead.OnValueChanged -= HandleDeadChanged;
             _isVClipEnabled.OnValueChanged -= HandleVClipEnabledChanged;
             _leftEquippedSpell.OnValueChanged -= HandleEquippedSpellChanged;
@@ -555,6 +577,7 @@ namespace WOF
             }
 
             ApplyToxicStatusDamage(Time.fixedDeltaTime);
+            ApplyManaDecay();
             if (_isDead.Value) return;
             var simulatedInput = _latestServerInput;
             if (IsTimedBuffActive(_sleepUntil.Value))
@@ -1063,6 +1086,47 @@ namespace WOF
             }
             _darrelReturnArmed = true;
             return true;
+        }
+
+        public bool RequestManaFlowerCollection(int chunkX, int chunkZ, int flowerIndex)
+        {
+            if (!IsOwner || !IsSpawned || _isDead.Value || !CanRechargeMana ||
+                !WofSurvivalAmbientMath.TryGetManaFlower(chunkX, chunkZ, flowerIndex, out _))
+                return false;
+            if (IsServer) CollectManaFlowerServer(chunkX, chunkZ, flowerIndex);
+            else RequestManaFlowerCollectionRpc(chunkX, chunkZ, flowerIndex);
+            return true;
+        }
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+        private void RequestManaFlowerCollectionRpc(int chunkX, int chunkZ, int flowerIndex)
+        {
+            CollectManaFlowerServer(chunkX, chunkZ, flowerIndex);
+        }
+
+        private void CollectManaFlowerServer(int chunkX, int chunkZ, int flowerIndex)
+        {
+            if (!IsServer || _isDead.Value ||
+                !WofSurvivalAmbientMath.TryGetManaFlower(chunkX, chunkZ, flowerIndex, out var flower)) return;
+            var horizontal = new Vector2(transform.position.x - flower.Position.x,
+                transform.position.z - flower.Position.z);
+            if (horizontal.sqrMagnitude > flower.Radius * flower.Radius) return;
+            var now = NetworkManager.ServerTime.Time;
+            if (_manaFlowerCooldowns.TryGetValue(flower.Id, out var until) && until > now) return;
+            var recharge = WofManaRules.RechargeMostEmpty(_leftMana.Value, _rightMana.Value);
+            if (!recharge.Changed) return;
+            _leftMana.Value = recharge.Left;
+            _rightMana.Value = recharge.Right;
+            until = now + WofManaRules.FlowerRespawnSeconds;
+            _manaFlowerCooldowns[flower.Id] = until;
+            ConfirmManaFlowerCollectionOwnerRpc(chunkX, chunkZ, flowerIndex, until);
+            Debug.Log($"[WOF-AUTOMATION] MANA_FLOWER_COLLECTED owner={OwnerClientId} id={flower.Id} hand={recharge.RechargedHand} until={until:F2}");
+        }
+
+        [Rpc(SendTo.Owner)]
+        private void ConfirmManaFlowerCollectionOwnerRpc(int chunkX, int chunkZ, int flowerIndex, double until)
+        {
+            WofSurvivalAmbientLifeRuntime.MarkFlowerCollected(chunkX, chunkZ, flowerIndex, until);
         }
 
         public bool RequestMapFastTravel(WofMapDestination destination)
@@ -1996,6 +2060,11 @@ namespace WOF
             }
         }
 
+        private void HandleManaChanged(float previous, float current)
+        {
+            if (IsOwner) PublishHud();
+        }
+
         private void HandleEquippedSpellChanged(int previous, int current)
         {
             if (IsOwner)
@@ -2054,6 +2123,9 @@ namespace WOF
         private void PublishHud()
         {
             WofHud.Instance?.SetVitals(_health.Value, _armor.Value);
+            WofHud.Instance?.SetMana(
+                _leftMana.Value / WofManaRules.MaximumPower,
+                _rightMana.Value / WofManaRules.MaximumPower);
             WofHud.Instance?.SetEquippedSpells(
                 WofSpellLoadout.GetDisplayName(LeftEquippedSpell),
                 WofSpellLoadout.GetDisplayName(RightEquippedSpell));
@@ -2083,6 +2155,18 @@ namespace WOF
         private bool IsTimedBuffActive(double until)
         {
             return IsSpawned && NetworkManager != null && NetworkManager.ServerTime.Time < until;
+        }
+
+        private void ApplyManaDecay()
+        {
+            if (!IsServer || NetworkManager == null) return;
+            var now = NetworkManager.ServerTime.Time;
+            if (_nextManaDecayAt <= 0d) _nextManaDecayAt = now + 1d;
+            if (now < _nextManaDecayAt) return;
+            var elapsedSeconds = Mathf.Max(1, (int)System.Math.Floor(now - _nextManaDecayAt) + 1);
+            _nextManaDecayAt += elapsedSeconds;
+            _leftMana.Value = WofManaRules.Decay(_leftMana.Value, elapsedSeconds);
+            _rightMana.Value = WofManaRules.Decay(_rightMana.Value, elapsedSeconds);
         }
 
         private static WofSpellId ResolveSpell(int value, WofSpellId fallback)

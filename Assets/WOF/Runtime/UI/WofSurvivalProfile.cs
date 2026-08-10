@@ -12,9 +12,19 @@ namespace WOF
         public string playerName = string.Empty;
         public string skinColor = "#d6cf91";
         public string topColor = "#7c3aed";
+        public string pantsColor = "#334155";
+        public string shoesColor = "#1f2937";
+        public string hatColor = "#7c3aed";
         public string hairColor = "#3f2a1d";
+        public string facialHairColor = "#3f2a1d";
+        public string topStyle = "simple";
+        public string pantsStyle = "pants";
+        public string shoesStyle = "boots";
         public string hatStyle = "floppy-wizard";
         public string hairStyle = "none";
+        public string facialHairStyle = "none";
+        public string eyeStyle = "calm";
+        public string mouthStyle = "neutral";
         public int survivalLevel = 1;
         public int survivalXp;
         public string lastMode = "solo-survival";
@@ -108,6 +118,7 @@ namespace WOF
                 }
 
                 profile.playerName = WofLaunchRules.SanitizePlayerName(profile.playerName);
+                WofCharacterCustomizationRules.Normalize(profile);
                 WofSpellQuestRules.NormalizeProfile(profile);
                 WofInventoryRules.NormalizeProfile(profile);
                 return profile.playerName.Length >= 2 ? profile : null;
@@ -133,6 +144,7 @@ namespace WOF
             }
 
             profile.version = 1;
+            WofCharacterCustomizationRules.Normalize(profile);
             WofSpellQuestRules.NormalizeProfile(profile);
             WofInventoryRules.NormalizeProfile(profile);
             var json = JsonUtility.ToJson(profile, true);

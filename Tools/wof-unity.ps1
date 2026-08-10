@@ -822,7 +822,7 @@ function Invoke-WindowsSmoke {
     $clientReady = (Test-Path -LiteralPath $clientLog) -and (Select-String -LiteralPath $clientLog -Pattern 'SESSION_READY mode=Client' -Quiet)
     $probeStarted = (Test-Path -LiteralPath $hostLog) -and (Select-String -LiteralPath $hostLog -Pattern 'COMBAT_PROBE_STARTED attacker=0 target=1' -Quiet)
     $probePositioned = (Test-Path -LiteralPath $hostLog) -and (Select-String -LiteralPath $hostLog -Pattern 'COMBAT_PROBE_POSITIONED attacker=0 target=1' -Quiet)
-    $serverFireballCasts = @((Select-String -LiteralPath $hostLog -Pattern 'FIREBALL_CAST owner=0' -ErrorAction SilentlyContinue)).Count
+    $serverFireballCasts = @((Select-String -LiteralPath $hostLog -Pattern 'SPELL_CAST owner=0 hand=Right spell=Fireball' -ErrorAction SilentlyContinue)).Count
     $serverDamageEvents = @((Select-String -LiteralPath $hostLog -Pattern 'DAMAGE target=1 source=0 amount=20' -ErrorAction SilentlyContinue)).Count
     $serverTargetDied = (Test-Path -LiteralPath $hostLog) -and (Select-String -LiteralPath $hostLog -Pattern 'PLAYER_DIED id=1' -Quiet)
     $serverTargetRespawned = (Test-Path -LiteralPath $hostLog) -and (Select-String -LiteralPath $hostLog -Pattern 'PLAYER_RESPAWNED id=1' -Quiet)
@@ -830,7 +830,7 @@ function Invoke-WindowsSmoke {
     $serverCombatPassed = (Test-Path -LiteralPath $hostLog) -and (Select-String -LiteralPath $hostLog -Pattern 'SERVER_COMBAT_PROBE_PASSED attacker=0 target=1 casts=5' -Quiet)
     $campfireDamagePassed = (Test-Path -LiteralPath $hostLog) -and (Select-String -LiteralPath $hostLog -Pattern 'CAMPFIRE_DAMAGE_PROBE_PASSED target=1 health=99.9 armor=0.0 tick=0.2' -Quiet)
 
-    $clientRpcFireballCasts = @((Select-String -LiteralPath $hostLog -Pattern 'FIREBALL_CAST owner=1' -ErrorAction SilentlyContinue)).Count
+    $clientRpcFireballCasts = @((Select-String -LiteralPath $hostLog -Pattern 'SPELL_CAST owner=1 hand=Right spell=Fireball' -ErrorAction SilentlyContinue)).Count
     $clientRpcDamageEvents = @((Select-String -LiteralPath $hostLog -Pattern 'DAMAGE target=0 source=1 amount=20' -ErrorAction SilentlyContinue)).Count
     $clientRpcTargetDied = (Test-Path -LiteralPath $hostLog) -and (Select-String -LiteralPath $hostLog -Pattern 'PLAYER_DIED id=0' -Quiet)
     $clientRpcTargetRespawned = (Test-Path -LiteralPath $hostLog) -and (Select-String -LiteralPath $hostLog -Pattern 'PLAYER_RESPAWNED id=0' -Quiet)

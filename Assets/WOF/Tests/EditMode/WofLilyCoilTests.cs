@@ -51,6 +51,14 @@ namespace WOF.Tests
         public void TubeFrameAndProbeMathRemainAtTheAuthoredWorldChunk()
         {
             Assert.That(WofLilyCoilLayout.WorldOrigin, Is.EqualTo(new Vector3(24576f, 0f, -24576f)));
+            Assert.That(WofLilyCoilLayout.SpawnPosition,
+                Is.EqualTo(new Vector3(24813.11f, 72.15f, -24596.54f)));
+            Assert.That(Vector3.Distance(WofLilyCoilLayout.PlayableSpawnPosition,
+                WofLilyCoilLayout.SpawnPosition), Is.LessThan(6f));
+            var playableSpawnState = WofLilyCoilLayout.GetNearestState(WofLilyCoilLayout.PlayableSpawnPosition);
+            Assert.That(Vector3.Distance(WofLilyCoilLayout.PlayableSpawnPosition,
+                WofLilyCoilLayout.GetFrame(playableSpawnState.T).Center),
+                Is.EqualTo(WofLilyCoilLayout.TubePlayerRadius).Within(0.001f));
             Assert.That(WofLilyCoilLayout.ExteriorViewProbeSpawn,
                 Is.EqualTo(new Vector3(24576f, 350f, -25296f)));
             var start = WofLilyCoilLayout.GetFrame(0f);
@@ -82,6 +90,11 @@ namespace WOF.Tests
                 Assert.That(root.transform.Find("GroundLilyPetals_2800"), Is.Not.Null);
                 Assert.That(root.transform.Find("SmallBloomParticles_750"), Is.Not.Null);
                 Assert.That(root.transform.Find("Fireflies_160"), Is.Not.Null);
+                var ambientEffects = root.GetComponent<WofLilyCoilAmbientEffectsRuntime>();
+                Assert.That(ambientEffects, Is.Not.Null);
+                Assert.That(ambientEffects.BloomParticleCount, Is.EqualTo(WofLilyCoilLayout.SmallBloomParticleCount));
+                Assert.That(ambientEffects.FireflyCount, Is.EqualTo(WofLilyCoilLayout.FireflyCount));
+                Assert.That(ambientEffects.ButterflyCount, Is.EqualTo(WofLilyCoilLayout.ButterflyCount));
                 Assert.That(root.GetComponentsInChildren<WofLilyCoilEyeAnimator>(true), Has.Length.EqualTo(2));
                 Assert.That(root.GetComponentsInChildren<BoxCollider>(true), Has.Length.EqualTo(39));
                 Assert.That(root.GetComponentsInChildren<MeshCollider>(true), Has.Length.EqualTo(1));

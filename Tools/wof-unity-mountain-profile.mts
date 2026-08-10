@@ -13,6 +13,17 @@ const smoothstep01 = (value: number) => {
   return clamped * clamped * (3 - 2 * clamped);
 };
 
+const lerp = (from: number, to: number, progress: number) =>
+  from + (to - from) * progress;
+
+type UnityMountainRgb = { r: number; g: number; b: number };
+
+const lerpRgb = (from: UnityMountainRgb, to: UnityMountainRgb, progress: number): UnityMountainRgb => ({
+  r: lerp(from.r, to.r, progress),
+  g: lerp(from.g, to.g, progress),
+  b: lerp(from.b, to.b, progress),
+});
+
 export const getUnityMountainOuterRadius = (angle: number) =>
   UNITY_MOUNTAIN_BASE_OUTER_RADIUS +
   Math.sin(angle * 3 + 0.45) * 54 +
@@ -67,6 +78,45 @@ export const getUnityMountainPerimeterLift = (
   if (radius <= UNITY_MOUNTAIN_PROTECTED_RADIUS ||
       radius >= getUnityMountainOuterRadius(Math.atan2(localX, localZ))) return 0;
   return getUnityMountainTargetLift(localX, localZ);
+};
+
+export const getUnityMountainBandedColor = (
+  worldX: number,
+  worldZ: number,
+  lift: number,
+  blockSize: number,
+  original: UnityMountainRgb,
+): UnityMountainRgb => {
+  if (lift <= 0) return original;
+  const localX = worldX - UNITY_MOUNTAIN_CHUNK_X * blockSize;
+  const localZ = worldZ - UNITY_MOUNTAIN_CHUNK_Z * blockSize;
+  const radius = Math.hypot(localX, localZ);
+  const outerRadius = getUnityMountainOuterRadius(Math.atan2(localX, localZ));
+  const grain = Math.sin(localX * 0.071 + localZ * 0.043 + lift * 0.031) * 0.5 + 0.5;
+  const dirt = lerpRgb(
+    { r: 0x49 / 255, g: 0x37 / 255, b: 0x24 / 255 },
+    { r: 0x76 / 255, g: 0x57 / 255, b: 0x38 / 255 },
+    grain * 0.72,
+  );
+  const stone = lerpRgb(
+    { r: 0x4b / 255, g: 0x50 / 255, b: 0x53 / 255 },
+    { r: 0x7c / 255, g: 0x87 / 255, b: 0x8a / 255 },
+    grain * 0.5,
+  );
+  const stoneMix = smoothstep01((lift - 102) / (148 - 102));
+  const snowMix = smoothstep01((lift - 184) / (208 - 184));
+  let banded = lerpRgb(dirt, stone, stoneMix);
+  banded = lerpRgb(
+    banded,
+    { r: 0xee / 255, g: 0xf8 / 255, b: 1 },
+    snowMix * (0.82 + grain * 0.18),
+  );
+
+  // Blend only the final seam into the original biome color. The wide
+  // perimeter remains a dirt/stone/snow mountain instead of a green shell.
+  const seamBlend = smoothstep01((radius - (outerRadius - 40)) / 40) *
+    (1 - smoothstep01((lift - 16) / (28 - 16)));
+  return lerpRgb(banded, original, seamBlend);
 };
 
 export const getUnityMountainHeightDelta = (

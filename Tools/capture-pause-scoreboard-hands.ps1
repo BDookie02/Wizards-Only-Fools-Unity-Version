@@ -1,6 +1,10 @@
 param(
     [string]$BuildRoot = 'D:\CodexProjects\Wizards-Only-Fools-Unity\Builds\Windows',
-    [string]$OutputRoot = 'D:\tmp\wof-unity\pause-scoreboard-hands'
+    [string]$OutputRoot = 'D:\tmp\wof-unity\pause-scoreboard-hands',
+    [ValidateRange(640, 7680)]
+    [int]$Width = 1280,
+    [ValidateRange(360, 4320)]
+    [int]$Height = 720
 )
 
 $ErrorActionPreference = 'Stop'
@@ -78,11 +82,16 @@ public static class WofPauseScoreCapture {
 New-Item -ItemType Directory -Force -Path $resolvedOutputRoot | Out-Null
 $executable = Join-Path $resolvedBuildRoot 'WizardsOnlyFools.exe'
 $logPath = Join-Path $resolvedOutputRoot 'runtime.log'
+$profileRoot = Join-Path $resolvedOutputRoot 'profile'
+New-Item -ItemType Directory -Force -Path $profileRoot | Out-Null
 $handPath = Join-Path $resolvedOutputRoot 'idle-hands-frame.png'
 $pausePath = Join-Path $resolvedOutputRoot 'pause-menu.png'
-$settingsPath = Join-Path $resolvedOutputRoot 'settings-menu-fullscreen-toggled.png'
+$settingsPath = Join-Path $resolvedOutputRoot 'settings-video.png'
+$keybindsPath = Join-Path $resolvedOutputRoot 'settings-keybinds.png'
+$voicePath = Join-Path $resolvedOutputRoot 'settings-voice.png'
+$characterPath = Join-Path $resolvedOutputRoot 'settings-character.png'
 $scorePath = Join-Path $resolvedOutputRoot 'scoreboard-held.png'
-foreach ($target in @($logPath, $handPath, $pausePath, $settingsPath, $scorePath)) {
+foreach ($target in @($logPath, $handPath, $pausePath, $settingsPath, $keybindsPath, $voicePath, $characterPath, $scorePath)) {
     if (Test-Path -LiteralPath $target -PathType Leaf) { Remove-Item -LiteralPath $target -Force }
 }
 
@@ -105,7 +114,7 @@ function Save-WofWindow([IntPtr]$Handle, [string]$Path) {
     if (-not [WofPauseScoreCapture]::ClientToScreen($Handle, [ref]$point)) { throw 'ClientToScreen failed.' }
     $width = $rect.Right - $rect.Left
     $height = $rect.Bottom - $rect.Top
-    $isWindowedProbe = $width -eq 1280 -and $height -eq 720
+    $isWindowedProbe = $width -eq $Width -and $height -eq $Height
     $isFullscreenProbe = $width -eq 1920 -and $height -eq 1080
     if (-not $isWindowedProbe -and -not $isFullscreenProbe) { throw "Unexpected Unity client size: ${width}x${height}." }
     $bitmap = New-Object System.Drawing.Bitmap $width, $height
@@ -120,9 +129,14 @@ function Save-WofWindow([IntPtr]$Handle, [string]$Path) {
     }
 }
 
+function Set-WofFocus([IntPtr]$Handle) {
+    if (-not [WofPauseScoreCapture]::Focus($Handle)) { throw 'Could not focus the Unity player.' }
+    Start-Sleep -Milliseconds 180
+}
+
 $arguments = @(
-    '-force-d3d11', '-screen-width', '1280', '-screen-height', '720', '-screen-fullscreen', '0',
-    '--wof-solo', '--wof-hand-idle-probe', '--wof-auto-exit=90', '-logFile', $logPath
+    '-force-d3d11', '-screen-width', $Width, '-screen-height', $Height, '-screen-fullscreen', '0',
+    '--wof-solo', '--wof-hand-idle-probe', '--wof-auto-exit=90', "--wof-profile-root=$profileRoot", '-logFile', $logPath
 )
 $process = Start-Process -FilePath $executable -ArgumentList $arguments -PassThru
 try {
@@ -131,34 +145,60 @@ try {
     $process.Refresh()
     $handle = $process.MainWindowHandle
     if ($handle -eq [IntPtr]::Zero) { throw 'Windows player has no window.' }
-    if (-not [WofPauseScoreCapture]::Focus($handle)) { throw 'Could not focus the Unity player.' }
-    Start-Sleep -Milliseconds 250
+    Set-WofFocus -Handle $handle
     Save-WofWindow -Handle $handle -Path $handPath
 
+    Set-WofFocus -Handle $handle
     [WofPauseScoreCapture]::Tap(0x1B)
     if (-not (Wait-WofMarker -Pattern 'PAUSE_MENU open=True' -Seconds 5)) { throw 'Physical Escape did not open the pause menu.' }
     Start-Sleep -Milliseconds 250
+    Set-WofFocus -Handle $handle
     Save-WofWindow -Handle $handle -Path $pausePath
 
+    Set-WofFocus -Handle $handle
     [WofPauseScoreCapture]::TapExtended(0x28)
     Start-Sleep -Milliseconds 250
     [WofPauseScoreCapture]::Tap(0x0D)
     if (-not (Wait-WofMarker -Pattern 'SETTINGS_MENU open=True' -Seconds 5)) { throw 'Physical Down/Enter did not open Settings.' }
-    [WofPauseScoreCapture]::Tap(0x0D)
-    Start-Sleep -Milliseconds 700
+    Start-Sleep -Milliseconds 1200
+    Set-WofFocus -Handle $handle
     Save-WofWindow -Handle $handle -Path $settingsPath
-    [WofPauseScoreCapture]::Tap(0x0D)
-    Start-Sleep -Milliseconds 700
+
+    Set-WofFocus -Handle $handle
+    [WofPauseScoreCapture]::TapExtended(0x27)
+    if (-not (Wait-WofMarker -Pattern 'SETTINGS_PANE pane=Keybinds' -Seconds 5)) { throw 'Physical Right did not open Keybinds.' }
+    Start-Sleep -Milliseconds 1200
+    Set-WofFocus -Handle $handle
+    Save-WofWindow -Handle $handle -Path $keybindsPath
+
+    Set-WofFocus -Handle $handle
+    [WofPauseScoreCapture]::TapExtended(0x27)
+    if (-not (Wait-WofMarker -Pattern 'SETTINGS_PANE pane=Voice' -Seconds 5)) { throw 'Physical Right did not open Voice.' }
+    Start-Sleep -Milliseconds 1200
+    Set-WofFocus -Handle $handle
+    Save-WofWindow -Handle $handle -Path $voicePath
+
+    Set-WofFocus -Handle $handle
+    [WofPauseScoreCapture]::TapExtended(0x27)
+    if (-not (Wait-WofMarker -Pattern 'SETTINGS_PANE pane=Character' -Seconds 5)) { throw 'Physical Right did not open Character.' }
+    Start-Sleep -Milliseconds 1200
+    Set-WofFocus -Handle $handle
+    Save-WofWindow -Handle $handle -Path $characterPath
+
+    Set-WofFocus -Handle $handle
     [WofPauseScoreCapture]::Tap(0x1B)
     if (-not (Wait-WofMarker -Pattern 'SETTINGS_MENU open=False' -Count 2 -Seconds 5)) { throw 'Physical Escape did not return from Settings.' }
 
+    Set-WofFocus -Handle $handle
     [WofPauseScoreCapture]::Tap(0x1B)
     if (-not (Wait-WofMarker -Pattern 'PAUSE_MENU open=False' -Seconds 5)) { throw 'Second physical Escape did not close the pause menu.' }
 
+    Set-WofFocus -Handle $handle
     [WofPauseScoreCapture]::SetKey(0x09, $true)
     try {
         if (-not (Wait-WofMarker -Pattern 'SCOREBOARD_MENU open=True' -Seconds 5)) { throw 'Physical Tab hold did not open the player list.' }
         Start-Sleep -Milliseconds 250
+        Set-WofFocus -Handle $handle
         Save-WofWindow -Handle $handle -Path $scorePath
     }
     finally {
@@ -172,7 +212,10 @@ try {
         Status = 'PASS'
         IdleHands = $handPath
         PauseMenu = $pausePath
-        SettingsMenu = $settingsPath
+        SettingsVideo = $settingsPath
+        SettingsKeybinds = $keybindsPath
+        SettingsVoice = $voicePath
+        SettingsCharacter = $characterPath
         ScoreboardHeld = $scorePath
         Log = $logPath
     }

@@ -201,7 +201,8 @@ namespace WOF
             {
                 var gamepad = Gamepad.current;
                 if (gamepad != null &&
-                    (gamepad.buttonSouth.wasPressedThisFrame || gamepad.startButton.wasPressedThisFrame))
+                    (WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.MenuSelect) ||
+                     WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.Pause)))
                 {
                     ContinueFromPress();
                 }

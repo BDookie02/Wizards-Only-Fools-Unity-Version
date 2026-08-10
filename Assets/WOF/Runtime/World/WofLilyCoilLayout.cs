@@ -287,6 +287,7 @@ namespace WOF
         public static readonly float TubePathLength = Mathf.Sqrt(HorizontalPath * HorizontalPath + TubeRise * TubeRise);
         public static readonly Vector3 WorldOrigin = new(ChunkX * SurvivalBlockSize, 0f, ChunkZ * SurvivalBlockSize);
         public static readonly Vector3 SpawnPosition = WorldOrigin + new Vector3(237.11f, 72.15f, -20.54f);
+        public static readonly Vector3 PlayableSpawnPosition = GetSurfacePosition(SpawnPosition);
         public static readonly float SpawnYawDegrees = Mathf.Repeat(3.055f * Mathf.Rad2Deg + 180f, 360f);
         public static readonly Vector3 ExteriorViewProbeSpawn = WorldOrigin + new Vector3(0f, 350f, -720f);
 
@@ -342,6 +343,13 @@ namespace WOF
             var surfaceRadiusSquared = upAmount * upAmount + sideAmount * sideAmount;
             var surfaceAngle = surfaceRadiusSquared > 0.0001f ? Mathf.Atan2(sideAmount, upAmount) : Mathf.PI;
             return new WofLilyCoilNearestState(bestT, surfaceAngle);
+        }
+
+        public static Vector3 GetSurfacePosition(Vector3 position)
+        {
+            var nearest = GetNearestState(position);
+            var frame = GetFrame(nearest.T);
+            return frame.Center + GetRadial(frame, nearest.SurfaceAngle) * TubePlayerRadius;
         }
 
         public static Vector3 GetTunnelViewProbeSpawn(float t = 0.34f)

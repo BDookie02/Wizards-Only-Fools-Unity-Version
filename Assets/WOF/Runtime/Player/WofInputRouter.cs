@@ -20,6 +20,7 @@ namespace WOF
         internal const float ControllerArmButtonThreshold = 0.35f;
         internal const float ControllerLookSensitivityRadiansPerSecond = 5.3f;
         internal const float ControllerLookVerticalMultiplier = 0.78f;
+        internal const float KeyboardArrowLookRadiansPerSecond = 2.65f;
         private static readonly List<RaycastResult> s_UiRaycastResults = new();
         private static Vector2 s_MobileMove;
         private static Vector2 s_MobileLook;
@@ -33,6 +34,9 @@ namespace WOF
         private static bool s_ControllerSprintHeld;
         private static bool s_ControllerSprintLatched;
         private static bool s_GameplaySuppressed;
+        private static float s_MouseSensitivity = WofUserSettingsRules.DefaultMouseSensitivity;
+        private static float s_ControllerLookSensitivity = WofUserSettingsRules.DefaultControllerLookSensitivity;
+        private static bool s_KeyboardArrowLookEnabled = true;
 
         public static bool GameplaySuppressed => s_GameplaySuppressed;
 
@@ -46,10 +50,8 @@ namespace WOF
             var keyboardMove = keyboard == null
                 ? Vector2.zero
                 : new Vector2(
-                    ReadAxis(keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed,
-                        keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed),
-                    ReadAxis(keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed,
-                        keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed));
+                    ReadAxis(keyboard.aKey.isPressed, keyboard.dKey.isPressed),
+                    ReadAxis(keyboard.sKey.isPressed, keyboard.wKey.isPressed));
             var gamepad = Gamepad.current;
             var gamepadMove = IsControllerInputActive(gamepad)
                 ? ResolveControllerStick(gamepad.leftStick.ReadUnprocessedValue())
@@ -65,14 +67,25 @@ namespace WOF
                 return Vector2.zero;
             }
             var mouse = Mouse.current;
-            var mouseDelta = mouse == null ? Vector2.zero : mouse.delta.ReadValue();
+            var mouseScale = s_MouseSensitivity / WofUserSettingsRules.DefaultMouseSensitivity;
+            var mouseDelta = mouse == null ? Vector2.zero : mouse.delta.ReadValue() * mouseScale;
             var gamepad = Gamepad.current;
             var controllerLook = IsControllerInputActive(gamepad)
                 ? ResolveControllerLook(
                     ResolveControllerStick(gamepad.rightStick.ReadUnprocessedValue()),
-                    Time.unscaledDeltaTime)
+                    Time.unscaledDeltaTime,
+                    s_ControllerLookSensitivity)
                 : Vector2.zero;
-            var look = ResolveLook(mouseDelta, controllerLook, s_MobileLook);
+            var keyboard = Keyboard.current;
+            var keyboardLook = s_KeyboardArrowLookEnabled && keyboard != null
+                ? ResolveKeyboardArrowLook(
+                    new Vector2(
+                        ReadAxis(keyboard.leftArrowKey.isPressed, keyboard.rightArrowKey.isPressed),
+                        ReadAxis(keyboard.downArrowKey.isPressed, keyboard.upArrowKey.isPressed)),
+                    Time.unscaledDeltaTime,
+                    mouseScale)
+                : Vector2.zero;
+            var look = ResolveLook(mouseDelta, controllerLook + keyboardLook, s_MobileLook);
             s_MobileLook = Vector2.zero;
             return look;
         }
@@ -85,7 +98,7 @@ namespace WOF
             }
             var gamepad = Gamepad.current;
             var controllerJump = IsControllerInputActive(gamepad) &&
-                                 IsControllerButtonPressed(gamepad.buttonSouth, ControllerTriggerThreshold);
+                                 WofControllerBindings.IsPressed(gamepad, WofControllerActions.Jump, ControllerTriggerThreshold);
             return (Keyboard.current?.spaceKey.isPressed ?? false) || controllerJump || s_MobileJumpHeld;
         }
 
@@ -100,7 +113,7 @@ namespace WOF
             var gamepad = Gamepad.current;
             var controllerActive = IsControllerInputActive(gamepad);
             var controllerSprintHeld = controllerActive &&
-                                       IsControllerButtonPressed(gamepad.leftStickButton, ControllerTriggerThreshold);
+                                       WofControllerBindings.IsPressed(gamepad, WofControllerActions.Sprint, ControllerTriggerThreshold);
             var controllerSprintPressed = controllerSprintHeld && !s_ControllerSprintHeld;
             s_ControllerSprintHeld = controllerSprintHeld;
             s_ControllerSprintLatched = ResolveControllerSprintLatch(
@@ -118,7 +131,7 @@ namespace WOF
             }
             var gamepad = Gamepad.current;
             var controllerSlide = IsControllerInputActive(gamepad) &&
-                                  IsControllerButtonPressed(gamepad.buttonEast, ControllerTriggerThreshold);
+                                  WofControllerBindings.IsPressed(gamepad, WofControllerActions.Slide, ControllerTriggerThreshold);
             return (Keyboard.current?.cKey.isPressed ?? false) || controllerSlide;
         }
 
@@ -142,9 +155,9 @@ namespace WOF
             var gamepad = Gamepad.current;
             var controllerActive = IsControllerInputActive(gamepad);
             var controllerLeftHeld = controllerActive &&
-                                     IsControllerButtonPressed(gamepad.leftTrigger, ControllerTriggerThreshold);
+                                     WofControllerBindings.IsPressed(gamepad, WofControllerActions.LeftCast, ControllerTriggerThreshold);
             var controllerRightHeld = controllerActive &&
-                                      IsControllerButtonPressed(gamepad.rightTrigger, ControllerTriggerThreshold);
+                                      WofControllerBindings.IsPressed(gamepad, WofControllerActions.RightCast, ControllerTriggerThreshold);
             var controllerLeftPressed = controllerLeftHeld && !s_ControllerLeftCastHeld;
             var controllerRightPressed = controllerRightHeld && !s_ControllerRightCastHeld;
             s_ControllerLeftCastHeld = controllerLeftHeld;
@@ -164,6 +177,22 @@ namespace WOF
         }
 
         public static bool HasTouchscreen => Touchscreen.current != null;
+
+        public static float MouseSensitivity => s_MouseSensitivity;
+        public static float ControllerLookSensitivity => s_ControllerLookSensitivity;
+        public static bool KeyboardArrowLookEnabled => s_KeyboardArrowLookEnabled;
+
+        public static void ConfigureLookSettings(float mouseSensitivity, float controllerLookSensitivity, bool keyboardArrowLookEnabled)
+        {
+            s_MouseSensitivity = Mathf.Clamp(mouseSensitivity, 0.0005f, 0.006f);
+            s_ControllerLookSensitivity = Mathf.Clamp(controllerLookSensitivity, 0.8f, 6f);
+            s_KeyboardArrowLookEnabled = keyboardArrowLookEnabled;
+        }
+
+        public static void ConfigureControllerBindings(WofControllerBindingEntry[] entries)
+        {
+            WofControllerBindings.Configure(entries);
+        }
 
         internal static bool IsControllerGameplayActive(Gamepad gamepad)
         {
@@ -380,16 +409,37 @@ namespace WOF
 
         internal static Vector2 ResolveControllerLook(Vector2 deadzonedStick, float deltaSeconds)
         {
-            if (!IsFinite(deadzonedStick) || !IsFinite(deltaSeconds) || deltaSeconds <= 0f)
+            return ResolveControllerLook(deadzonedStick, deltaSeconds, ControllerLookSensitivityRadiansPerSecond);
+        }
+
+        internal static Vector2 ResolveControllerLook(Vector2 deadzonedStick, float deltaSeconds, float sensitivityRadiansPerSecond)
+        {
+            if (!IsFinite(deadzonedStick) || !IsFinite(deltaSeconds) || !IsFinite(sensitivityRadiansPerSecond) ||
+                deltaSeconds <= 0f || sensitivityRadiansPerSecond <= 0f)
             {
                 return Vector2.zero;
             }
 
-            var degreesPerSecond = ControllerLookSensitivityRadiansPerSecond * Mathf.Rad2Deg;
+            var degreesPerSecond = sensitivityRadiansPerSecond * Mathf.Rad2Deg;
             var routerScale = degreesPerSecond * deltaSeconds / WofGameConstants.MouseSensitivity;
             return new Vector2(
                 deadzonedStick.x * routerScale,
                 deadzonedStick.y * routerScale * ControllerLookVerticalMultiplier);
+        }
+
+        internal static Vector2 ResolveKeyboardArrowLook(Vector2 arrowInput, float deltaSeconds, float sensitivityScale)
+        {
+            if (!IsFinite(arrowInput) || !IsFinite(deltaSeconds) || !IsFinite(sensitivityScale) ||
+                deltaSeconds <= 0f || sensitivityScale <= 0f)
+            {
+                return Vector2.zero;
+            }
+
+            var routerScale = KeyboardArrowLookRadiansPerSecond * Mathf.Rad2Deg * deltaSeconds * sensitivityScale /
+                              WofGameConstants.MouseSensitivity;
+            return new Vector2(
+                arrowInput.x * routerScale,
+                arrowInput.y * routerScale * ControllerLookVerticalMultiplier);
         }
 
         internal static Vector2 ResolveJoystickValue(Vector2 localPosition, float radius)

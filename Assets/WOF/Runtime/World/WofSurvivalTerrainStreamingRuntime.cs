@@ -13,6 +13,7 @@ namespace WOF
     public sealed class WofSurvivalTerrainStreamingRuntime : MonoBehaviour
     {
         public const int MaxConcurrentChunkBuilds = 1;
+        internal const float ProbeWarmupSeconds = 3f;
         private const double StreamRounding = 0.45d;
         private const string ProbePrefix = "--wof-survival-streaming-probe=";
         private const int InstancesPerTreeBatch = 1023;
@@ -46,8 +47,10 @@ namespace WOF
         private float _windowMaxFrameMilliseconds;
         private double _windowMaxWorkerMilliseconds;
         private double _windowMaxApplyMilliseconds;
+        private double _windowMaxStreamingUpdateMilliseconds;
         private Mesh[] _treeMeshes;
         private Material _treeMaterial;
+        private bool _probeWarmupComplete;
 
         public void Configure(
             Material exactTerrainMaterial,
@@ -123,6 +126,7 @@ namespace WOF
 
         private void Update()
         {
+            var streamingUpdateTimer = Stopwatch.StartNew();
             if (_measureWindowFrames)
             {
                 var frameMilliseconds = Time.unscaledDeltaTime * 1000f;
@@ -135,29 +139,26 @@ namespace WOF
 
             if (!_hasCenter)
             {
-                if (_probeRequested)
-                {
-                    _centerX = _probeChunkX;
-                    _centerZ = _probeChunkZ;
-                }
-                else
-                {
-                    _centerX = WofSurvivalTerrainMath.GetChunkCoordinate(_viewer.position.x);
-                    _centerZ = WofSurvivalTerrainMath.GetChunkCoordinate(_viewer.position.z);
-                }
+                _centerX = WofSurvivalTerrainMath.GetChunkCoordinate(_viewer.position.x);
+                _centerZ = WofSurvivalTerrainMath.GetChunkCoordinate(_viewer.position.z);
                 _hasCenter = true;
                 ReconcileWindow(buildCenterImmediately: true);
             }
             else
             {
+                if (_probeRequested && !_probeWarmupComplete && Time.unscaledTime >= ProbeWarmupSeconds)
+                {
+                    _probeWarmupComplete = true;
+                    Debug.Log($"[WOF-AUTOMATION] SURVIVAL_STREAMING_PROBE_WARMUP_COMPLETE seconds={ProbeWarmupSeconds:F1}");
+                }
                 // A streaming probe begins before the player can safely be placed on the
                 // requested chunk. Keep that requested window authoritative until its
                 // center terrain exists; otherwise the still-origin player immediately
                 // recenters the worker back to 0:0 and cancels the actual stress test.
-                var nextX = _probeRequested && !_probePositioned
+                var nextX = _probeRequested && _probeWarmupComplete && !_probePositioned
                     ? _probeChunkX
                     : WofSurvivalTerrainMath.RecenterCoordinate(_centerX, _viewer.position.x);
-                var nextZ = _probeRequested && !_probePositioned
+                var nextZ = _probeRequested && _probeWarmupComplete && !_probePositioned
                     ? _probeChunkZ
                     : WofSurvivalTerrainMath.RecenterCoordinate(_centerZ, _viewer.position.z);
                 if (nextX != _centerX || nextZ != _centerZ)
@@ -170,13 +171,19 @@ namespace WOF
 
             ContinueBuildQueue();
             TryPositionProbe();
-            ReportReadyWindow();
             DrawStreamingTrees();
+            streamingUpdateTimer.Stop();
+            if (_measureWindowFrames)
+                _windowMaxStreamingUpdateMilliseconds = Math.Max(
+                    _windowMaxStreamingUpdateMilliseconds,
+                    streamingUpdateTimer.Elapsed.TotalMilliseconds);
+            ReportReadyWindow();
         }
 
         private void DrawStreamingTrees()
         {
-            if (_viewer == null || _treeMaterial == null) return;
+            if (!CanDrawStreamingTrees(SystemInfo.supportsInstancing, _activeChunks.Count) ||
+                _viewer == null || _treeMaterial == null) return;
             const float visibleRadius = 820f;
             var radiusSquared = visibleRadius * visibleRadius;
             var viewerPosition = _viewer.position;
@@ -199,6 +206,11 @@ namespace WOF
                     null,
                     LightProbeUsage.Off);
             }
+        }
+
+        internal static bool CanDrawStreamingTrees(bool supportsInstancing, int activeChunkCount)
+        {
+            return supportsInstancing && activeChunkCount > 0;
         }
 
         private void ResolveViewer()
@@ -226,6 +238,7 @@ namespace WOF
             _windowMaxFrameMilliseconds = 0f;
             _windowMaxWorkerMilliseconds = 0d;
             _windowMaxApplyMilliseconds = 0d;
+            _windowMaxStreamingUpdateMilliseconds = 0d;
 
             if (WofSurvivalTerrainMath.IsLilyRealmCenter(_centerX, _centerZ))
             {
@@ -644,10 +657,13 @@ namespace WOF
 
         private void TryPositionProbe()
         {
-            if (!_probeRequested || _probePositioned || _localPlayer == null || !_localPlayer.IsSpawned ||
+            if (!_probeRequested || !_probeWarmupComplete || _probePositioned ||
+                _localPlayer == null || !_localPlayer.IsSpawned ||
                 !_localPlayer.IsOwner) return;
             var centerKey = ChunkSpec.MakeKey(_probeChunkX, _probeChunkZ);
-            if (!_activeChunks.ContainsKey(centerKey)) return;
+            var bakedCenterReady = WofSurvivalTerrainMath.IsInsideBakedAtlas(_probeChunkX, _probeChunkZ) &&
+                                   !WofSurvivalTerrainMath.IsAuthoredChunk(_probeChunkX, _probeChunkZ);
+            if (!_activeChunks.ContainsKey(centerKey) && !bakedCenterReady) return;
             const double localX = 0d;
             const double localZ = 96d;
             var height = WofSurvivalTerrainMath.GetTerrainHeight(_probeChunkX, _probeChunkZ, localX, localZ);
@@ -685,7 +701,8 @@ namespace WOF
                 $"dynamicChunks={_activeChunks.Count} colliders={colliders} vertices={vertices} " +
                 $"trees={trees} waterVertices={waterVertices} frames={_windowFrameCount} " +
                 $"avgFrameMs={averageFrameMilliseconds:F2} maxFrameMs={_windowMaxFrameMilliseconds:F2} " +
-                $"maxWorkerMs={_windowMaxWorkerMilliseconds:F2} maxApplyMs={_windowMaxApplyMilliseconds:F2}");
+                $"maxWorkerMs={_windowMaxWorkerMilliseconds:F2} maxApplyMs={_windowMaxApplyMilliseconds:F2} " +
+                $"maxStreamingUpdateMs={_windowMaxStreamingUpdateMilliseconds:F2}");
         }
 
         private void ParseProbeArguments()

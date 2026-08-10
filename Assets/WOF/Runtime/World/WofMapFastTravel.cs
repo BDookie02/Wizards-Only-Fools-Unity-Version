@@ -10,21 +10,28 @@ namespace WOF
         Swamp = 2,
         Desert = 3,
         Mountain = 4,
-        Graveyard = 5
+        Graveyard = 5,
+        LilyCoil = 6
     }
 
     public readonly struct WofMapDestinationRecord
     {
-        public WofMapDestinationRecord(WofMapDestination destination, string label, Vector3 position)
+        public WofMapDestinationRecord(
+            WofMapDestination destination,
+            string label,
+            Vector3 position,
+            bool showOnWorldMap = true)
         {
             Destination = destination;
             Label = label;
             Position = position;
+            ShowOnWorldMap = showOnWorldMap;
         }
 
         public WofMapDestination Destination { get; }
         public string Label { get; }
         public Vector3 Position { get; }
+        public bool ShowOnWorldMap { get; }
     }
 
     /// <summary>
@@ -45,7 +52,8 @@ namespace WOF
             new(WofMapDestination.Swamp, "SWAMP", new Vector3(0f, 140f, -1322f)),
             new(WofMapDestination.Desert, "DESERT", new Vector3(2048f, 140f, -1834f)),
             new(WofMapDestination.Mountain, "MOUNTAIN", new Vector3(1536f, 270f, 62f)),
-            new(WofMapDestination.Graveyard, "GRAVEYARD", new Vector3(2560f, 92f, 1156f))
+            new(WofMapDestination.Graveyard, "GRAVEYARD", new Vector3(2560f, 92f, 1156f)),
+            new(WofMapDestination.LilyCoil, "LILY COIL", WofLilyCoilLayout.PlayableSpawnPosition, false)
         };
 
         public static ReadOnlySpan<WofMapDestinationRecord> Destinations => DestinationRecords;

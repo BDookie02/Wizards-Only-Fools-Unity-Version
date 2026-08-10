@@ -56,6 +56,8 @@ namespace WOF.Tests
             Assert.That(reshape.rimPeakRadius, Is.EqualTo(142f));
             Assert.That(reshape.rimOuterRadius, Is.EqualTo(205f));
             Assert.That(reshape.shoulderOuterRadius, Is.EqualTo(720f));
+            Assert.That(WofMountainVillageLayout.PerimeterShoulderRadius,
+                Is.EqualTo(reshape.shoulderOuterRadius));
             Assert.That(reshape.centerX, Is.EqualTo(WofMountainVillageLayout.WorldOrigin.x));
             Assert.That(reshape.centerZ, Is.EqualTo(WofMountainVillageLayout.WorldOrigin.z));
 
@@ -137,6 +139,8 @@ namespace WOF.Tests
             Assert.That(WofMountainVillageLayout.WorldOrigin, Is.EqualTo(new Vector3(1536f, 0f, 0f)));
             Assert.That(WofMountainVillageLayout.ViewProbeSpawn,
                 Is.EqualTo(new Vector3(1536f, 110f, 900f)));
+            Assert.That(WofMountainVillageLayout.ProfileViewProbeSpawn,
+                Is.EqualTo(new Vector3(1536f, 245f, 760f)));
             Assert.That(WofMountainVillageLayout.SummitViewProbeSpawn,
                 Is.EqualTo(new Vector3(1536f, 225.54496789422794f, 92f)));
             Assert.That(WofMountainVillageLayout.BanquetViewProbeSpawn,
@@ -155,6 +159,68 @@ namespace WOF.Tests
             Assert.That(villager.z, Is.EqualTo(55.893706884455895f).Within(0.0001f));
             Assert.That(Vector3.Distance(WofMountainVillageLayout.FirstVillagerControllerProbeSpawn,
                 WofMountainVillageLayout.FirstVillagerWorldPosition), Is.LessThan(WofQuestTargetMath.CloseRange));
+        }
+
+        [Test]
+        public void UnityMountainUsesDirtStoneSnowBandsAndAContinuousFoothillAccessPath()
+        {
+            const string scenePath = "Assets/WOF/Generated/Scenes/WofMountainVillage.unity";
+            var scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
+            try
+            {
+                var roots = scene.GetRootGameObjects();
+                var renderers = roots.SelectMany(root => root.GetComponentsInChildren<MeshRenderer>(true)).ToArray();
+                var terrainRenderer = renderers.Single(item => item.name == "BandedMountainTerrain_DirtStoneSnow");
+                var mesh = terrainRenderer.GetComponent<MeshFilter>().sharedMesh;
+                Assert.That(mesh, Is.Not.Null);
+                var vertices = mesh.vertices;
+                var colors = mesh.colors;
+                Assert.That(colors, Has.Length.EqualTo(vertices.Length));
+                var low = AverageColor(vertices, colors, WofMountainVillageLayout.ReactBaseHeight + 20f,
+                    WofMountainVillageLayout.ReactBaseHeight + 88f);
+                var lowerFace = AverageColor(vertices, colors,
+                    WofMountainVillageLayout.ReactBaseHeight + 28f,
+                    WofMountainVillageLayout.ReactBaseHeight + 88f,
+                    480f,
+                    660f);
+                var middle = AverageColor(vertices, colors, WofMountainVillageLayout.ReactBaseHeight + 132f,
+                    WofMountainVillageLayout.ReactBaseHeight + 168f);
+                var summit = AverageColor(vertices, colors, WofMountainVillageLayout.ReactBaseHeight + 205f,
+                    float.PositiveInfinity);
+                Assert.That(low.r, Is.GreaterThan(low.b + 0.08f), "The lower half should read as brown dirt.");
+                Assert.That(lowerFace.r, Is.GreaterThan(lowerFace.g + 0.04f),
+                    "The expanded lower face must stay dirt instead of blending into a broad green hillside.");
+                Assert.That(lowerFace.g, Is.GreaterThan(lowerFace.b + 0.04f),
+                    "The expanded lower face must retain the warm dirt band.");
+                Assert.That(System.Math.Abs(middle.r - middle.g), Is.LessThan(0.12f),
+                    "The middle band should read as neutral stone.");
+                Assert.That(summit.r, Is.GreaterThan(0.78f));
+                Assert.That(summit.g, Is.GreaterThan(0.82f));
+                Assert.That(summit.b, Is.GreaterThan(0.86f));
+
+                var transforms = roots.SelectMany(root => root.GetComponentsInChildren<Transform>(true)).ToArray();
+                Assert.That(transforms.Any(item => item.name == "MountainWrappingTrail"), Is.False,
+                    "The disconnected React spiral must not be instantiated.");
+                var access = roots.SelectMany(root =>
+                    root.GetComponentsInChildren<WofMountainAccessPathRuntime>(true)).Single();
+                Assert.That(access.PointCount, Is.GreaterThanOrEqualTo(36));
+                Assert.That(access.StartLocalPoint.z, Is.GreaterThan(620f));
+                Assert.That(new Vector2(access.EndLocalPoint.x, access.EndLocalPoint.z).magnitude, Is.LessThan(100f));
+                Physics.SyncTransforms();
+                Assert.That(access.TryValidate(out var maximumGrade, out var maximumGap, out var misses), Is.True,
+                    $"Path continuity failed: grade={maximumGrade:F3}, gap={maximumGap:F2}, misses={misses}.");
+                Assert.That(maximumGrade, Is.LessThanOrEqualTo(WofMountainAccessPathLayout.MaximumGrade + 0.015f));
+                Assert.That(maximumGap,
+                    Is.LessThanOrEqualTo(WofMountainAccessPathLayout.MaximumSegmentLength + 0.05f));
+                Assert.That(misses, Is.Zero);
+                Assert.That(roots.SelectMany(root => root.GetComponentsInChildren<WofMountainSnowRuntime>(true)).Count(),
+                    Is.EqualTo(1));
+                Assert.That(WofMountainSnowRuntime.DesktopFlakeCount, Is.EqualTo(240));
+            }
+            finally
+            {
+                EditorSceneManager.CloseScene(scene, true);
+            }
         }
 
         [Test]
@@ -221,6 +287,34 @@ namespace WOF.Tests
             Assert.That(float.IsFinite(value.x), Is.True, context + " x");
             Assert.That(float.IsFinite(value.y), Is.True, context + " y");
             Assert.That(float.IsFinite(value.z), Is.True, context + " z");
+        }
+
+        private static Color AverageColor(Vector3[] vertices, Color[] colors, float minimumY, float maximumY)
+        {
+            return AverageColor(vertices, colors, minimumY, maximumY, 0f, float.PositiveInfinity);
+        }
+
+        private static Color AverageColor(
+            Vector3[] vertices,
+            Color[] colors,
+            float minimumY,
+            float maximumY,
+            float minimumRadius,
+            float maximumRadius)
+        {
+            var total = Color.clear;
+            var count = 0;
+            for (var index = 0; index < vertices.Length; index++)
+            {
+                if (vertices[index].y < minimumY || vertices[index].y > maximumY) continue;
+                var radius = new Vector2(vertices[index].x, vertices[index].z).magnitude;
+                if (radius < minimumRadius || radius > maximumRadius) continue;
+                total += colors[index];
+                count++;
+            }
+            Assert.That(count, Is.GreaterThan(0),
+                $"No mountain color samples in y={minimumY:F1}..{maximumY:F1}, r={minimumRadius:F1}..{maximumRadius:F1}.");
+            return total / count;
         }
 
         private static WofMountainVillageDocument LoadLayout()

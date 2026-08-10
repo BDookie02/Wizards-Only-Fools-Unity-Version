@@ -6,6 +6,7 @@ using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
+using UnityEngine.SceneManagement;
 
 namespace WOF
 {
@@ -18,6 +19,7 @@ namespace WOF
     {
         private Gamepad _automationGamepad;
         private string _urgentProbeRoot;
+        private string _settingsRemapProbeRoot;
 
         private void OnEnable()
         {
@@ -31,6 +33,10 @@ namespace WOF
             if (!string.IsNullOrWhiteSpace(_urgentProbeRoot))
             {
                 StartCoroutine(RunUrgentPlayableControllerProbe());
+            }
+            else if (!string.IsNullOrWhiteSpace(_settingsRemapProbeRoot))
+            {
+                StartCoroutine(RunSettingsRemapProbe());
             }
         }
 
@@ -80,18 +86,91 @@ namespace WOF
         private void ParseAutomationArguments()
         {
             const string prefix = "--wof-urgent-controller-probe=";
+            const string settingsPrefix = "--wof-settings-remap-probe=";
             foreach (var argument in Environment.GetCommandLineArgs())
             {
-                if (!argument.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
-                var path = argument.Substring(prefix.Length).Trim('"');
+                var activePrefix = argument.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                    ? prefix
+                    : argument.StartsWith(settingsPrefix, StringComparison.OrdinalIgnoreCase)
+                        ? settingsPrefix
+                        : null;
+                if (activePrefix == null) continue;
+                var path = argument.Substring(activePrefix.Length).Trim('"');
                 if (!path.StartsWith("D:\\", StringComparison.OrdinalIgnoreCase))
                 {
-                    Debug.LogError("[WOF-AUTOMATION] URGENT_PLAYABLE_PROBE_FAIL screenshot-root-not-on-d");
+                    Debug.LogError("[WOF-AUTOMATION] CONTROLLER_PROBE_FAIL screenshot-root-not-on-d");
                     return;
                 }
                 Directory.CreateDirectory(path);
-                _urgentProbeRoot = path;
+                if (activePrefix == prefix) _urgentProbeRoot = path;
+                else _settingsRemapProbeRoot = path;
             }
+        }
+
+        private IEnumerator RunSettingsRemapProbe()
+        {
+            var deadline = Time.realtimeSinceStartup + 20f;
+            while ((WofHud.Instance == null || !WofHud.Instance.IsGameplayVisible) &&
+                   Time.realtimeSinceStartup < deadline) yield return null;
+            if (WofHud.Instance == null || !WofHud.Instance.IsGameplayVisible)
+            {
+                FailSettingsProbe("gameplay-hud-not-ready");
+                yield break;
+            }
+
+            _automationGamepad = InputSystem.AddDevice<Gamepad>("WOF Settings Remap QA Controller");
+            _automationGamepad.MakeCurrent();
+            InputSystem.QueueStateEvent(_automationGamepad, new GamepadState());
+            yield return null;
+            yield return null;
+
+            yield return TapControllerButtonUntil(GamepadButton.Start, () => WofPauseAndScoreboardRuntime.IsPauseOpen, 4f);
+            if (!WofPauseAndScoreboardRuntime.IsPauseOpen)
+            {
+                FailSettingsProbe("start-did-not-open-pause");
+                yield break;
+            }
+
+            yield return TapControllerButton(GamepadButton.DpadDown);
+            yield return TapControllerButton(GamepadButton.A);
+            yield return new WaitForSecondsRealtime(0.35f);
+            yield return TapControllerButton(GamepadButton.DpadRight);
+            for (var index = 0; index < 7; index++) yield return TapControllerButton(GamepadButton.DpadDown);
+            yield return TapControllerButton(GamepadButton.A);
+            yield return TapControllerButton(GamepadButton.Y);
+            yield return new WaitForSecondsRealtime(0.2f);
+
+            var leftCastButton = WofControllerBindings.GetButton(WofControllerActions.LeftCast);
+            var menuSelectButton = WofControllerBindings.GetButton(WofControllerActions.MenuSelect);
+            if (leftCastButton != WofControllerButtons.Y || menuSelectButton != WofControllerButtons.A)
+            {
+                FailSettingsProbe($"binding-isolation-failed leftCast={leftCastButton} menuSelect={menuSelectButton}");
+                yield break;
+            }
+
+            InputSystem.QueueStateEvent(_automationGamepad, new GamepadState().WithButton(GamepadButton.Y));
+            yield return null;
+            var castActive = WofControllerBindings.WasPressedThisFrame(_automationGamepad, WofControllerActions.LeftCast);
+            var selectActive = WofControllerBindings.WasPressedThisFrame(_automationGamepad, WofControllerActions.MenuSelect);
+            InputSystem.QueueStateEvent(_automationGamepad, new GamepadState());
+            yield return null;
+            if (!castActive || selectActive)
+            {
+                FailSettingsProbe($"action-routing-failed cast={castActive} select={selectActive}");
+                yield break;
+            }
+
+            ScreenCapture.CaptureScreenshot(Path.Combine(_settingsRemapProbeRoot, "controller-remap-left-cast-y.png"));
+            yield return new WaitForSecondsRealtime(0.75f);
+            yield return TapControllerButton(GamepadButton.B);
+            yield return TapControllerButtonUntil(GamepadButton.B, () => !WofPauseAndScoreboardRuntime.IsPauseOpen, 4f);
+            if (WofPauseAndScoreboardRuntime.IsPauseOpen)
+            {
+                FailSettingsProbe("menu-back-did-not-close-settings-and-pause");
+                yield break;
+            }
+
+            Debug.Log("[WOF-AUTOMATION] SETTINGS_CONTROLLER_REMAP_PASS action=leftCast button=y isolatedFrom=menuSelect");
         }
 
         private IEnumerator RunUrgentPlayableControllerProbe()
@@ -210,6 +289,34 @@ namespace WOF
             yield return CaptureProbeScreenshot("controller-waypoint-compass.png");
 
             yield return TapControllerButtonUntil(GamepadButton.DpadLeft, () => WofNavigationMapRuntime.IsExpanded, 5f);
+            for (var index = 0; index < 3; index++)
+            {
+                yield return TapControllerButton(GamepadButton.DpadDown);
+                yield return new WaitForSecondsRealtime(0.15f);
+            }
+            var selectedDestination = UnityEngine.EventSystems.EventSystem.current?.currentSelectedGameObject;
+            if (selectedDestination == null || selectedDestination.name != "TravelLilyCoil")
+            {
+                FailProbe($"controller-lily-coil-selection-failed selected={selectedDestination?.name ?? "none"}");
+                yield break;
+            }
+            yield return TapControllerButtonUntil(GamepadButton.A, () => !WofNavigationMapRuntime.IsExpanded, 5f);
+            var lilyTravelDeadline = Time.realtimeSinceStartup + 12f;
+            while (((player.transform.position - WofLilyCoilLayout.PlayableSpawnPosition).sqrMagnitude > 4f ||
+                    !SceneManager.GetSceneByName(WofLilyCoilSceneLoader.SceneName).isLoaded) &&
+                   Time.realtimeSinceStartup < lilyTravelDeadline) yield return null;
+            if (WofNavigationMapRuntime.IsExpanded ||
+                (player.transform.position - WofLilyCoilLayout.PlayableSpawnPosition).sqrMagnitude > 4f ||
+                !SceneManager.GetSceneByName(WofLilyCoilSceneLoader.SceneName).isLoaded)
+            {
+                FailProbe($"controller-lily-coil-fast-travel-failed position={player.transform.position}");
+                yield break;
+            }
+            Debug.Log($"[WOF-AUTOMATION] CONTROLLER_LILY_COIL_FAST_TRAVEL_PASS position={player.transform.position}");
+            yield return new WaitForSecondsRealtime(0.75f);
+            yield return CaptureProbeScreenshot("controller-lily-coil-fast-travel.png");
+
+            yield return TapControllerButtonUntil(GamepadButton.DpadLeft, () => WofNavigationMapRuntime.IsExpanded, 5f);
             yield return TapControllerButtonUntil(GamepadButton.B, () => !WofNavigationMapRuntime.IsExpanded, 5f);
             if (WofNavigationMapRuntime.IsExpanded)
             {
@@ -290,6 +397,11 @@ namespace WOF
         private static void FailProbe(string reason)
         {
             Debug.LogError($"[WOF-AUTOMATION] URGENT_PLAYABLE_PROBE_FAIL {reason}");
+        }
+
+        private static void FailSettingsProbe(string reason)
+        {
+            Debug.LogError($"[WOF-AUTOMATION] SETTINGS_CONTROLLER_REMAP_FAIL {reason}");
         }
 
         private void RemoveAutomationGamepad()

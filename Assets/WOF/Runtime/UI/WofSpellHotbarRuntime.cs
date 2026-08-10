@@ -89,8 +89,10 @@ namespace WOF
 
             var gamepad = Gamepad.current;
             if (!WofInputRouter.IsControllerGameplayActive(gamepad)) return;
-            UpdateControllerHand(gamepad, WofHandSide.Left, gamepad.leftShoulder.isPressed, ref _nextLeftRepeatAt);
-            UpdateControllerHand(gamepad, WofHandSide.Right, gamepad.rightShoulder.isPressed, ref _nextRightRepeatAt);
+            UpdateControllerHand(gamepad, WofHandSide.Left,
+                WofControllerBindings.IsPressed(gamepad, WofControllerActions.LeftHotbar), ref _nextLeftRepeatAt);
+            UpdateControllerHand(gamepad, WofHandSide.Right,
+                WofControllerBindings.IsPressed(gamepad, WofControllerActions.RightHotbar), ref _nextRightRepeatAt);
         }
 
         public int GetSelectedSlot(WofHandSide hand)
@@ -157,9 +159,8 @@ namespace WOF
             bool bumperHeld,
             ref float nextRepeatAt)
         {
-            var bumperPressed = hand == WofHandSide.Left
-                ? gamepad.leftShoulder.wasPressedThisFrame
-                : gamepad.rightShoulder.wasPressedThisFrame;
+            var action = hand == WofHandSide.Left ? WofControllerActions.LeftHotbar : WofControllerActions.RightHotbar;
+            var bumperPressed = WofControllerBindings.WasPressedThisFrame(gamepad, action);
             if (!bumperHeld)
             {
                 nextRepeatAt = 0f;

@@ -4,6 +4,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
+  getUnityMountainBandedColor,
   getUnityMountainPerimeterLift,
 } from "./wof-unity-mountain-profile.mts";
 
@@ -429,11 +430,18 @@ for (let cz = minimumChunkZ; cz <= maximumChunkZ; cz += 1) {
         const localX = -half + xIndex * step;
         const worldX = chunk.x + localX;
         const worldZ = chunk.z + localZ;
-        const y = terrainSurface.getSurvivalTerrainHeightForChunk(chunk, localX, localZ) +
-          getUnityMountainPerimeterLift(worldX, worldZ, blockSize);
+        const mountainLift = getUnityMountainPerimeterLift(worldX, worldZ, blockSize);
+        const y = terrainSurface.getSurvivalTerrainHeightForChunk(chunk, localX, localZ) + mountainLift;
         terrainSurface.getSurvivalRenderedTerrainColorInto(worldX, worldZ, y, colorScratch);
+        const mountainColor = getUnityMountainBandedColor(
+          worldX,
+          worldZ,
+          mountainLift,
+          blockSize,
+          colorScratch,
+        );
         positions.push(worldX, y, worldZ);
-        colors.push(colorScratch.r, colorScratch.g, colorScratch.b);
+        colors.push(mountainColor.r, mountainColor.g, mountainColor.b);
         uvs.push(worldX / (blockSize * 0.93), worldZ / (blockSize * 0.93));
       }
     }
@@ -452,7 +460,7 @@ for (let cz = minimumChunkZ; cz <= maximumChunkZ; cz += 1) {
 }
 
 const sourceHash = createHash("sha256");
-sourceHash.update("unity-mountain-caldera-perimeter-v2");
+sourceHash.update("unity-mountain-caldera-perimeter-v3-banded");
 for (const sourcePath of sourcePaths) {
   sourceHash.update(sourcePath.replace(reactRoot, "").replaceAll("\\", "/"));
   sourceHash.update(await readFile(sourcePath));

@@ -61,6 +61,8 @@ namespace WOF
         private bool _controllerBackHeld;
         private bool _controllerWaypointHeld;
         private bool _controllerClearWaypointHeld;
+        private GameObject _mapPanPreservedSelection;
+        private int _mapPanSelectionRestoreFrames;
         private bool _explorationSavePending;
         private float _explorationSaveAt;
         private float _expandedZoom = MinimumExpandedZoom;
@@ -144,9 +146,9 @@ namespace WOF
 
             var keyboardToggle = Keyboard.current?.mKey.wasPressedThisFrame ?? false;
             var gamepad = Gamepad.current;
-            var hotbarModifierHeld = (gamepad?.leftShoulder.isPressed ?? false) ||
-                                     (gamepad?.rightShoulder.isPressed ?? false);
-            var controllerToggleHeld = !hotbarModifierHeld && (gamepad?.dpad.left.isPressed ?? false);
+            var hotbarModifierHeld = WofControllerBindings.IsPressed(gamepad, WofControllerActions.LeftHotbar) ||
+                                     WofControllerBindings.IsPressed(gamepad, WofControllerActions.RightHotbar);
+            var controllerToggleHeld = !hotbarModifierHeld && WofControllerBindings.IsPressed(gamepad, WofControllerActions.Map);
             var controllerToggle = controllerToggleHeld && !_controllerToggleHeld;
             _controllerToggleHeld = controllerToggleHeld;
             if (keyboardToggle || (controllerToggle && !IsExpanded))
@@ -154,7 +156,7 @@ namespace WOF
                 SetExpanded(!IsExpanded);
                 return;
             }
-            var controllerBackHeld = gamepad?.buttonEast.isPressed ?? false;
+            var controllerBackHeld = WofControllerBindings.IsPressed(gamepad, WofControllerActions.MenuBack);
             var controllerBack = controllerBackHeld && !_controllerBackHeld;
             _controllerBackHeld = controllerBackHeld;
             if (IsExpanded && controllerBack)
@@ -181,6 +183,22 @@ namespace WOF
             UpdateMarkers(_localPlayer.transform.position, _localPlayer.transform.eulerAngles.y);
             if (!IsExpanded) RenderCompactMapIfDue(_localPlayer.transform.position);
             if (_explorationSavePending && Time.unscaledTime >= _explorationSaveAt) SaveExplorationNow();
+        }
+
+        private void LateUpdate()
+        {
+            if (!IsExpanded) return;
+            if (_mapPanSelectionRestoreFrames > 0 && _mapPanPreservedSelection != null)
+            {
+                EventSystem.current?.SetSelectedGameObject(_mapPanPreservedSelection);
+                _mapPanSelectionRestoreFrames--;
+                return;
+            }
+            var selected = EventSystem.current?.currentSelectedGameObject;
+            if (selected != null && _destinationButtons.Exists(button => button.gameObject == selected))
+            {
+                _mapPanPreservedSelection = selected;
+            }
         }
 
         public void ToggleExpanded()
@@ -359,6 +377,7 @@ namespace WOF
             SetRect(explorationObject.GetComponent<RectTransform>(), Vector2.zero, Vector2.one);
             foreach (var record in WofMapFastTravel.Destinations)
             {
+                if (!record.ShowOnWorldMap) continue;
                 CreateLocationMarker(record);
             }
             var north = CreateText("North", worldViewport.transform, "N", 15, TextAnchor.UpperCenter, new Color32(251, 191, 36, 255));
@@ -423,6 +442,7 @@ namespace WOF
             var cursorInput = gamepad?.rightStick.ReadValue() ?? Vector2.zero;
             if (cursorInput.sqrMagnitude > 0.04f)
             {
+                _mapPanSelectionRestoreFrames = 2;
                 _mapCursorNormalized += cursorInput * (0.46f / _expandedZoom) * deltaTime;
                 _mapCursorNormalized = ClampNormalized(_mapCursorNormalized);
                 _mapFocusNormalized = _mapCursorNormalized;
@@ -753,10 +773,14 @@ namespace WOF
                     ? _destinationButtons[0].gameObject
                     : _closeButton?.gameObject;
                 EventSystem.current?.SetSelectedGameObject(selection);
+                _mapPanPreservedSelection = selection;
+                _mapPanSelectionRestoreFrames = 0;
             }
             else
             {
                 EventSystem.current?.SetSelectedGameObject(null);
+                _mapPanPreservedSelection = null;
+                _mapPanSelectionRestoreFrames = 0;
                 _controllerWaypointHeld = false;
                 _controllerClearWaypointHeld = false;
             }
@@ -873,6 +897,10 @@ namespace WOF
 
         private void LayoutDestinationButtons(bool portrait)
         {
+            var rowCount = portrait ? Mathf.CeilToInt(_destinationButtons.Count / 2f) : _destinationButtons.Count;
+            var availableHeight = portrait ? 0.78f : 0.80f;
+            var rowStride = availableHeight / Mathf.Max(1, rowCount);
+            var buttonHeight = Mathf.Min(portrait ? 0.20f : 0.098f, rowStride * 0.78f);
             for (var index = 0; index < _destinationButtons.Count; index++)
             {
                 var rect = _destinationButtons[index].GetComponent<RectTransform>();
@@ -881,13 +909,13 @@ namespace WOF
                     var column = index % 2;
                     var row = index / 2;
                     var left = 0.04f + column * 0.48f;
-                    var top = 0.82f - row * 0.245f;
-                    SetRect(rect, new Vector2(left, top - 0.20f), new Vector2(left + 0.44f, top));
+                    var top = 0.82f - row * rowStride;
+                    SetRect(rect, new Vector2(left, top - buttonHeight), new Vector2(left + 0.44f, top));
                 }
                 else
                 {
-                    var top = 0.84f - index * 0.128f;
-                    SetRect(rect, new Vector2(0.08f, top - 0.098f), new Vector2(0.92f, top));
+                    var top = 0.84f - index * rowStride;
+                    SetRect(rect, new Vector2(0.08f, top - buttonHeight), new Vector2(0.92f, top));
                 }
             }
         }
