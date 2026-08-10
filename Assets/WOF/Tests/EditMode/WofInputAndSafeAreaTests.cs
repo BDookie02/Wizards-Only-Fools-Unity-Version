@@ -148,6 +148,17 @@ namespace WOF.Tests
         }
 
         [Test]
+        public void EquippedOutwardPointingHandsKeepTheReactFourFrameIdleLoop()
+        {
+            Assert.That(WofHud.ResolveEquippedHandFrame(true, false, 0, 3), Is.EqualTo(0));
+            Assert.That(WofHud.ResolveEquippedHandFrame(true, false, 1, 3), Is.EqualTo(1));
+            Assert.That(WofHud.ResolveEquippedHandFrame(true, false, 2, 3), Is.EqualTo(2));
+            Assert.That(WofHud.ResolveEquippedHandFrame(true, false, 3, 2), Is.EqualTo(3));
+            Assert.That(WofHud.ResolveEquippedHandFrame(true, true, 3, 2), Is.EqualTo(2));
+            Assert.That(WofHud.ResolveEquippedHandFrame(false, false, 2, 3), Is.EqualTo(2));
+        }
+
+        [Test]
         public void ResolveLookPreservesLegacyMouseScaleWithoutScalingTouchLook()
         {
             var look = WofInputRouter.ResolveLook(new Vector2(20f, -10f), new Vector2(0.5f, 0.25f));
