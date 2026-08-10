@@ -90,6 +90,7 @@ namespace WOF
                 return;
             }
             if (!_overlay.activeSelf && WofPauseAndScoreboardRuntime.IsAnyMenuOpen) return;
+            if (!_overlay.activeSelf && WofInputRouter.GameplaySuppressed) return;
 
             if (!_probeApplied && _spellMenuProbe && hud.IsGameplayVisible)
             {

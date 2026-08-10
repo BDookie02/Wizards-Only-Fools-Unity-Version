@@ -40,6 +40,8 @@ namespace WOF
         internal const float SlideStartMinSpeedSquared = 0.55f;
         internal const float CrouchHoldSeconds = 3f;
         internal const float CrouchSpeedMultiplier = 0.44f;
+        internal const float VClipVerticalSpeed = 10f;
+        internal const float VClipSprintMultiplier = 3.2f;
         internal const float ReactStandingCameraHeight = 1.08f;
         internal const float ReactLowCameraHeight = 0.52f;
         internal const float UnityStandingCameraHeight = 1.65f;
@@ -118,6 +120,44 @@ namespace WOF
         internal static float ResolveCameraHeight(bool isSliding, bool isCrouching)
         {
             return isSliding || isCrouching ? UnityLowCameraHeight : UnityStandingCameraHeight;
+        }
+
+        internal static Vector3 ResolveVClipVelocity(
+            Vector2 move,
+            float yaw,
+            bool ascend,
+            bool descend,
+            bool sprint,
+            bool speedBoostActive,
+            bool slowActive)
+        {
+            if (!IsFinite(move) || !IsFinite(yaw))
+            {
+                return Vector3.zero;
+            }
+
+            var hasMovement = move.sqrMagnitude > 0f || ascend || descend;
+            var isSprinting = hasMovement && sprint;
+            var horizontalSpeed = WofGameConstants.WalkSpeed *
+                                  (speedBoostActive ? WofSpellLoadout.SpeedBoostMultiplier : 1f) *
+                                  (slowActive ? WofSpellRuntimeTuning.TungstonSlowMultiplier : 1f) *
+                                  (isSprinting ? VClipSprintMultiplier : 1f);
+            var heading = Quaternion.Euler(0f, yaw, 0f);
+            var planarInput = Vector2.ClampMagnitude(move, 1f);
+            var planar = heading * new Vector3(planarInput.x, 0f, planarInput.y) * horizontalSpeed;
+            var verticalInput = (ascend ? 1f : 0f) - (descend ? 1f : 0f);
+            var verticalSpeed = VClipVerticalSpeed * (isSprinting ? VClipSprintMultiplier : 1f);
+            return planar + Vector3.up * (verticalInput * verticalSpeed);
+        }
+
+        internal static void ResetForVClip(ref WofMovementRuntimeState state)
+        {
+            EnsureInitialized(ref state);
+            state.IsSliding = false;
+            state.IsCrouching = false;
+            state.SlideSecondsRemaining = 0f;
+            state.CrouchHoldStartedAt = float.NegativeInfinity;
+            state.WasJumpHeld = false;
         }
 
         internal static bool ApplyJumpThruster(

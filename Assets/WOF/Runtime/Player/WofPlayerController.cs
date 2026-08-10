@@ -62,6 +62,10 @@ namespace WOF
             false,
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Server);
+        private readonly NetworkVariable<bool> _isVClipEnabled = new(
+            false,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
         private readonly NetworkVariable<bool> _isInLilyCoilTube = new(
             false,
             NetworkVariableReadPermission.Everyone,
@@ -156,20 +160,25 @@ namespace WOF
         private bool _darrelReturnArmed;
         private Vector3 _darrelReturnPosition;
         private float _darrelReturnYaw;
+        private bool? _pendingVClipEnabled;
+        private bool _vclipMovementLogged;
 
         public float Health => _health.Value;
         public float Armor => _armor.Value;
         public bool IsDead => _isDead.Value;
         public bool HasActiveSpellShield => IsTimedBuffActive(_discShieldUntil.Value) ||
                                             IsTimedBuffActive(_orbShieldUntil.Value);
-        public bool IsGrounded => IsLocalLilyCoilActive
+        public bool IsGrounded => !IsVClipEnabled && (IsLocalLilyCoilActive
             ? _lastLilyCoilGrounded
-            : _controller != null && (!_controller.enabled || _controller.isGrounded);
+            : _controller != null && (!_controller.enabled || _controller.isGrounded));
         public bool IsCasting => IsSpawned && NetworkManager != null &&
                                  NetworkManager.ServerTime.Time < _castingUntil.Value;
         public bool IsSprinting => _isSprinting.Value;
         public bool IsSliding => _isSliding.Value;
         public bool IsCrouching => _isCrouching.Value;
+        public bool IsVClipEnabled => IsOwner && _pendingVClipEnabled.HasValue
+            ? _pendingVClipEnabled.Value
+            : _isVClipEnabled.Value;
         public bool IsMoving
         {
             get
@@ -279,11 +288,13 @@ namespace WOF
             _health.OnValueChanged += HandleHealthChanged;
             _armor.OnValueChanged += HandleArmorChanged;
             _isDead.OnValueChanged += HandleDeadChanged;
+            _isVClipEnabled.OnValueChanged += HandleVClipEnabledChanged;
             _leftEquippedSpell.OnValueChanged += HandleEquippedSpellChanged;
             _rightEquippedSpell.OnValueChanged += HandleEquippedSpellChanged;
 
             var hasLocalControl = IsServer || IsOwner;
             _controller.enabled = hasLocalControl && !_isDead.Value;
+            _controller.detectCollisions = !IsVClipEnabled;
             if (playerCamera != null)
             {
                 playerCamera.gameObject.SetActive(IsOwner);
@@ -425,6 +436,7 @@ namespace WOF
             _health.OnValueChanged -= HandleHealthChanged;
             _armor.OnValueChanged -= HandleArmorChanged;
             _isDead.OnValueChanged -= HandleDeadChanged;
+            _isVClipEnabled.OnValueChanged -= HandleVClipEnabledChanged;
             _leftEquippedSpell.OnValueChanged -= HandleEquippedSpellChanged;
             _rightEquippedSpell.OnValueChanged -= HandleEquippedSpellChanged;
         }
@@ -483,6 +495,11 @@ namespace WOF
                     ref _predictedLilyCoilState,
                     command,
                     Time.deltaTime);
+            }
+
+            if (WofNavigationRecorderRuntime.IsActive)
+            {
+                RecordNavigationSample(command);
             }
 
             if (WofInputRouter.ConsumeCast(out var castingHand))
@@ -544,6 +561,47 @@ namespace WOF
             _isInLilyCoilTube.Value = _serverLilyCoilState.Active;
             _lilyCoilTubeT.Value = _serverLilyCoilState.T;
             _lilyCoilSurfaceAngle.Value = _serverLilyCoilState.SurfaceAngle;
+        }
+
+        private void RecordNavigationSample(WofInputCommand command)
+        {
+            var vclip = IsVClipEnabled;
+            var hasPlanarInput = command.Move.sqrMagnitude > 0f;
+            var moving = hasPlanarInput || (vclip && (command.Jump || command.Slide));
+            var sprinting = moving && command.Sprint && !IsSliding && !IsCrouching;
+            var slideHeld = !vclip && command.Slide && (IsSliding || sprinting || hasPlanarInput);
+            var velocity = vclip
+                ? WofMovementMath.ResolveVClipVelocity(
+                    command.Move,
+                    command.Yaw,
+                    command.Jump,
+                    command.Slide,
+                    command.Sprint,
+                    IsSpeedBoostActive,
+                    IsTimedBuffActive(_slowUntil.Value))
+                : _controller.velocity;
+            var aimDirection = playerCamera != null ? playerCamera.transform.forward : transform.forward;
+            var bootstrap = WofBootstrap.Instance;
+            var gameMode = bootstrap == null || !bootstrap.IsSurvivalSession
+                ? "custom-lobby"
+                : bootstrap.Mode == WofSessionMode.Solo
+                    ? "solo-survival"
+                    : "multiplayer-survival";
+            WofNavigationRecorderRuntime.Record(
+                gameMode,
+                transform.position,
+                new Vector3(command.Pitch, command.Yaw, 0f),
+                aimDirection,
+                velocity,
+                command.Move,
+                sprinting,
+                command.Jump,
+                slideHeld,
+                vclip,
+                IsGrounded,
+                moving,
+                IsSliding,
+                WofSpellMenuRuntime.IsOpen);
         }
 
         private void LateUpdate()
@@ -633,6 +691,40 @@ namespace WOF
             {
                 EquipSpellRpc(hand, (int)spell);
             }
+        }
+
+        public bool SetVClipEnabled(bool enabled)
+        {
+            if (!IsOwner || !IsSpawned || _isDead.Value)
+            {
+                return false;
+            }
+
+            _pendingVClipEnabled = enabled;
+            if (enabled) _vclipMovementLogged = false;
+            ApplyVClipCollisionState(enabled);
+            if (IsServer)
+            {
+                SetVClipEnabledServer(enabled);
+            }
+            else
+            {
+                SetVClipEnabledRpc(enabled);
+            }
+            Debug.Log($"[WOF-AUTOMATION] VCLIP_REQUEST enabled={enabled.ToString().ToLowerInvariant()}");
+            return true;
+        }
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+        private void SetVClipEnabledRpc(bool enabled)
+        {
+            SetVClipEnabledServer(enabled);
+        }
+
+        private void SetVClipEnabledServer(bool enabled)
+        {
+            _isVClipEnabled.Value = enabled;
+            ApplyVClipCollisionState(enabled);
         }
 
         [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
@@ -1436,6 +1528,39 @@ namespace WOF
                     movementState.IsCrouching);
             }
 
+            if (IsVClipEnabled)
+            {
+                WofMovementMath.ResetForVClip(ref movementState);
+                WofLilyCoilMovement.Reset(ref lilyCoilState);
+                _lastLilyCoilGrounded = false;
+                _lastLilyCoilMoving = false;
+                _lastGroundedAt = float.NegativeInfinity;
+                transform.rotation = Quaternion.Euler(0f, command.Yaw, 0f);
+                var vclipVelocity = WofMovementMath.ResolveVClipVelocity(
+                    command.Move,
+                    command.Yaw,
+                    command.Jump,
+                    command.Slide,
+                    command.Sprint,
+                    IsSpeedBoostActive,
+                    IsTimedBuffActive(_slowUntil.Value));
+                if (!_vclipMovementLogged && IsOwner && vclipVelocity.sqrMagnitude > 0.0001f)
+                {
+                    _vclipMovementLogged = true;
+                    Debug.Log($"[WOF-AUTOMATION] VCLIP_MOVEMENT velocity={vclipVelocity} collisions={_controller.detectCollisions.ToString().ToLowerInvariant()}");
+                }
+                verticalVelocity = vclipVelocity.y;
+                SetControllerPosition(transform.position + vclipVelocity * deltaTime);
+                ApplyCameraHeight(false, false);
+                var sprinting = command.Sprint &&
+                                (command.Move.sqrMagnitude > 0f || command.Jump || command.Slide);
+                return new WofMovementFrame(
+                    vclipVelocity.sqrMagnitude > 0f ? vclipVelocity.magnitude : WofGameConstants.WalkSpeed,
+                    sprinting,
+                    false,
+                    false);
+            }
+
             if (WofLilyCoilLayout.IsInsideTubeRealm(transform.position))
             {
                 return SimulateLilyCoilTube(
@@ -1723,6 +1848,7 @@ namespace WOF
             WofBootstrap.Instance?.ObserveClientReplicatedDead(OwnerClientId, previous, current);
             var needsController = (IsServer || IsOwner) && !current;
             _controller.enabled = needsController;
+            _controller.detectCollisions = !IsVClipEnabled;
             if (visualRoot != null)
             {
                 visualRoot.SetActive(!IsOwner);
@@ -1738,6 +1864,29 @@ namespace WOF
                     _predictedVerticalVelocity = 0f;
                     SetControllerPosition(_authoritativePosition.Value);
                 }
+            }
+        }
+
+        private void HandleVClipEnabledChanged(bool previous, bool current)
+        {
+            if (IsOwner && _pendingVClipEnabled == current)
+            {
+                _pendingVClipEnabled = null;
+            }
+            ApplyVClipCollisionState(IsVClipEnabled);
+            if (!current)
+            {
+                _serverVerticalVelocity = 0f;
+                _predictedVerticalVelocity = 0f;
+            }
+            Debug.Log($"[WOF-AUTOMATION] VCLIP_CHANGED owner={OwnerClientId} enabled={current.ToString().ToLowerInvariant()}");
+        }
+
+        private void ApplyVClipCollisionState(bool enabled)
+        {
+            if (_controller != null)
+            {
+                _controller.detectCollisions = !enabled;
             }
         }
 

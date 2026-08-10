@@ -63,6 +63,12 @@ public static class WofCommandConsoleCapture {
     keybd_event(virtualKey, scanCode, KeyUp, UIntPtr.Zero);
   }
 
+  public static void HoldKey(byte virtualKey, int milliseconds) {
+    SendKeyDown(virtualKey);
+    System.Threading.Thread.Sleep(milliseconds);
+    SendKeyUp(virtualKey);
+  }
+
   public static void SendText(string value) {
     foreach (char character in value) {
       short encoded = VkKeyScan(character);
@@ -108,13 +114,20 @@ $profilePath = Join-Path $profileRoot 'survival-save-v1.json'
 $logPath = Join-Path $logRoot 'command-console-runtime.log'
 $openPath = Join-Path $resolvedOutputRoot 'command-console-open.png'
 $filterPath = Join-Path $resolvedOutputRoot 'command-console-inventory-filter.png'
+$vclipPath = Join-Path $resolvedOutputRoot 'command-console-vclip-on.png'
+$nightPath = Join-Path $resolvedOutputRoot 'command-console-night.png'
+$dayPath = Join-Path $resolvedOutputRoot 'command-console-day.png'
+$navigationRoot = Join-Path $resolvedBuildRoot 'NavigationRecordings'
 foreach ($requiredRoot in @($logRoot, $profileRoot)) {
     New-Item -ItemType Directory -Force -Path $requiredRoot | Out-Null
 }
-foreach ($target in @($logPath, $openPath, $filterPath)) {
+foreach ($target in @($logPath, $openPath, $filterPath, $vclipPath, $nightPath, $dayPath)) {
     if (Test-Path -LiteralPath $target -PathType Leaf) {
         Remove-Item -LiteralPath $target -Force
     }
+}
+if (Test-Path -LiteralPath $navigationRoot -PathType Container) {
+    Remove-Item -LiteralPath $navigationRoot -Recurse -Force
 }
 
 $profile = [ordered]@{
@@ -262,6 +275,65 @@ try {
     Submit-WofCommand -Text 'forage roots' -Action 'ForageRoots'
     Submit-WofCommand -Text 'brew' -Action 'BrewGardenDraught'
 
+    Submit-WofCommand -Text 'night' -Action 'ForceNight'
+    if (-not (Wait-WofLogMarker -Pattern 'SURVIVAL_SKY_OVERRIDE seconds=342\.0' -Seconds 5)) {
+        throw 'Night command did not force the exact React night timestamp.'
+    }
+    Save-WofCommandConsoleImage -WindowHandle $windowHandle -Path $nightPath
+
+    Submit-WofCommand -Text 'day' -Action 'ForceDay'
+    if (-not (Wait-WofLogMarker -Pattern 'SURVIVAL_SKY_OVERRIDE seconds=42\.0' -Seconds 5)) {
+        throw 'Day command did not force the exact React day timestamp.'
+    }
+    Save-WofCommandConsoleImage -WindowHandle $windowHandle -Path $dayPath
+    Submit-WofCommand -Text 'day off' -Action 'ResumeDayNightCycle'
+    if (-not (Wait-WofLogMarker -Pattern 'SURVIVAL_SKY_OVERRIDE cleared=true' -Seconds 5)) {
+        throw 'Day-off command did not resume the synchronized sky cycle.'
+    }
+
+    Submit-WofCommand -Text 'vclip on' -Action 'SetVClipEnabled'
+    if (-not (Wait-WofLogMarker -Pattern 'VCLIP_CHANGED owner=0 enabled=true' -Seconds 5)) {
+        throw 'VCLIP command did not reach server authority.'
+    }
+    Open-WofCommandConsole
+    Save-WofCommandConsoleImage -WindowHandle $windowHandle -Path $vclipPath
+    [WofCommandConsoleCapture]::SendKey(0x1B)
+    Start-Sleep -Milliseconds 180
+    [WofCommandConsoleCapture]::HoldKey(0x20, 650)
+    if (-not (Wait-WofLogMarker -Pattern 'VCLIP_MOVEMENT velocity=.*collisions=false' -Seconds 5)) {
+        throw 'Physical Space input did not produce collision-free VCLIP ascent.'
+    }
+    Submit-WofCommand -Text 'vclip off' -Action 'SetVClipEnabled'
+    if (-not (Wait-WofLogMarker -Pattern 'VCLIP_CHANGED owner=0 enabled=false' -Seconds 5)) {
+        throw 'VCLIP off did not restore authoritative collision movement.'
+    }
+
+    Submit-WofCommand -Text 'navrecord start console route' -Action 'StartNavigationRecording'
+    if (-not (Wait-WofLogMarker -Pattern 'NAV_RECORDING_STARTED label="console route"' -Seconds 5)) {
+        throw 'Navigation recorder did not start with the typed label.'
+    }
+    [WofCommandConsoleCapture]::HoldKey(0x57, 800)
+    Submit-WofCommand -Text 'navrecord stop' -Action 'StopNavigationRecording'
+    if (-not (Wait-WofLogMarker -Pattern 'NAV_RECORDING_STOPPED samples=[1-9][0-9]*' -Seconds 5)) {
+        throw 'Navigation recorder did not capture physical movement samples.'
+    }
+    Submit-WofCommand -Text 'navrecord export' -Action 'ExportNavigationRecording'
+    if (-not (Wait-WofLogMarker -Pattern 'NAV_RECORDING_EXPORTED path=' -Seconds 5)) {
+        throw 'Navigation recorder did not export JSON.'
+    }
+    $navigationExport = Get-ChildItem -LiteralPath $navigationRoot -Filter 'wizards-nav-*.json' -File |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -First 1
+    if ($null -eq $navigationExport) { throw 'Navigation JSON is not beside the D-drive Windows build.' }
+    $navigationPayload = Get-Content -LiteralPath $navigationExport.FullName -Raw | ConvertFrom-Json
+    $latestNavigationSession = @($navigationPayload.sessions)[-1]
+    if ($latestNavigationSession.label -ne 'console route' -or
+        @($latestNavigationSession.samples).Count -lt 1 -or
+        $latestNavigationSession.sampleIntervalMs -ne 125 -or
+        [double]$latestNavigationSession.samples[0].pos[1] -ne 1.32) {
+        throw 'Navigation JSON does not preserve the React label, samples, 125 ms cadence, and rounded coordinates.'
+    }
+
     Open-WofCommandConsole
     $closedCount = @(Select-String -LiteralPath $logPath -Pattern 'COMMAND_CONSOLE_CLOSED relock=true').Count
     [WofCommandConsoleCapture]::SendKey(0x1B)
@@ -283,10 +355,17 @@ try {
         ProcessId = $process.Id
         OpenCapture = $openPath
         FilterCapture = $filterPath
+        VClipCapture = $vclipPath
+        NightCapture = $nightPath
+        DayCapture = $dayPath
+        NavigationExport = $navigationExport.FullName
         Log = $logPath
         InventorySuggestion = $true
         Forage = $true
         Brew = $true
+        SkyCommands = $true
+        VClip = $true
+        NavigationRecording = $true
         EscapeClose = $true
         DraughtQuantity = [int]$draught[0].quantity
     }

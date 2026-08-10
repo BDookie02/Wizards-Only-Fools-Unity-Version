@@ -33,6 +33,7 @@ namespace WOF
         private readonly List<WofCommandSuggestionButton> _suggestionButtons = new();
         private WofInventoryRuntime _inventory;
         private WofQuestDialogRuntime _questDialog;
+        private WofSurvivalSkyRuntime _sky;
         private Canvas _canvas;
         private int _lastScreenWidth;
         private int _lastScreenHeight;
@@ -54,6 +55,7 @@ namespace WOF
             commandFont ??= GetComponentInChildren<Text>(true)?.font;
             _inventory = FindFirstObjectByType<WofInventoryRuntime>();
             _questDialog = FindFirstObjectByType<WofQuestDialogRuntime>();
+            _sky = FindFirstObjectByType<WofSurvivalSkyRuntime>();
             _canvas = GetComponent<Canvas>() ?? GetComponentInParent<Canvas>();
             BuildRuntimeView();
         }
@@ -69,6 +71,7 @@ namespace WOF
             {
                 ApplyPixelLayout();
             }
+            RefreshVClipHeader();
 
             var keyboard = Keyboard.current;
             if (keyboard == null)
@@ -106,6 +109,7 @@ namespace WOF
             _input.SetTextWithoutNotify("/");
             SetCaretToEnd();
             RefreshSuggestions();
+            RefreshVClipHeader();
             ApplyPixelLayout();
             StartCoroutine(FocusInputAfterOpening());
             Debug.Log("[WOF-AUTOMATION] COMMAND_CONSOLE_OPEN value=/");
@@ -124,7 +128,10 @@ namespace WOF
             }
             _submitting = true;
             var rawValue = _input.text;
-            var submission = WofCommandConsoleRules.Evaluate(rawValue);
+            var localPlayer = ResolveLivingLocalPlayer();
+            var submission = WofCommandConsoleRules.Evaluate(
+                rawValue,
+                localPlayer != null && localPlayer.IsVClipEnabled);
             Debug.Log($"[WOF-AUTOMATION] COMMAND_CONSOLE_SUBMIT value=\"{rawValue.Replace("\"", "'")}\" action={submission.Action}");
             switch (submission.Action)
             {
@@ -150,6 +157,49 @@ namespace WOF
                     break;
                 case WofCommandConsoleAction.DrinkGardenDraught:
                     ApplyDrinkGardenDraught();
+                    Close();
+                    break;
+                case WofCommandConsoleAction.SetVClipEnabled:
+                    if (localPlayer != null && localPlayer.SetVClipEnabled(submission.Enabled))
+                    {
+                        ShowMessages(new[] { submission.Message });
+                    }
+                    else
+                    {
+                        ShowMessages(new[] { "VCLIP could not be changed without a living local wizard." });
+                    }
+                    Close();
+                    break;
+                case WofCommandConsoleAction.ForceDay:
+                    ApplySkyOverride(WofSurvivalSkyRuntime.ForcedDaySeconds, submission.Message);
+                    Close();
+                    break;
+                case WofCommandConsoleAction.ForceNight:
+                    ApplySkyOverride(WofSurvivalSkyRuntime.ForcedNightSeconds, submission.Message);
+                    Close();
+                    break;
+                case WofCommandConsoleAction.ResumeDayNightCycle:
+                    ApplySkyOverride(null, submission.Message);
+                    Close();
+                    break;
+                case WofCommandConsoleAction.StartNavigationRecording:
+                    ShowNavigationResult(WofNavigationRecorderRuntime.Start(submission.Value));
+                    Close();
+                    break;
+                case WofCommandConsoleAction.StopNavigationRecording:
+                    ShowNavigationResult(WofNavigationRecorderRuntime.Stop());
+                    Close();
+                    break;
+                case WofCommandConsoleAction.ExportNavigationRecording:
+                    ShowNavigationResult(WofNavigationRecorderRuntime.Export());
+                    Close();
+                    break;
+                case WofCommandConsoleAction.ClearNavigationRecordings:
+                    ShowNavigationResult(WofNavigationRecorderRuntime.Clear());
+                    Close();
+                    break;
+                case WofCommandConsoleAction.ShowNavigationRecordingStatus:
+                    ShowNavigationStatus();
                     Close();
                     break;
                 default:
@@ -247,6 +297,44 @@ namespace WOF
                 WofSurvivalProfileStore.Save(profile);
             }
             ShowMessages(result.Messages);
+        }
+
+        private void ApplySkyOverride(float? seconds, string message)
+        {
+            _sky ??= FindFirstObjectByType<WofSurvivalSkyRuntime>();
+            if (_sky == null)
+            {
+                ShowMessages(new[] { "The survival sky is unavailable." });
+                return;
+            }
+            _sky.SetTimeOverrideSeconds(seconds);
+            ShowMessages(new[] { message });
+        }
+
+        private void ShowNavigationResult(WofNavigationRecorderResult result)
+        {
+            ShowMessages(new[] { result.Message });
+        }
+
+        private void ShowNavigationStatus()
+        {
+            var status = WofNavigationRecorderRuntime.GetStatus();
+            var seconds = Mathf.RoundToInt(status.DurationMilliseconds / 1000f);
+            ShowMessages(new[]
+            {
+                status.Active
+                    ? $"NAV recording {status.Label}: {status.SampleCount} samples, {seconds}s"
+                    : $"NAV idle: {status.StoredSessionCount} saved sessions"
+            });
+        }
+
+        private void RefreshVClipHeader()
+        {
+            if (_vclipText == null) return;
+            var localPlayer = ResolveLivingLocalPlayer();
+            var enabled = localPlayer != null && localPlayer.IsVClipEnabled;
+            _vclipText.text = enabled ? "VCLIP ON" : "VCLIP OFF";
+            _vclipText.color = enabled ? new Color32(167, 243, 208, 255) : Slate400;
         }
 
         private void ShowMessages(string[] messages)
