@@ -36,6 +36,8 @@ public static class WofSurvivalStreamingCapture {
   [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
   [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
   [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
 }
 '@
 [WofSurvivalStreamingCapture]::SetProcessDPIAware() | Out-Null
@@ -96,6 +98,10 @@ try {
     $width = $rect.Right - $rect.Left
     $height = $rect.Bottom - $rect.Top
     if ($width -ne 1280 -or $height -ne 720) { throw "Unexpected client dimensions: ${width}x${height}." }
+    [WofSurvivalStreamingCapture]::SetCursorPos($point.X + [int]($width / 2), $point.Y + [int]($height / 2)) | Out-Null
+    [WofSurvivalStreamingCapture]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    [WofSurvivalStreamingCapture]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 250
     $bitmap = New-Object System.Drawing.Bitmap $width, $height
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
     try {

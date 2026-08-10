@@ -15,8 +15,11 @@ namespace WOF
         public const int MaxConcurrentChunkBuilds = 1;
         private const double StreamRounding = 0.45d;
         private const string ProbePrefix = "--wof-survival-streaming-probe=";
+        private const int InstancesPerTreeBatch = 1023;
 
         [SerializeField] private Material terrainMaterial;
+        [SerializeField] private WofSurvivalFoliageRuntime foliageRuntime;
+        [SerializeField] private Material waterMaterial;
 
         private static readonly ChunkOffset[] OrderedOffsets = MakeOrderedOffsets();
         private readonly Dictionary<string, RuntimeChunk> _activeChunks = new();
@@ -41,10 +44,19 @@ namespace WOF
         private int _windowFrameCount;
         private float _windowFrameTotalMilliseconds;
         private float _windowMaxFrameMilliseconds;
+        private double _windowMaxWorkerMilliseconds;
+        private double _windowMaxApplyMilliseconds;
+        private Mesh[] _treeMeshes;
+        private Material _treeMaterial;
 
-        public void Configure(Material exactTerrainMaterial)
+        public void Configure(
+            Material exactTerrainMaterial,
+            WofSurvivalFoliageRuntime exactFoliageRuntime,
+            Material exactWaterMaterial)
         {
             terrainMaterial = exactTerrainMaterial;
+            foliageRuntime = exactFoliageRuntime;
+            waterMaterial = exactWaterMaterial;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -69,7 +81,17 @@ namespace WOF
             runtimeObject.SetActive(false);
             runtimeObject.transform.SetParent(baseTerrain.transform.parent, false);
             var runtime = runtimeObject.AddComponent<WofSurvivalTerrainStreamingRuntime>();
-            runtime.Configure(material);
+            var foliage = FindFirstObjectByType<WofSurvivalFoliageRuntime>();
+            var fallbackWaterMaterial = Resources.Load<Material>("SurvivalStreamWater");
+            if (fallbackWaterMaterial == null)
+            {
+                var waterShader = Shader.Find("WOF/Survival Stream Water");
+                fallbackWaterMaterial = waterShader == null ? null : new Material(waterShader)
+                {
+                    name = "SurvivalStreamWater_RuntimeFallback"
+                };
+            }
+            runtime.Configure(material, foliage, fallbackWaterMaterial);
             runtimeObject.SetActive(true);
             return runtime;
         }
@@ -77,12 +99,19 @@ namespace WOF
         private void Awake()
         {
             ParseProbeArguments();
-            if (terrainMaterial == null)
+            if (foliageRuntime == null) foliageRuntime = FindFirstObjectByType<WofSurvivalFoliageRuntime>();
+            if (waterMaterial == null) waterMaterial = Resources.Load<Material>("SurvivalStreamWater");
+            if (terrainMaterial == null || foliageRuntime == null || waterMaterial == null ||
+                !foliageRuntime.TryGetStreamingAssets(out _treeMeshes, out _treeMaterial))
             {
-                Debug.LogError("[WOF-AUTOMATION] SURVIVAL_STREAMING_FAILED reason=missing-terrain-material");
+                Debug.LogError(
+                    $"[WOF-AUTOMATION] SURVIVAL_STREAMING_FAILED terrain={terrainMaterial != null} " +
+                    $"foliage={foliageRuntime != null} water={waterMaterial != null} " +
+                    $"treeMeshes={_treeMeshes?.Length ?? 0} treeMaterial={_treeMaterial != null}");
                 enabled = false;
                 return;
             }
+            _treeMaterial.enableInstancing = true;
             Debug.Log($"[WOF-AUTOMATION] SURVIVAL_STREAMING_RUNTIME_READY radius={WofSurvivalTerrainMath.RenderRadius} collisionRadius={WofSurvivalTerrainMath.CollisionRadius} offsets={OrderedOffsets.Length}");
         }
 
@@ -142,6 +171,34 @@ namespace WOF
             ContinueBuildQueue();
             TryPositionProbe();
             ReportReadyWindow();
+            DrawStreamingTrees();
+        }
+
+        private void DrawStreamingTrees()
+        {
+            if (_viewer == null || _treeMaterial == null) return;
+            const float visibleRadius = 820f;
+            var radiusSquared = visibleRadius * visibleRadius;
+            var viewerPosition = _viewer.position;
+            foreach (var chunk in _activeChunks.Values)
+            foreach (var batch in chunk.TreeBatches)
+            {
+                var dx = batch.Center.x - viewerPosition.x;
+                var dz = batch.Center.z - viewerPosition.z;
+                if (dx * dx + dz * dz > radiusSquared) continue;
+                Graphics.DrawMeshInstanced(
+                    batch.Mesh,
+                    0,
+                    _treeMaterial,
+                    batch.Matrices,
+                    batch.Count,
+                    batch.Properties,
+                    ShadowCastingMode.Off,
+                    false,
+                    gameObject.layer,
+                    null,
+                    LightProbeUsage.Off);
+            }
         }
 
         private void ResolveViewer()
@@ -167,6 +224,8 @@ namespace WOF
             _windowFrameCount = 0;
             _windowFrameTotalMilliseconds = 0f;
             _windowMaxFrameMilliseconds = 0f;
+            _windowMaxWorkerMilliseconds = 0d;
+            _windowMaxApplyMilliseconds = 0d;
 
             if (WofSurvivalTerrainMath.IsLilyRealmCenter(_centerX, _centerZ))
             {
@@ -303,15 +362,91 @@ namespace WOF
                 skirtRenderer.receiveShadows = false;
             }
 
+            Mesh waterMesh = null;
+            GameObject waterObject = null;
+            if (payload.Decorations.Water != null)
+            {
+                var water = payload.Decorations.Water;
+                waterMesh = CreateMesh(new MeshBuildData(
+                    $"ReactSurvivalRuntimeWater_{spec.X}_{spec.Z}_{spec.Distance}",
+                    water.Vertices,
+                    water.Colors,
+                    null,
+                    water.Indices,
+                    MakeUpNormals(water.Vertices.Length)));
+                waterObject = new GameObject($"ReactSurvivalWater_{spec.X}_{spec.Z}");
+                waterObject.transform.SetParent(root.transform, false);
+                waterObject.AddComponent<MeshFilter>().sharedMesh = waterMesh;
+                var waterRenderer = waterObject.AddComponent<MeshRenderer>();
+                waterRenderer.sharedMaterial = waterMaterial;
+                waterRenderer.shadowCastingMode = ShadowCastingMode.Off;
+                waterRenderer.receiveShadows = false;
+            }
+
+            var treeBatches = BuildTreeBatches(payload.Decorations.Trees, _treeMeshes);
+
             if (_activeChunks.TryGetValue(spec.Key, out var previous))
             {
                 _activeChunks.Remove(spec.Key);
                 DestroyRuntimeChunk(previous);
             }
-            _activeChunks.Add(spec.Key, new RuntimeChunk(spec, root, renderMesh, collisionMesh, skirtMesh, skirtObject));
+            _activeChunks.Add(spec.Key, new RuntimeChunk(
+                spec,
+                root,
+                renderMesh,
+                collisionMesh,
+                skirtMesh,
+                skirtObject,
+                waterMesh,
+                waterObject,
+                treeBatches));
             root.SetActive(true);
             applyTimer.Stop();
-            Debug.Log($"[WOF-AUTOMATION] SURVIVAL_STREAMING_CHUNK_READY chunk={spec.Key} distance={spec.Distance} workerMs={payload.WorkerMilliseconds:F2} applyMs={applyTimer.Elapsed.TotalMilliseconds:F2}");
+            _windowMaxWorkerMilliseconds = Math.Max(_windowMaxWorkerMilliseconds, payload.WorkerMilliseconds);
+            _windowMaxApplyMilliseconds = Math.Max(
+                _windowMaxApplyMilliseconds,
+                applyTimer.Elapsed.TotalMilliseconds);
+            Debug.Log(
+                $"[WOF-AUTOMATION] SURVIVAL_STREAMING_CHUNK_READY chunk={spec.Key} distance={spec.Distance} " +
+                $"trees={payload.Decorations.Trees.Length} waterVertices={payload.Decorations.Water?.Vertices.Length ?? 0} " +
+                $"workerMs={payload.WorkerMilliseconds:F2} applyMs={applyTimer.Elapsed.TotalMilliseconds:F2}");
+        }
+
+        private static StreamingTreeBatch[] BuildTreeBatches(
+            WofSurvivalStreamTreePlacement[] placements,
+            Mesh[] meshes)
+        {
+            if (placements == null || placements.Length == 0) return Array.Empty<StreamingTreeBatch>();
+            var batches = new List<StreamingTreeBatch>();
+            var currentByMesh = new Dictionary<int, StreamingTreeBatch>();
+            foreach (var placement in placements)
+            {
+                if (placement.MeshIndex < 0 || placement.MeshIndex >= meshes.Length ||
+                    meshes[placement.MeshIndex] == null)
+                    continue;
+                if (!currentByMesh.TryGetValue(placement.MeshIndex, out var batch) ||
+                    batch.Count >= InstancesPerTreeBatch)
+                {
+                    batch = new StreamingTreeBatch(meshes[placement.MeshIndex], placement.Position);
+                    currentByMesh[placement.MeshIndex] = batch;
+                    batches.Add(batch);
+                }
+                batch.Add(Matrix4x4.TRS(
+                    placement.Position,
+                    Quaternion.Euler(
+                        placement.RotationRadians.x * Mathf.Rad2Deg,
+                        placement.RotationRadians.y * Mathf.Rad2Deg,
+                        placement.RotationRadians.z * Mathf.Rad2Deg),
+                    placement.Scale));
+            }
+            return batches.ToArray();
+        }
+
+        private static Vector3[] MakeUpNormals(int count)
+        {
+            var result = new Vector3[count];
+            for (var index = 0; index < result.Length; index++) result[index] = Vector3.up;
+            return result;
         }
 
         internal static Mesh BuildTerrainMeshForTests(int cx, int cz, int distance, bool collision)
@@ -456,8 +591,15 @@ namespace WOF
             if (spec.CollisionSegments > 0 && spec.CollisionSegments != spec.RenderSegments)
                 collision = GenerateTerrainMeshData(spec.X, spec.Z, spec.CollisionSegments, false);
             var skirt = spec.EdgeMask == 0 ? null : GenerateSkirtMeshData(spec);
+            var decorations = WofSurvivalStreamDecorationMath.Generate(spec.X, spec.Z, spec.Distance);
             timer.Stop();
-            return new ChunkBuildPayload(spec, render, collision, skirt, timer.Elapsed.TotalMilliseconds);
+            return new ChunkBuildPayload(
+                spec,
+                render,
+                collision,
+                skirt,
+                decorations,
+                timer.Elapsed.TotalMilliseconds);
         }
 
         private static Mesh CreateMesh(MeshBuildData data)
@@ -525,16 +667,25 @@ namespace WOF
             _readyCenterZ = _centerZ;
             var colliders = 0;
             var vertices = 0;
+            var trees = 0;
+            var waterVertices = 0;
             foreach (var chunk in _activeChunks.Values)
             {
                 if (chunk.Spec.CollisionSegments > 0) colliders++;
                 vertices += chunk.RenderMesh.vertexCount;
+                foreach (var batch in chunk.TreeBatches) trees += batch.Count;
+                waterVertices += chunk.WaterMesh?.vertexCount ?? 0;
             }
             var averageFrameMilliseconds = _windowFrameCount > 0
                 ? _windowFrameTotalMilliseconds / _windowFrameCount
                 : 0f;
             _measureWindowFrames = false;
-            Debug.Log($"[WOF-AUTOMATION] SURVIVAL_STREAM_WINDOW_READY center={_centerX}:{_centerZ} dynamicChunks={_activeChunks.Count} colliders={colliders} vertices={vertices} frames={_windowFrameCount} avgFrameMs={averageFrameMilliseconds:F2} maxFrameMs={_windowMaxFrameMilliseconds:F2}");
+            Debug.Log(
+                $"[WOF-AUTOMATION] SURVIVAL_STREAM_WINDOW_READY center={_centerX}:{_centerZ} " +
+                $"dynamicChunks={_activeChunks.Count} colliders={colliders} vertices={vertices} " +
+                $"trees={trees} waterVertices={waterVertices} frames={_windowFrameCount} " +
+                $"avgFrameMs={averageFrameMilliseconds:F2} maxFrameMs={_windowMaxFrameMilliseconds:F2} " +
+                $"maxWorkerMs={_windowMaxWorkerMilliseconds:F2} maxApplyMs={_windowMaxApplyMilliseconds:F2}");
         }
 
         private void ParseProbeArguments()
@@ -568,6 +719,7 @@ namespace WOF
             if (chunk.RenderMesh != null) Destroy(chunk.RenderMesh);
             if (chunk.CollisionMesh != null && chunk.CollisionMesh != chunk.RenderMesh) Destroy(chunk.CollisionMesh);
             if (chunk.SkirtMesh != null) Destroy(chunk.SkirtMesh);
+            if (chunk.WaterMesh != null) Destroy(chunk.WaterMesh);
         }
 
         private static int CountBits(byte value)
@@ -634,12 +786,13 @@ namespace WOF
         private sealed class ChunkBuildPayload
         {
             public ChunkBuildPayload(ChunkSpec spec, MeshBuildData render, MeshBuildData collision,
-                MeshBuildData skirt, double workerMilliseconds)
+                MeshBuildData skirt, WofSurvivalStreamDecorationData decorations, double workerMilliseconds)
             {
                 Spec = spec;
                 Render = render;
                 Collision = collision;
                 Skirt = skirt;
+                Decorations = decorations;
                 WorkerMilliseconds = workerMilliseconds;
             }
 
@@ -647,6 +800,7 @@ namespace WOF
             public MeshBuildData Render { get; }
             public MeshBuildData Collision { get; }
             public MeshBuildData Skirt { get; }
+            public WofSurvivalStreamDecorationData Decorations { get; }
             public double WorkerMilliseconds { get; }
         }
 
@@ -683,10 +837,12 @@ namespace WOF
         private sealed class RuntimeChunk
         {
             public RuntimeChunk(ChunkSpec spec, GameObject root, Mesh renderMesh, Mesh collisionMesh,
-                Mesh skirtMesh, GameObject skirtObject)
+                Mesh skirtMesh, GameObject skirtObject, Mesh waterMesh, GameObject waterObject,
+                StreamingTreeBatch[] treeBatches)
             {
                 Spec = spec; Root = root; RenderMesh = renderMesh; CollisionMesh = collisionMesh;
                 SkirtMesh = skirtMesh; SkirtObject = skirtObject;
+                WaterMesh = waterMesh; WaterObject = waterObject; TreeBatches = treeBatches;
             }
             public ChunkSpec Spec { get; }
             public GameObject Root { get; }
@@ -694,6 +850,35 @@ namespace WOF
             public Mesh CollisionMesh { get; }
             public Mesh SkirtMesh { get; }
             public GameObject SkirtObject { get; }
+            public Mesh WaterMesh { get; }
+            public GameObject WaterObject { get; }
+            public StreamingTreeBatch[] TreeBatches { get; }
+        }
+
+        private sealed class StreamingTreeBatch
+        {
+            private readonly Vector4[] _instanceColors = new Vector4[InstancesPerTreeBatch];
+
+            public StreamingTreeBatch(Mesh mesh, Vector3 center)
+            {
+                Mesh = mesh;
+                Center = center;
+                for (var index = 0; index < _instanceColors.Length; index++)
+                    _instanceColors[index] = Vector4.one;
+                Properties.SetVectorArray("_InstanceColor", _instanceColors);
+            }
+
+            public Mesh Mesh { get; }
+            public Vector3 Center { get; }
+            public Matrix4x4[] Matrices { get; } = new Matrix4x4[InstancesPerTreeBatch];
+            public MaterialPropertyBlock Properties { get; } = new();
+            public int Count { get; private set; }
+
+            public void Add(Matrix4x4 matrix)
+            {
+                if (Count >= Matrices.Length) return;
+                Matrices[Count++] = matrix;
+            }
         }
     }
 }

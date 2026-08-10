@@ -241,6 +241,34 @@ namespace WOF
             return Hash01(cx, cz, 5) > 0.5d;
         }
 
+        internal static double GetChunkRiverMask(int cx, int cz, double worldX, double worldZ)
+        {
+            if (!HasRiver(cx, cz)) return 0d;
+            return GetRiverMask(
+                cx * (double)BlockSize,
+                cz * (double)BlockSize,
+                GetBiome(cx, cz),
+                IsRiverVertical(cx, cz),
+                GetRiverOffset(cx, cz),
+                worldX,
+                worldZ);
+        }
+
+        internal static double GetRiverWidthForBiome(WofSurvivalBiome biome)
+        {
+            return GetRiverWidth(biome);
+        }
+
+        internal static double GetWaterLevelAtWorld(double worldX, double worldZ)
+        {
+            return GetWaterLevel(worldX, worldZ);
+        }
+
+        internal static bool IsWaterSuppressed(double worldX, double worldZ, double radius)
+        {
+            return IsRestoredMeadowWaterSuppressed(worldX, worldZ, radius);
+        }
+
         internal static double GetTerrainHeight(int cx, int cz, double localX, double localZ)
         {
             var worldX = cx * (double)BlockSize + localX;

@@ -48,6 +48,14 @@ namespace WOF
             placements = exactReactPlacements;
         }
 
+        internal bool TryGetStreamingAssets(out Mesh[] exactReactMeshes, out Material exactReactMaterial)
+        {
+            exactReactMeshes = meshes;
+            exactReactMaterial = foliageMaterial;
+            return exactReactMeshes != null && exactReactMeshes.Length == ExactReactMeshCount &&
+                   exactReactMaterial != null;
+        }
+
         private void Awake()
         {
             if (!SystemInfo.supportsInstancing || foliageMaterial == null || meshes == null ||

@@ -27,6 +27,7 @@ const grassConfigPath = path.join(sourceRoot, "vegetation", "survivalBotwGrassCo
 const grassFootprintsPath = path.join(sourceRoot, "vegetation", "survivalBotwGrassFootprints.ts");
 const grassResolversPath = path.join(sourceRoot, "vegetation", "survivalBotwGrassResolvers.ts");
 const solidTreeGrovePath = path.join(sourceRoot, "vegetation", "survivalSolidTreeGroveRendering.tsx");
+const waterFeaturesPath = path.join(sourceRoot, "survival", "survivalWaterFeatures.ts");
 const unityMountainProfilePath = path.join(unityRoot, "Tools", "wof-unity-mountain-profile.mts");
 const storePath = path.join(reactRoot, "src", "store", "gameStore.ts");
 const sourcePaths = [
@@ -50,6 +51,7 @@ const sourcePaths = [
   grassFootprintsPath,
   grassResolversPath,
   solidTreeGrovePath,
+  waterFeaturesPath,
   unityMountainProfilePath,
 ];
 
@@ -63,6 +65,7 @@ const survivalPosition = await import(pathToFileURL(positionPath).href);
 const survivalTerrainGeometry = await import(pathToFileURL(terrainGeometryPath).href);
 const survivalGrassSurface = await import(pathToFileURL(grassSurfacePath).href);
 const survivalTreeVisuals = await import(pathToFileURL(treeVisualsPath).href);
+const survivalWaterFeatures = await import(pathToFileURL(waterFeaturesPath).href);
 const gameStore = await import(pathToFileURL(storePath).href);
 const blockSize = Number(gameStore.SURVIVAL_BLOCK_SIZE);
 const minimumChunkX = -4;
@@ -114,6 +117,17 @@ type SurvivalStreamingTreeFixture = {
   distance: number;
   lod: "near" | "mid";
   trees: SurvivalFoliagePlacement[];
+};
+type SurvivalStreamingWaterFixture = {
+  cx: number;
+  cz: number;
+  distance: number;
+  lod: "near" | "mid";
+  riverVertexCount: number;
+  riverIndexCount: number;
+  riverPositionSamples: Array<{ x: number; y: number; z: number }>;
+  ponds: Array<{ localX: number; localZ: number; radiusX: number; radiusZ: number; y: number }>;
+  lilies: Array<{ localX: number; localZ: number; scale: number }>;
 };
 type SurvivalStreamingSample = {
   localX: number;
@@ -342,6 +356,60 @@ const addExactDenseFoliageForChunk = (chunk: SurvivalChunk) => {
   foliageCounts[chunk.biome] = (foliageCounts[chunk.biome] ?? 0) + next.length;
 };
 
+const makeStreamingChunk = (cx: number, cz: number, distance: 0 | 1): SurvivalChunk => ({
+  ...makeSurvivalChunk(cx, cz),
+  distance,
+  lod: distance === 0 ? "near" : "mid",
+});
+const streamingDecorationCoords: ReadonlyArray<readonly [number, number, 0 | 1]> = [
+  [7, 4, 0],
+  [8, 4, 1],
+  [-17, 9, 0],
+];
+const streamingTreeFixtures: SurvivalStreamingTreeFixture[] = streamingDecorationCoords.map(([cx, cz, distance]) => {
+  const chunk = makeStreamingChunk(cx, cz, distance);
+  return {
+    cx,
+    cz,
+    distance,
+    lod: chunk.lod as "near" | "mid",
+    trees: makeExactFoliageForChunk(chunk, true),
+  };
+});
+const streamingWaterFixtures: SurvivalStreamingWaterFixture[] = streamingDecorationCoords.map(([cx, cz, distance]) => {
+  const chunk = makeStreamingChunk(cx, cz, distance);
+  const suppressWholeChunk = survivalBiome.isSurvivalRestoredMeadowWaterSuppressed(
+    chunk.x,
+    chunk.z,
+    blockSize * 1.36,
+  );
+  const riverGeometry = chunk.hasRiver && !suppressWholeChunk
+    ? survivalRivers.makeSurvivalRiverSurfaceGeometry(
+      chunk,
+      terrainSurface.getSurvivalTerrainHeightForChunk,
+    )
+    : null;
+  const riverPosition = riverGeometry?.getAttribute("position") as import("three").BufferAttribute | undefined;
+  const riverSampleIndices = riverPosition && riverPosition.count > 0
+    ? [0, Math.floor(riverPosition.count / 2), riverPosition.count - 1]
+    : [];
+  return {
+    cx,
+    cz,
+    distance,
+    lod: chunk.lod as "near" | "mid",
+    riverVertexCount: riverPosition?.count ?? 0,
+    riverIndexCount: riverGeometry?.getIndex()?.count ?? 0,
+    riverPositionSamples: riverSampleIndices.map(index => ({
+      x: riverPosition!.getX(index) - chunk.x,
+      y: riverPosition!.getY(index),
+      z: riverPosition!.getZ(index) - chunk.z,
+    })),
+    ponds: suppressWholeChunk ? [] : survivalWaterFeatures.makeSurvivalPonds(chunk),
+    lilies: survivalWaterFeatures.makeSurvivalLilyPads(chunk),
+  };
+});
+
 for (let cz = minimumChunkZ; cz <= maximumChunkZ; cz += 1) {
   for (let cx = minimumChunkX; cx <= maximumChunkX; cx += 1) {
     const villageKind = villageRegistry.getSpecialSurvivalVillageKind(cx, cz);
@@ -414,6 +482,8 @@ const document = {
     chunkCoordinates: streamingChunkCoordinateFixtures,
     window: streamingWindow,
     chunks: streamingChunkFixtures,
+    trees: streamingTreeFixtures,
+    waters: streamingWaterFixtures,
   },
   foliage: {
     source: "survivalSolidTreeGroveRendering.tsx dense desktop + survivalTreeVisuals.ts",

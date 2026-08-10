@@ -13,6 +13,7 @@ namespace WOF.Editor
         private const string SurvivalTerrainMeshPath = SurvivalTerrainGeometryRoot + "/BaseRegion.asset";
         private const string SurvivalTerrainMaterialPath = MaterialsRoot + "/SurvivalOpenWorldTerrain.mat";
         private const string SurvivalFoliageMaterialPath = MaterialsRoot + "/SurvivalReactFoliage.mat";
+        private const string SurvivalStreamWaterMaterialPath = "Assets/WOF/Resources/SurvivalStreamWater.mat";
         private const string SurvivalFoliageGeometryRoot = SurvivalTerrainGeometryRoot + "/Foliage";
 
         [Serializable]
@@ -42,6 +43,8 @@ namespace WOF.Editor
             public WofSurvivalStreamingChunkCoordinate[] chunkCoordinates;
             public WofSurvivalStreamingWindowChunk[] window;
             public WofSurvivalStreamingChunkFixture[] chunks;
+            public WofSurvivalStreamingTreeFixture[] trees;
+            public WofSurvivalStreamingWaterFixture[] waters;
         }
 
         [Serializable]
@@ -82,6 +85,56 @@ namespace WOF.Editor
             public float colorR;
             public float colorG;
             public float colorB;
+        }
+
+        [Serializable]
+        private sealed class WofSurvivalStreamingTreeFixture
+        {
+            public int cx;
+            public int cz;
+            public int distance;
+            public string lod;
+            public WofSurvivalFoliagePlacementRecord[] trees;
+        }
+
+        [Serializable]
+        private sealed class WofSurvivalStreamingWaterFixture
+        {
+            public int cx;
+            public int cz;
+            public int distance;
+            public string lod;
+            public int riverVertexCount;
+            public int riverIndexCount;
+            public WofSurvivalStreamingWaterPosition[] riverPositionSamples;
+            public WofSurvivalStreamingPond[] ponds;
+            public WofSurvivalStreamingLily[] lilies;
+        }
+
+        [Serializable]
+        private sealed class WofSurvivalStreamingWaterPosition
+        {
+            public float x;
+            public float y;
+            public float z;
+        }
+
+        [Serializable]
+        private sealed class WofSurvivalStreamingPond
+        {
+            public float localX;
+            public float localZ;
+            public float radiusX;
+            public float radiusZ;
+            public float y;
+        }
+
+        [Serializable]
+        private sealed class WofSurvivalStreamingLily
+        {
+            public float localX;
+            public float localZ;
+            public float scale;
         }
 
         [Serializable]
@@ -171,7 +224,13 @@ namespace WOF.Editor
             renderer.receiveShadows = false;
             terrain.AddComponent<MeshCollider>().sharedMesh = mesh;
             MarkStatic(terrain);
-            CreateSurvivalFoliage(parent, document.foliage);
+            var foliageRuntime = CreateSurvivalFoliage(parent, document.foliage);
+            var streamingObject = new GameObject("ReactSurvivalTerrainStreamingRuntime");
+            streamingObject.transform.SetParent(parent, false);
+            streamingObject.AddComponent<WofSurvivalTerrainStreamingRuntime>().Configure(
+                material,
+                foliageRuntime,
+                GetOrCreateSurvivalStreamWaterMaterial());
         }
 
         private static bool IsValidSurvivalStreamingOracle(WofSurvivalStreamingOracle oracle)
@@ -182,11 +241,23 @@ namespace WOF.Editor
                 oracle.collisionRadius != WofSurvivalTerrainMath.CollisionRadius ||
                 Math.Abs(oracle.centerHysteresis - WofSurvivalTerrainMath.CenterHysteresis) > 0.001d ||
                 oracle.chunkCoordinates?.Length != 10 || oracle.window?.Length != 37 ||
-                oracle.chunks?.Length != 6)
+                oracle.chunks?.Length != 6 || oracle.trees?.Length != 3 || oracle.waters?.Length != 3)
                 return false;
             foreach (var chunk in oracle.chunks)
             {
                 if (chunk == null || string.IsNullOrWhiteSpace(chunk.biome) || chunk.samples?.Length != 5)
+                    return false;
+            }
+            foreach (var treeFixture in oracle.trees)
+            {
+                if (treeFixture == null || string.IsNullOrWhiteSpace(treeFixture.lod) || treeFixture.trees == null)
+                    return false;
+            }
+            foreach (var waterFixture in oracle.waters)
+            {
+                if (waterFixture == null || string.IsNullOrWhiteSpace(waterFixture.lod) ||
+                    waterFixture.riverPositionSamples == null || waterFixture.ponds == null ||
+                    waterFixture.lilies == null)
                     return false;
             }
             return true;
@@ -215,7 +286,9 @@ namespace WOF.Editor
             return true;
         }
 
-        private static void CreateSurvivalFoliage(Transform parent, WofSurvivalFoliageDocument foliage)
+        private static WofSurvivalFoliageRuntime CreateSurvivalFoliage(
+            Transform parent,
+            WofSurvivalFoliageDocument foliage)
         {
             EnsureAssetFolder(SurvivalFoliageGeometryRoot);
             var meshes = new Mesh[foliage.meshes.Length];
@@ -250,10 +323,12 @@ namespace WOF.Editor
 
             var runtimeObject = new GameObject("ReactSurvivalBiomeTreeGroves_2526");
             runtimeObject.transform.SetParent(parent, false);
-            runtimeObject.AddComponent<WofSurvivalFoliageRuntime>().Configure(
+            var runtime = runtimeObject.AddComponent<WofSurvivalFoliageRuntime>();
+            runtime.Configure(
                 meshes,
                 GetOrCreateSurvivalFoliageMaterial(),
                 placements);
+            return runtime;
         }
 
         private static bool IsValidSurvivalTerrainMesh(WofSerializedMeshRecord mesh)
@@ -306,6 +381,24 @@ namespace WOF.Editor
             else material.shader = shader;
             material.SetColor("_Color", Color.white);
             material.enableInstancing = true;
+            material.doubleSidedGI = true;
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        private static Material GetOrCreateSurvivalStreamWaterMaterial()
+        {
+            var shader = Shader.Find("WOF/Survival Stream Water");
+            if (shader == null)
+                throw new InvalidOperationException("Required survival stream water shader was not imported.");
+            var material = AssetDatabase.LoadAssetAtPath<Material>(SurvivalStreamWaterMaterialPath);
+            if (material == null)
+            {
+                material = new Material(shader) { name = "SurvivalStreamWater" };
+                AssetDatabase.CreateAsset(material, SurvivalStreamWaterMaterialPath);
+            }
+            else material.shader = shader;
+            material.SetColor("_Color", Color.white);
             material.doubleSidedGI = true;
             EditorUtility.SetDirty(material);
             return material;
