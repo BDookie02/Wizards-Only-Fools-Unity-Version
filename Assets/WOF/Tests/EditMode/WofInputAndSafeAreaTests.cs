@@ -195,6 +195,95 @@ namespace WOF.Tests
         }
 
         [Test]
+        public void ConfigurableControllerAndArrowLookMatchReactRates()
+        {
+            const float deltaSeconds = 0.5f;
+            var controller = WofInputRouter.ResolveControllerLook(Vector2.one, deltaSeconds, 2.65f) *
+                             WofGameConstants.MouseSensitivity;
+            var arrows = WofInputRouter.ResolveKeyboardArrowLook(Vector2.one, deltaSeconds, 2f) *
+                         WofGameConstants.MouseSensitivity;
+
+            Assert.That(controller.x, Is.EqualTo(2.65f * Mathf.Rad2Deg * deltaSeconds).Within(0.0001f));
+            Assert.That(controller.y, Is.EqualTo(controller.x * 0.78f).Within(0.0001f));
+            Assert.That(arrows.x, Is.EqualTo(2.65f * Mathf.Rad2Deg * deltaSeconds * 2f).Within(0.0001f));
+            Assert.That(arrows.y, Is.EqualTo(arrows.x * 0.78f).Within(0.0001f));
+            Assert.That(WofInputRouter.ResolveKeyboardArrowLook(Vector2.one, -1f, 1f), Is.EqualTo(Vector2.zero));
+        }
+
+        [Test]
+        public void UserSettingsNormalizationClampsReactRangesAndKeepsVoiceHonest()
+        {
+            var settings = new WofUserSettings
+            {
+                mouseSensitivity = float.PositiveInfinity,
+                controllerLookSensitivity = 99f,
+                hudTextScale = 0.1f,
+                voiceChatEnabled = true,
+                voiceInputMode = "invalid",
+                voicePushToTalkKey = "  ",
+                voiceOutputVolume = -3f,
+                voiceProximityRange = 500f
+            };
+
+            WofUserSettingsRules.Normalize(settings);
+
+            Assert.That(settings.mouseSensitivity, Is.EqualTo(WofUserSettingsRules.DefaultMouseSensitivity));
+            Assert.That(settings.controllerLookSensitivity, Is.EqualTo(6f));
+            Assert.That(settings.hudTextScale, Is.EqualTo(0.75f));
+            Assert.That(settings.voiceChatEnabled, Is.False);
+            Assert.That(settings.voiceInputMode, Is.EqualTo("openMic"));
+            Assert.That(settings.voicePushToTalkKey, Is.EqualTo("V"));
+            Assert.That(settings.voiceOutputVolume, Is.Zero);
+            Assert.That(settings.voiceProximityRange, Is.EqualTo(64f));
+        }
+
+        [Test]
+        public void ControllerBindingNormalizationPreservesValidRemapsAndRestoresMissingActions()
+        {
+            var settings = new WofUserSettings
+            {
+                controllerBindings = new[]
+                {
+                    new WofControllerBindingEntry { action = WofControllerActions.Jump, button = WofControllerButtons.Y },
+                    new WofControllerBindingEntry { action = WofControllerActions.Map, button = "invalid" },
+                    new WofControllerBindingEntry { action = "unknown", button = WofControllerButtons.A }
+                }
+            };
+
+            WofUserSettingsRules.Normalize(settings);
+
+            Assert.That(settings.controllerBindings.Length, Is.EqualTo(WofControllerActions.All.Length));
+            Assert.That(WofControllerBindingRules.GetButton(settings.controllerBindings, WofControllerActions.Jump),
+                Is.EqualTo(WofControllerButtons.Y));
+            Assert.That(WofControllerBindingRules.GetButton(settings.controllerBindings, WofControllerActions.Map),
+                Is.EqualTo(WofControllerButtons.DpadLeft));
+            Assert.That(WofControllerBindingRules.GetButton(settings.controllerBindings, WofControllerActions.Pause),
+                Is.EqualTo(WofControllerButtons.Start));
+        }
+
+        [Test]
+        public void CharacterCustomizationNormalizationPortsEveryReactField()
+        {
+            var profile = new WofSurvivalProfile
+            {
+                pantsColor = "not-a-color",
+                shoesStyle = "sandals",
+                facialHairStyle = "beard",
+                eyeStyle = "nervous-teary",
+                mouthStyle = "open"
+            };
+
+            WofCharacterCustomizationRules.Normalize(profile);
+
+            Assert.That(profile.pantsColor, Is.EqualTo("#334155"));
+            Assert.That(profile.shoesStyle, Is.EqualTo("sandals"));
+            Assert.That(profile.facialHairStyle, Is.EqualTo("beard"));
+            Assert.That(profile.eyeStyle, Is.EqualTo("nervous-teary"));
+            Assert.That(profile.mouthStyle, Is.EqualTo("open"));
+            Assert.That(profile.hatColor, Is.EqualTo("#7c3aed"));
+        }
+
+        [Test]
         public void ResolveJoystickValueNormalizesAndRejectsInvalidRadius()
         {
             var clamped = WofInputRouter.ResolveJoystickValue(new Vector2(80f, 0f), 40f);

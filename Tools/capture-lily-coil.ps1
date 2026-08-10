@@ -39,6 +39,7 @@ $logRoot = Join-Path $resolvedOutputRoot 'logs'
 $profileRoot = Join-Path $resolvedOutputRoot ("lily-coil-$View-capture-profile-" + [Guid]::NewGuid().ToString('N'))
 $logPath = Join-Path $logRoot "lily-coil-$View-capture.log"
 $capturePath = Join-Path $resolvedOutputRoot "lily-coil-$View-desktop.png"
+$motionCapturePath = Join-Path $resolvedOutputRoot "lily-coil-$View-desktop-motion-frame-b.png"
 $playerTempRoot = Join-Path $resolvedOutputRoot 'player-temp'
 foreach ($requiredRoot in @($logRoot, $profileRoot, $playerTempRoot)) {
     New-Item -ItemType Directory -Force -Path $requiredRoot | Out-Null
@@ -46,14 +47,14 @@ foreach ($requiredRoot in @($logRoot, $profileRoot, $playerTempRoot)) {
 [System.IO.File]::WriteAllText(
     (Join-Path $profileRoot 'survival-save-v1.json'),
     '{"version":1,"playerName":"Lily Coil QA","questUnlockedSpells":["blink"],"spellQuestAssignments":[],"questFlags":[]}')
-foreach ($target in @($logPath, $capturePath)) {
+foreach ($target in @($logPath, $capturePath, $motionCapturePath)) {
     if (Test-Path -LiteralPath $target -PathType Leaf) { Remove-Item -LiteralPath $target -Force }
 }
 
 $probeArgument = if ($View -eq 'tunnel') { '--wof-lily-coil-view-probe=tunnel' } else { '--wof-lily-coil-view-probe' }
 $arguments = @(
     '-force-d3d11', '-screen-width', '1280', '-screen-height', '720', '-screen-fullscreen', '0',
-    '--wof-solo', $probeArgument, '--wof-auto-exit=90',
+    '--wof-solo', $probeArgument, '--wof-lily-ambient-motion-probe', '--wof-auto-exit=90',
     "--wof-profile-root=$profileRoot", '-logFile', $logPath
 )
 $positionedMarker = "LILY_COIL_PROBE_POSITIONED variant=$View"
@@ -91,18 +92,35 @@ try {
     $width = $rect.Right - $rect.Left
     $height = $rect.Bottom - $rect.Top
     if ($width -ne 1280 -or $height -ne 720) { throw "Unexpected client dimensions: ${width}x${height}." }
-    $bitmap = New-Object System.Drawing.Bitmap $width, $height
-    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-    try {
-        $graphics.CopyFromScreen($point.X, $point.Y, 0, 0, $bitmap.Size)
-        $bitmap.Save($capturePath, [System.Drawing.Imaging.ImageFormat]::Png)
+    function Save-ClientCapture([string]$Path) {
+        $bitmap = New-Object System.Drawing.Bitmap $width, $height
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        try {
+            $graphics.CopyFromScreen($point.X, $point.Y, 0, 0, $bitmap.Size)
+            $bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+        }
+        finally {
+            $graphics.Dispose()
+            $bitmap.Dispose()
+        }
     }
-    finally {
-        $graphics.Dispose()
-        $bitmap.Dispose()
-    }
+    Save-ClientCapture $capturePath
+    Start-Sleep -Milliseconds 1700
+    Save-ClientCapture $motionCapturePath
 
-    [PSCustomObject]@{ View=$View; Capture=$capturePath; Log=$logPath; Width=$width; Height=$height; Bytes=(Get-Item -LiteralPath $capturePath).Length }
+    $motionDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        Start-Sleep -Milliseconds 100
+        $motionPassed = (Test-Path -LiteralPath $logPath -PathType Leaf) -and
+            (Select-String -LiteralPath $logPath -SimpleMatch 'LILY_AMBIENT_MOTION_PASS' -Quiet)
+    } while (-not $motionPassed -and -not $process.HasExited -and [DateTime]::UtcNow -lt $motionDeadline)
+    if (-not $motionPassed) { throw 'Lily Coil ambient matrices did not prove motion.' }
+    $firstHash = (Get-FileHash -LiteralPath $capturePath -Algorithm SHA256).Hash
+    $secondHash = (Get-FileHash -LiteralPath $motionCapturePath -Algorithm SHA256).Hash
+    if ($firstHash -eq $secondHash) { throw 'Lily Coil motion frames are pixel-identical.' }
+
+    $motionLine = Select-String -LiteralPath $logPath -SimpleMatch 'LILY_AMBIENT_MOTION_PASS' | Select-Object -Last 1
+    [PSCustomObject]@{ View=$View; CaptureA=$capturePath; CaptureB=$motionCapturePath; Log=$logPath; Motion=$motionLine.Line; Width=$width; Height=$height; BytesA=(Get-Item -LiteralPath $capturePath).Length; BytesB=(Get-Item -LiteralPath $motionCapturePath).Length }
 }
 finally {
     if (-not $process.HasExited) {

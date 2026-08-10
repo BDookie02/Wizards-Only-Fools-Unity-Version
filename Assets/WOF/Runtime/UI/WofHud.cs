@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -49,10 +50,34 @@ namespace WOF
         private float _rightFiringStartedAt = float.NegativeInfinity;
         private float _leftFiringUntil;
         private float _rightFiringUntil;
+        private readonly Dictionary<int, int> _baseTextSizes = new();
 
         public static WofHud Instance { get; private set; }
         public bool IsGameplayVisible => _gameplayVisible && !_gameplaySurfaceBlocked;
         public bool AreMobileControlsVisible => mobileRoot != null && mobileRoot.activeInHierarchy;
+
+        public void SetTextScale(float scale)
+        {
+            if (gameplayRoot == null) return;
+            scale = Mathf.Clamp(scale, 0.75f, 1.45f);
+            foreach (var text in gameplayRoot.GetComponentsInChildren<Text>(true))
+            {
+                var key = text.GetInstanceID();
+                if (!_baseTextSizes.TryGetValue(key, out var baseSize))
+                {
+                    baseSize = Mathf.Max(1, text.fontSize);
+                    _baseTextSizes[key] = baseSize;
+                }
+
+                var scaledSize = Mathf.Max(1, Mathf.RoundToInt(baseSize * scale));
+                text.fontSize = scaledSize;
+                if (text.resizeTextForBestFit)
+                {
+                    text.resizeTextMinSize = Mathf.Max(1, Mathf.RoundToInt(Mathf.Max(1, baseSize / 2f) * scale));
+                    text.resizeTextMaxSize = scaledSize;
+                }
+            }
+        }
 
         private void Awake()
         {

@@ -242,7 +242,9 @@ namespace WOF
             }
             var worldX = _center.x + distribution.x * Radius;
             var worldZ = _center.z + distribution.y * Radius;
-            if (IsBaseVillageBlocked(worldX, worldZ) || IsStrictDesert(worldX, worldZ) ||
+            var biomeCoverage = (float)WofSurvivalTerrainMath.GetBiomeGrassCoverageAtWorld(worldX, worldZ);
+            if (IsAuthoredSurfaceBlocked(worldX, worldZ) ||
+                Hash01(seedX + candidate * 19, seedZ - candidate * 23, 4187) > biomeCoverage ||
                 !TrySampleTerrain(worldX, worldZ, 0.68f, out var hit, out var surfaceNormal))
             {
                 matrix = default;
@@ -284,7 +286,9 @@ namespace WOF
             var patchWave = Mathf.Sin(worldX * 0.041f + seedX * 0.013f) + Mathf.Cos(worldZ * 0.049f - seedZ * 0.019f) * 0.52f;
             if (distribution.sqrMagnitude > 1f ||
                 Hash01(seedX - flowerCandidate * 23, seedZ + flowerCandidate * 17, 4920) > Mathf.Lerp(0.62f, 1f, Smoothstep(0.18f, 0.92f, patchWave)) ||
-                IsBaseVillageBlocked(worldX, worldZ) || IsStrictDesert(worldX, worldZ) ||
+                IsAuthoredSurfaceBlocked(worldX, worldZ) ||
+                Hash01(seedX - flowerCandidate * 11, seedZ + flowerCandidate * 13, 4911) >
+                WofSurvivalTerrainMath.GetBiomeGrassCoverageAtWorld(worldX, worldZ) ||
                 !TrySampleTerrain(worldX, worldZ, 0.84f, out var hit, out var surfaceNormal))
             {
                 matrix = default;
@@ -393,8 +397,14 @@ namespace WOF
             return worldNormal.y < 0f ? -worldNormal : worldNormal;
         }
 
-        private static bool IsBaseVillageBlocked(float x, float z)
+        internal static bool IsAuthoredSurfaceBlocked(float x, float z)
         {
+            var mountainX = x - WofMountainVillageLayout.WorldOrigin.x;
+            var mountainZ = z - WofMountainVillageLayout.WorldOrigin.z;
+            var mountainRadius = WofMountainVillageLayout.PerimeterShoulderRadius - 8f;
+            if (mountainX * mountainX + mountainZ * mountainZ <= mountainRadius * mountainRadius)
+                return true;
+
             var absX = Mathf.Abs(x);
             var absZ = Mathf.Abs(z);
             var max = Mathf.Max(absX, absZ);
@@ -404,13 +414,6 @@ namespace WOF
             return absX < 50f || absZ < 50f || radiusSquared < 72f * 72f ||
                    radiusSquared > 42f * 42f && radiusSquared < 58f * 58f ||
                    radiusSquared > 125f * 125f && radiusSquared < 145f * 145f;
-        }
-
-        private static bool IsStrictDesert(float x, float z)
-        {
-            return WofSurvivalTerrainMath.IsDesertVillageExpansionChunk(
-                WofSurvivalTerrainMath.GetChunkCoordinate(x),
-                WofSurvivalTerrainMath.GetChunkCoordinate(z));
         }
 
         private static float RestoredMeadowMask(float x, float z)

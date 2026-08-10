@@ -101,9 +101,9 @@ namespace WOF
 
             var keyboardToggle = Keyboard.current?.eKey.wasPressedThisFrame ?? false;
             var gamepad = Gamepad.current;
-            var hotbarModifierHeld = (gamepad?.leftShoulder.isPressed ?? false) ||
-                                     (gamepad?.rightShoulder.isPressed ?? false);
-            var controllerToggleHeld = !hotbarModifierHeld && (gamepad?.dpad.up.isPressed ?? false);
+            var hotbarModifierHeld = WofControllerBindings.IsPressed(gamepad, WofControllerActions.LeftHotbar) ||
+                                     WofControllerBindings.IsPressed(gamepad, WofControllerActions.RightHotbar);
+            var controllerToggleHeld = !hotbarModifierHeld && WofControllerBindings.IsPressed(gamepad, WofControllerActions.SpellMenu);
             var controllerToggle = controllerToggleHeld && !_controllerToggleHeld;
             _controllerToggleHeld = controllerToggleHeld;
             if (keyboardToggle && !WofNavigationMapRuntime.IsExpanded)
@@ -135,7 +135,7 @@ namespace WOF
                 return;
             }
 
-            var controllerBackHeld = gamepad.buttonEast.isPressed;
+            var controllerBackHeld = WofControllerBindings.IsPressed(gamepad, WofControllerActions.MenuBack);
             var controllerBack = controllerBackHeld && !_controllerBackHeld;
             _controllerBackHeld = controllerBackHeld;
             if (controllerBack)
@@ -143,11 +143,11 @@ namespace WOF
                 SetOpen(false);
                 return;
             }
-            if (gamepad.leftShoulder.wasPressedThisFrame)
+            if (WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.LeftHotbar))
             {
                 SetBindingHand(WofHandSide.Left);
             }
-            else if (gamepad.rightShoulder.wasPressedThisFrame)
+            else if (WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.RightHotbar))
             {
                 SetBindingHand(WofHandSide.Right);
             }
@@ -167,7 +167,7 @@ namespace WOF
             {
                 SetSelectedIndex(ResolveControllerIndex(_selectedIndex, 0, -1, _gridColumns, WofSpellLoadout.PlayableSpells.Length));
             }
-            if (gamepad.buttonSouth.wasPressedThisFrame)
+            if (WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.MenuSelect))
             {
                 EquipSelectedSpell();
             }

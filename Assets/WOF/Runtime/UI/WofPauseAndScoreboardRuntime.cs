@@ -21,15 +21,10 @@ namespace WOF
         private GameObject _settingsRoot;
         private GameObject _scoreboardRoot;
         private Button[] _pauseButtons;
-        private Button[] _settingsButtons;
+        private WofSettingsPanelRuntime _settingsPanel;
         private Text[] _scoreRows;
         private GameObject[] _scoreRowPanels;
-        private Text _fullscreenValue;
-        private Text _vSyncValue;
-        private Text _frameLimitValue;
         private int _pauseSelection;
-        private int _settingsSelection;
-        private int _frameLimitIndex = 1;
         private float _nextRosterRefreshAt;
         private bool _settingsOpen;
         private bool _pauseProbe;
@@ -90,7 +85,7 @@ namespace WOF
             if (IsScoreboardOpen)
             {
                 var stillHeld = (keyboard?.tabKey.isPressed ?? false) ||
-                                (gamepad?.selectButton.isPressed ?? false);
+                                WofControllerBindings.IsPressed(gamepad, WofControllerActions.Scoreboard);
                 if (!_scoreboardProbe && !stillHeld)
                 {
                     SetScoreboardOpen(false);
@@ -103,7 +98,7 @@ namespace WOF
                                  !WofSpellMenuRuntime.IsOpen && !WofNavigationMapRuntime.IsExpanded;
             if (canOpenOverlay &&
                 ((keyboard?.escapeKey.wasPressedThisFrame ?? false) ||
-                 (gamepad?.startButton.wasPressedThisFrame ?? false)))
+                 WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.Pause)))
             {
                 SetPauseOpen(true);
                 return;
@@ -111,7 +106,7 @@ namespace WOF
 
             var scoreboardHeld = canOpenOverlay &&
                                  ((keyboard?.tabKey.isPressed ?? false) ||
-                                  (gamepad?.selectButton.isPressed ?? false));
+                                  WofControllerBindings.IsPressed(gamepad, WofControllerActions.Scoreboard));
             if (scoreboardHeld)
             {
                 SetScoreboardOpen(true);
@@ -134,8 +129,8 @@ namespace WOF
             var keyboard = Keyboard.current;
             var gamepad = Gamepad.current;
             if ((keyboard?.escapeKey.wasPressedThisFrame ?? false) ||
-                (gamepad?.startButton.wasPressedThisFrame ?? false) ||
-                (gamepad?.buttonEast.wasPressedThisFrame ?? false))
+                WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.Pause) ||
+                WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.MenuBack))
             {
                 SetPauseOpen(false);
                 return;
@@ -153,7 +148,7 @@ namespace WOF
             }
 
             if ((keyboard?.enterKey.wasPressedThisFrame ?? false) ||
-                (gamepad?.buttonSouth.wasPressedThisFrame ?? false))
+                WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.MenuSelect))
             {
                 if (_pauseSelection == 0) SetPauseOpen(false);
                 else SetSettingsOpen(true);
@@ -162,36 +157,7 @@ namespace WOF
 
         private void UpdateSettingsInput()
         {
-            var keyboard = Keyboard.current;
-            var gamepad = Gamepad.current;
-            if ((keyboard?.escapeKey.wasPressedThisFrame ?? false) ||
-                (gamepad?.buttonEast.wasPressedThisFrame ?? false))
-            {
-                SetSettingsOpen(false);
-                return;
-            }
-
-            if ((keyboard?.upArrowKey.wasPressedThisFrame ?? false) ||
-                (gamepad?.dpad.up.wasPressedThisFrame ?? false))
-                SetSettingsSelection(_settingsSelection - 1);
-            else if ((keyboard?.downArrowKey.wasPressedThisFrame ?? false) ||
-                     (gamepad?.dpad.down.wasPressedThisFrame ?? false))
-                SetSettingsSelection(_settingsSelection + 1);
-
-            var activate = (keyboard?.enterKey.wasPressedThisFrame ?? false) ||
-                           (keyboard?.leftArrowKey.wasPressedThisFrame ?? false) ||
-                           (keyboard?.rightArrowKey.wasPressedThisFrame ?? false) ||
-                           (gamepad?.buttonSouth.wasPressedThisFrame ?? false) ||
-                           (gamepad?.dpad.left.wasPressedThisFrame ?? false) ||
-                           (gamepad?.dpad.right.wasPressedThisFrame ?? false);
-            if (!activate) return;
-            switch (_settingsSelection)
-            {
-                case 0: ToggleFullscreen(); break;
-                case 1: ToggleVSync(); break;
-                case 2: CycleFrameLimit(); break;
-                default: SetSettingsOpen(false); break;
-            }
+            _settingsPanel?.HandleInput();
         }
 
         private void SetPauseOpen(bool open)
@@ -245,54 +211,13 @@ namespace WOF
             if (_settingsRoot != null) _settingsRoot.SetActive(open);
             if (open)
             {
-                RefreshSettingsLabels();
-                SetSettingsSelection(0);
+                _settingsPanel?.Open();
             }
             else if (IsPauseOpen)
             {
                 SetPauseSelection(1);
             }
             Debug.Log($"[WOF-AUTOMATION] SETTINGS_MENU open={open}");
-        }
-
-        private void SetSettingsSelection(int selection)
-        {
-            if (_settingsButtons == null || _settingsButtons.Length == 0) return;
-            _settingsSelection = ((selection % _settingsButtons.Length) + _settingsButtons.Length) % _settingsButtons.Length;
-            for (var index = 0; index < _settingsButtons.Length; index++)
-                _settingsButtons[index].GetComponent<Image>().color = index == _settingsSelection
-                    ? new Color32(88, 28, 135, 255)
-                    : new Color32(55, 55, 62, 255);
-            EventSystem.current?.SetSelectedGameObject(_settingsButtons[_settingsSelection].gameObject);
-        }
-
-        private void ToggleFullscreen()
-        {
-            Screen.fullScreenMode = Screen.fullScreen
-                ? FullScreenMode.Windowed
-                : FullScreenMode.FullScreenWindow;
-            RefreshSettingsLabels();
-        }
-
-        private void ToggleVSync()
-        {
-            QualitySettings.vSyncCount = QualitySettings.vSyncCount > 0 ? 0 : 1;
-            RefreshSettingsLabels();
-        }
-
-        private void CycleFrameLimit()
-        {
-            _frameLimitIndex = (_frameLimitIndex + 1) % 3;
-            Application.targetFrameRate = _frameLimitIndex == 0 ? 60 : _frameLimitIndex == 1 ? 120 : -1;
-            RefreshSettingsLabels();
-        }
-
-        private void RefreshSettingsLabels()
-        {
-            if (_fullscreenValue != null) _fullscreenValue.text = Screen.fullScreen ? "FULLSCREEN" : "WINDOWED";
-            if (_vSyncValue != null) _vSyncValue.text = QualitySettings.vSyncCount > 0 ? "ON" : "OFF";
-            if (_frameLimitValue != null)
-                _frameLimitValue.text = _frameLimitIndex == 0 ? "60" : _frameLimitIndex == 1 ? "120" : "UNCAPPED";
         }
 
         private void RefreshScoreboard()
@@ -386,24 +311,8 @@ namespace WOF
             var settingsOutline = _settingsRoot.AddComponent<Outline>();
             settingsOutline.effectColor = new Color32(103, 232, 249, 155);
             settingsOutline.effectDistance = new Vector2(2f, -2f);
-            var settingsTitle = CreateText("SettingsTitle", _settingsRoot.transform, "SETTINGS", 38, TextAnchor.MiddleLeft, Color.white);
-            SetRect(settingsTitle.rectTransform, new Vector2(0.06f, 0.82f), new Vector2(0.94f, 0.97f));
-            var settingsKicker = CreateText("SettingsKicker", _settingsRoot.transform, "VIDEO", 14, TextAnchor.MiddleLeft, new Color32(165, 243, 252, 180));
-            SetRect(settingsKicker.rectTransform, new Vector2(0.06f, 0.75f), new Vector2(0.94f, 0.84f));
-            var fullscreen = CreateSettingButton("Fullscreen", _settingsRoot.transform, "DISPLAY MODE", out _fullscreenValue);
-            SetRect(fullscreen.GetComponent<RectTransform>(), new Vector2(0.07f, 0.59f), new Vector2(0.93f, 0.7f));
-            fullscreen.onClick.AddListener(ToggleFullscreen);
-            var vSync = CreateSettingButton("VSync", _settingsRoot.transform, "VSYNC", out _vSyncValue);
-            SetRect(vSync.GetComponent<RectTransform>(), new Vector2(0.07f, 0.45f), new Vector2(0.93f, 0.56f));
-            vSync.onClick.AddListener(ToggleVSync);
-            var frameLimit = CreateSettingButton("FrameLimit", _settingsRoot.transform, "FRAME LIMIT", out _frameLimitValue);
-            SetRect(frameLimit.GetComponent<RectTransform>(), new Vector2(0.07f, 0.31f), new Vector2(0.93f, 0.42f));
-            frameLimit.onClick.AddListener(CycleFrameLimit);
-            var back = CreateButton("Back", _settingsRoot.transform, "BACK", new Color32(55, 55, 62, 255));
-            SetRect(back.GetComponent<RectTransform>(), new Vector2(0.34f, 0.1f), new Vector2(0.66f, 0.2f));
-            back.onClick.AddListener(() => SetSettingsOpen(false));
-            _settingsButtons = new[] { fullscreen, vSync, frameLimit, back };
-            RefreshSettingsLabels();
+            _settingsPanel = _settingsRoot.AddComponent<WofSettingsPanelRuntime>();
+            _settingsPanel.Configure(hud, font, () => SetSettingsOpen(false));
 
             _scoreboardRoot = CreatePanel("PlayerScoreOverlay", uiParent, Vector2.zero, Vector2.one, Color.clear);
             _scoreboardRoot.GetComponent<Image>().raycastTarget = false;
@@ -481,18 +390,6 @@ namespace WOF
             button.targetGraphic = item.GetComponent<Image>();
             var text = CreateText("Label", item.transform, label, 22, TextAnchor.MiddleCenter, Color.white);
             SetRect(text.rectTransform, Vector2.zero, Vector2.one);
-            return button;
-        }
-
-        private Button CreateSettingButton(string name, Transform parent, string label, out Text value)
-        {
-            var item = CreatePanel(name, parent, Vector2.zero, Vector2.one, new Color32(55, 55, 62, 255));
-            var button = item.AddComponent<Button>();
-            button.targetGraphic = item.GetComponent<Image>();
-            var labelText = CreateText("Label", item.transform, label, 17, TextAnchor.MiddleLeft, Color.white);
-            SetRect(labelText.rectTransform, new Vector2(0.035f, 0f), new Vector2(0.62f, 1f));
-            value = CreateText("Value", item.transform, string.Empty, 17, TextAnchor.MiddleRight, new Color32(165, 243, 252, 255));
-            SetRect(value.rectTransform, new Vector2(0.62f, 0f), new Vector2(0.965f, 1f));
             return button;
         }
 

@@ -68,6 +68,12 @@ namespace WOF.Tests.EditMode
             Assert.That(WofSurvivalBotwGrassRuntime.CanopyFarScale, Is.InRange(3f, 5f));
             Assert.That(WofSurvivalBotwGrassRuntime.TerrainGrassDetailStrength, Is.InRange(0.2f, 0.35f));
             Assert.That(WofSurvivalBotwGrassRuntime.TerrainGrassDetailScale, Is.InRange(0.15f, 0.3f));
+            Assert.That(WofSurvivalBotwGrassRuntime.IsAuthoredSurfaceBlocked(
+                WofMountainVillageLayout.WorldOrigin.x,
+                WofMountainVillageLayout.WorldOrigin.z), Is.True);
+            Assert.That(WofSurvivalBotwGrassRuntime.IsAuthoredSurfaceBlocked(
+                WofMountainVillageLayout.WorldOrigin.x + WofMountainVillageLayout.PerimeterShoulderRadius + 20f,
+                WofMountainVillageLayout.WorldOrigin.z), Is.False);
         }
 
         [Test]
@@ -87,6 +93,14 @@ namespace WOF.Tests.EditMode
             Assert.That(WofSurvivalBotwGrassRuntime.ShouldStartBuild(false, true, 0f), Is.False);
             Assert.That(WofSurvivalBotwGrassRuntime.ShouldStartBuild(false, true, 64f), Is.True);
             Assert.That(WofSurvivalBotwGrassRuntime.ShouldStartBuild(true, true, 128f), Is.False);
+        }
+
+        [Test]
+        public void AmbientLifeSkipsInstancedDrawsOnHeadlessGraphicsDevices()
+        {
+            Assert.That(WofSurvivalAmbientLifeRuntime.ShouldDrawInstances(false, 64), Is.False);
+            Assert.That(WofSurvivalAmbientLifeRuntime.ShouldDrawInstances(true, 0), Is.False);
+            Assert.That(WofSurvivalAmbientLifeRuntime.ShouldDrawInstances(true, 64), Is.True);
         }
 
         [Test]

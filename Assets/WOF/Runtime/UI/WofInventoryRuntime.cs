@@ -161,7 +161,7 @@ namespace WOF
 
             var gamepad = Gamepad.current;
             var controllerActive = WofInputRouter.IsControllerGameplayActive(gamepad);
-            var inventoryHeld = gamepad?.dpad.right.isPressed ?? false;
+            var inventoryHeld = WofControllerBindings.IsPressed(gamepad, WofControllerActions.Inventory);
             var movementAxis = controllerActive && gamepad != null
                 ? WofInputRouter.ResolveControllerStick(gamepad.leftStick.ReadUnprocessedValue())
                 : Vector2.zero;
@@ -218,7 +218,7 @@ namespace WOF
                 return;
             }
 
-            if (gamepad.buttonSouth.wasPressedThisFrame)
+            if (WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.MenuSelect))
             {
                 if (!_questJournalOpen)
                 {
@@ -226,7 +226,8 @@ namespace WOF
                 }
                 return;
             }
-            if (gamepad.buttonEast.wasPressedThisFrame || gamepad.startButton.wasPressedThisFrame)
+            if (WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.MenuBack) ||
+                WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.Pause))
             {
                 if (_questJournalOpen)
                 {
@@ -541,7 +542,7 @@ namespace WOF
             var renderer = preview.AddComponent<WofLaunchWizardPreviewRenderer>();
             var profile = WofSurvivalProfileStore.Load() ?? new WofSurvivalProfile();
             renderer.UseInventoryStyle();
-            renderer.Render(profile.topColor, profile.skinColor, profile.hairColor, profile.hatStyle, profile.hairStyle);
+            renderer.Render(profile);
 
             _questsButton = CreateButton("Quests", wizardPanel.transform, string.Empty, new Color32(110, 231, 183, 26));
             SetTopLeft(_questsButton.GetComponent<RectTransform>(), 12f, 214f, 196f, 82f);

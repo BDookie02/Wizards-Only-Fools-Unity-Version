@@ -46,6 +46,19 @@ namespace WOF.Editor
             CreateLilyCoilTunnel(root.transform, document, materials);
             CreateLilyCoilFlora(root.transform, document, materials);
             CreateLilyCoilLights(root.transform, document);
+            root.AddComponent<WofLilyCoilAmbientEffectsRuntime>().Configure(
+                document.flora.tubeFlowers,
+                document.flora.smallTubeFlowers,
+                document.flora.smallBloomParticles,
+                document.flora.fireflies,
+                document.flora.butterflies,
+                materials.Particle,
+                materials.PinkGlow,
+                materials.Firefly,
+                materials.FireflyGlow,
+                materials.ButterflyLeft,
+                materials.ButterflyRight,
+                materials.ButterflyBody);
         }
 
         private static WofLilyCoilDocument LoadLilyCoilDocument()

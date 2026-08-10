@@ -10,7 +10,6 @@ namespace WOF.Editor
     {
         private const string MountainArtRoot = "Assets/WOF/Art/Generated/React/MountainVillage";
         private const string MountainLayoutPath = MountainArtRoot + "/runtime-layout.json";
-        private const string MountainTextureRoot = MountainArtRoot + "/Textures";
         private const string MountainGeometryRoot = GeometryRoot + "/MountainVillage";
 
         private static void CreateMountainVillageScene()
@@ -33,6 +32,7 @@ namespace WOF.Editor
             CreateMountainSurface(root.transform, document, materials);
             CreateMountainTrail(root.transform, document, materials);
             CreateMountainCliffsAndSnow(root.transform, document, materials);
+            root.AddComponent<WofMountainSnowRuntime>();
             CreateMountainWaterfall(root.transform, document, materials);
             CreateMountainCabins(root.transform, document, materials);
             CreateMountainMineshaft(root.transform, document, materials);
@@ -92,10 +92,9 @@ namespace WOF.Editor
 
         private static MountainMaterialSet CreateMountainMaterials()
         {
-            var detailTexture = LoadRequiredAsset<Texture2D>($"{MountainTextureRoot}/terrain-detail.png");
             return new MountainMaterialSet
             {
-                Terrain = GetOrCreateMountainVertexMaterial("MountainTerrain", Color.white, detailTexture),
+                Terrain = GetOrCreateMountainVertexMaterial("MountainTerrainBanded", Color.white, null),
                 Grass = GetOrCreateMountainVertexMaterial("MountainSlopeGrass", Color.white, null),
                 TrailDeck = MountainMaterial("#4b3827"),
                 TrailTop = MountainMaterial("#74613f"),
@@ -164,22 +163,22 @@ namespace WOF.Editor
             var root = new GameObject("MountainSurface");
             root.transform.SetParent(parent, false);
             var terrain = GetOrCreateMeshAsset(
-                MountainGeometryRoot + "/Terrain.asset",
-                () => CreateDesertSerializedMesh("ExactMountainTerrain", document.geometries.terrain));
+                MountainGeometryRoot + "/TerrainBanded.asset",
+                () => CreateMountainBandedTerrainMesh(document));
             var terrainCollider = GetOrCreateMeshAsset(
-                MountainGeometryRoot + "/TerrainCollider.asset",
-                () => CreateDesertSerializedMesh("ExactMountainTerrainCollider", document.geometries.terrainCollider));
+                MountainGeometryRoot + "/TerrainColliderBiomeBlended.asset",
+                () => CreateMountainBiomeBlendedColliderMesh(document));
             var grass = GetOrCreateMeshAsset(
-                MountainGeometryRoot + "/SlopeGrass.asset",
-                () => CreateDesertSerializedMesh("ExactMountainSlopeGrass", document.geometries.slopeGrass));
-            CreateMeshVisual("ExactMountainTerrain", root.transform, Vector3.zero, terrain, materials.Terrain);
+                MountainGeometryRoot + "/SlopeGrassBaseFringe.asset",
+                () => CreateMountainBaseFringeGrassMesh(document));
+            CreateMeshVisual("BandedMountainTerrain_DirtStoneSnow", root.transform, Vector3.zero, terrain, materials.Terrain);
             var colliderOwner = new GameObject("ExactMountainTerrainCollider");
             colliderOwner.transform.SetParent(root.transform, false);
             colliderOwner.AddComponent<MeshCollider>().sharedMesh = terrainCollider;
-            CreateMeshVisual("ExactMountainSlopeGrass_1793", root.transform, Vector3.zero, grass, materials.Grass);
+            CreateMeshVisual("MountainBaseFringeGrass", root.transform, Vector3.zero, grass, materials.Grass);
         }
 
-        private static void CreateMountainTrail(
+        private static void CreateLegacyMountainTrail(
             Transform parent,
             WofMountainVillageDocument document,
             MountainMaterialSet materials)

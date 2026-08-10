@@ -1091,7 +1091,7 @@ namespace WOF
             }
 
             var keyboardPressed = Keyboard.current?.fKey.wasPressedThisFrame ?? false;
-            var controllerHeld = Gamepad.current?.buttonWest.isPressed ?? false;
+            var controllerHeld = WofControllerBindings.IsPressed(Gamepad.current, WofControllerActions.Interact);
             var controllerPressed = controllerHeld && !_controllerInteractHeld;
             _controllerInteractHeld = controllerHeld;
             if (!keyboardPressed && !controllerPressed)
@@ -1299,12 +1299,13 @@ namespace WOF
                 _heldNavigationDirection = 0;
                 return;
             }
-            if (gamepad.buttonSouth.wasPressedThisFrame)
+            if (WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.MenuSelect))
             {
                 Choose(_selectedChoiceIndex);
                 return;
             }
-            if (gamepad.buttonEast.wasPressedThisFrame || gamepad.startButton.wasPressedThisFrame)
+            if (WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.MenuBack) ||
+                WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.Pause))
             {
                 Close();
                 return;

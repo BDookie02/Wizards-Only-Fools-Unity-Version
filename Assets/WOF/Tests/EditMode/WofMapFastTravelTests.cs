@@ -6,23 +6,29 @@ namespace WOF.Tests.EditMode
     public sealed class WofMapFastTravelTests
     {
         [Test]
-        public void PlayerFacingDestinationListMatchesReactMapOverlay()
+        public void PlayerFacingDestinationListIncludesMainlandAndLilyCoil()
         {
             var destinations = WofMapFastTravel.Destinations;
-            Assert.That(destinations.Length, Is.EqualTo(6));
+            Assert.That(destinations.Length, Is.EqualTo(7));
             Assert.That(destinations[0].Position, Is.EqualTo(new Vector3(0f, 15f, 30f)));
             Assert.That(destinations[1].Position, Is.EqualTo(new Vector3(-1536f, 140f, -1322f)));
             Assert.That(destinations[2].Position, Is.EqualTo(new Vector3(0f, 140f, -1322f)));
             Assert.That(destinations[3].Position, Is.EqualTo(new Vector3(2048f, 140f, -1834f)));
             Assert.That(destinations[4].Position, Is.EqualTo(new Vector3(1536f, 270f, 62f)));
             Assert.That(destinations[5].Position, Is.EqualTo(new Vector3(2560f, 92f, 1156f)));
+            Assert.That(destinations[6].Destination, Is.EqualTo(WofMapDestination.LilyCoil));
+            Assert.That(destinations[6].Label, Is.EqualTo("LILY COIL"));
+            Assert.That(destinations[6].Position, Is.EqualTo(WofLilyCoilLayout.PlayableSpawnPosition));
+            Assert.That(destinations[6].ShowOnWorldMap, Is.False,
+                "The remote Lily Coil realm must not be drawn as a misleading clamped mainland marker.");
         }
 
         [Test]
         public void InvalidDestinationValuesAreRejected()
         {
             Assert.That(WofMapFastTravel.IsValid(-1), Is.False);
-            Assert.That(WofMapFastTravel.IsValid(6), Is.False);
+            Assert.That(WofMapFastTravel.IsValid(6), Is.True);
+            Assert.That(WofMapFastTravel.IsValid(7), Is.False);
             Assert.That(WofMapFastTravel.TryGet((WofMapDestination)99, out _), Is.False);
         }
 

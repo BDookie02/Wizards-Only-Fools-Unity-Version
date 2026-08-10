@@ -21,6 +21,10 @@ namespace WOF.Tests
             Assert.That(oracle.collisionRadius, Is.EqualTo(WofSurvivalTerrainMath.CollisionRadius));
             Assert.That(oracle.centerHysteresis, Is.EqualTo(WofSurvivalTerrainMath.CenterHysteresis).Within(0.001d));
             Assert.That(WofSurvivalTerrainStreamingRuntime.MaxConcurrentChunkBuilds, Is.EqualTo(1));
+            Assert.That(WofSurvivalTerrainStreamingRuntime.ProbeWarmupSeconds, Is.GreaterThanOrEqualTo(3f));
+            Assert.That(WofSurvivalTerrainStreamingRuntime.CanDrawStreamingTrees(false, 12), Is.False);
+            Assert.That(WofSurvivalTerrainStreamingRuntime.CanDrawStreamingTrees(true, 0), Is.False);
+            Assert.That(WofSurvivalTerrainStreamingRuntime.CanDrawStreamingTrees(true, 12), Is.True);
 
             foreach (var fixture in oracle.chunkCoordinates)
                 Assert.That(WofSurvivalTerrainMath.GetChunkCoordinate(fixture.value), Is.EqualTo(fixture.chunk),
@@ -35,8 +39,11 @@ namespace WOF.Tests
                 Assert.That(offsets[index].x, Is.EqualTo(expected.dx), $"Window x mismatch at {index}.");
                 Assert.That(offsets[index].z, Is.EqualTo(expected.dz), $"Window z mismatch at {index}.");
                 Assert.That(offsets[index].distance, Is.EqualTo(expected.distance), $"Window distance mismatch at {index}.");
+                var expectedRenderSegments = expected.distance <= WofSurvivalTerrainMath.NearRadius
+                    ? expected.renderSegments
+                    : 8;
                 Assert.That(WofSurvivalTerrainMath.GetRenderSegments(expected.distance),
-                    Is.EqualTo(expected.renderSegments), $"Render LOD mismatch at {index}.");
+                    Is.EqualTo(expectedRenderSegments), $"Smoothed Unity render LOD mismatch at {index}.");
                 Assert.That(WofSurvivalTerrainMath.GetCollisionSegments(expected.distance),
                     Is.EqualTo(expected.collisionSegments), $"Collision LOD mismatch at {index}.");
             }
@@ -78,7 +85,7 @@ namespace WOF.Tests
             {
                 AssertMesh(centerRender, 1089, 6144, true);
                 AssertMesh(nearRender, 169, 864, true);
-                AssertMesh(farRender, 25, 96, true);
+                AssertMesh(farRender, 81, 384, true);
                 AssertMesh(farCollision, 1089, 6144, false);
                 Assert.That(noCollision, Is.Null);
             }
@@ -210,6 +217,29 @@ namespace WOF.Tests
             }
             Assert.That(WofSurvivalTerrainMath.GetBiome(4, -4), Is.EqualTo(WofSurvivalBiome.Desert));
             Assert.That(WofSurvivalTerrainMath.GetBiome(6, -3), Is.EqualTo(WofSurvivalBiome.Tallgrass));
+        }
+
+        [Test]
+        public void BiomeGrassCoverageFeathersAcrossDesertEdgesInsteadOfFollowingChunkSquares()
+        {
+            var minimum = 1d;
+            var maximum = 0d;
+            var maximumStep = 0d;
+            var mixedSamples = 0;
+            var previous = WofSurvivalTerrainMath.GetBiomeGrassCoverageAtWorld(2d * 512d, -4d * 512d);
+            for (var x = 2d * 512d + 16d; x <= 8d * 512d; x += 16d)
+            {
+                var current = WofSurvivalTerrainMath.GetBiomeGrassCoverageAtWorld(x, -4d * 512d);
+                minimum = System.Math.Min(minimum, current);
+                maximum = System.Math.Max(maximum, current);
+                maximumStep = System.Math.Max(maximumStep, System.Math.Abs(current - previous));
+                if (current > 0.05d && current < 0.95d) mixedSamples++;
+                previous = current;
+            }
+            Assert.That(minimum, Is.LessThan(0.08d));
+            Assert.That(maximum, Is.GreaterThan(0.92d));
+            Assert.That(mixedSamples, Is.GreaterThan(8));
+            Assert.That(maximumStep, Is.LessThan(0.2d));
         }
 
         [Test]

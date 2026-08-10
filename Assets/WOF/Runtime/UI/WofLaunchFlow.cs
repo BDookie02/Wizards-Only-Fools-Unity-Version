@@ -156,8 +156,8 @@ namespace WOF
 
             var keyboardBack = Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame;
             var gamepad = Gamepad.current;
-            var gamepadBack = gamepad != null && gamepad.buttonEast.wasPressedThisFrame;
-            var gamepadStart = gamepad != null && gamepad.startButton.wasPressedThisFrame;
+            var gamepadBack = WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.MenuBack);
+            var gamepadStart = WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.Pause);
             if (gamepadStart)
             {
                 InvokeSelectedControllerAction();
@@ -283,7 +283,8 @@ namespace WOF
         {
             var gamepad = Gamepad.current;
             return gamepad != null &&
-                   (gamepad.buttonSouth.wasPressedThisFrame || gamepad.startButton.wasPressedThisFrame);
+                   (WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.MenuSelect) ||
+                    WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.Pause));
         }
 
         private void ContinueProfile()

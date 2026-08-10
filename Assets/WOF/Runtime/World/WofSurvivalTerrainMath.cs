@@ -160,7 +160,7 @@ namespace WOF
         internal static int GetRenderSegments(int distance)
         {
             if (distance == 0) return 32;
-            return distance <= NearRadius ? 12 : 4;
+            return distance <= NearRadius ? 12 : 8;
         }
 
         internal static int GetCollisionSegments(int distance)
@@ -346,6 +346,11 @@ namespace WOF
         {
             var value = Math.Sin(x * 127.1d + z * 311.7d + salt * 74.7d) * 43758.5453123d;
             return value - Math.Floor(value);
+        }
+
+        internal static double GetTownRouteMaskAtWorld(double worldX, double worldZ)
+        {
+            return GetTownRouteMask(worldX, worldZ);
         }
 
         private static Rgb GetSmoothedTerrainColor(double worldX, double worldZ, double height)
@@ -692,6 +697,14 @@ namespace WOF
             var level = 0d;
             for (var index = 0; index < BiomeCount; index++) level += Elevations[index].WaterLevel * WaterWeights[index];
             return level;
+        }
+
+        internal static double GetBiomeGrassCoverageAtWorld(double worldX, double worldZ)
+        {
+            var restored = GetRestoredMeadowMask(worldX, worldZ);
+            GetBiomeWeights(worldX, worldZ, StrictDesertWeights);
+            var nonDesert = 1d - StrictDesertWeights[(int)WofSurvivalBiome.Desert];
+            return Clamp01(SmoothstepRange(0.035d, 0.34d, nonDesert + restored * 0.92d));
         }
 
         private static bool IsStrictDesert(double worldX, double worldZ)

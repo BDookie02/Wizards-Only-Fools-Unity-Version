@@ -158,9 +158,22 @@ namespace WOF.Tests
 
                 var openWorld = roots.SelectMany(root => root.GetComponentsInChildren<Transform>(true))
                     .Single(item => item.name == "ReactSurvivalOpenWorldBaseRegion");
-                Assert.That(openWorld.GetComponent<MeshFilter>().sharedMesh.vertexCount, Is.EqualTo(89298));
+                var openWorldMesh = openWorld.GetComponent<MeshFilter>().sharedMesh;
+                Assert.That(openWorldMesh.vertexCount, Is.EqualTo(89298));
                 Assert.That(openWorld.GetComponent<MeshCollider>().sharedMesh, Is.SameAs(
-                    openWorld.GetComponent<MeshFilter>().sharedMesh));
+                    openWorldMesh));
+                var mountainDirt = FindNearestVertexColor(openWorldMesh, new Vector3(1536f, 0f, 512f));
+                var mountainStone = FindNearestVertexColor(openWorldMesh, new Vector3(1536f, 0f, 384f));
+                var mountainSnow = FindNearestVertexColor(openWorldMesh, new Vector3(1536f, 0f, 256f));
+                Assert.That(mountainDirt.r, Is.GreaterThan(mountainDirt.g + 0.035f),
+                    "The baked outer mountain must show its dirt lower band instead of grass green.");
+                Assert.That(mountainDirt.g, Is.GreaterThan(mountainDirt.b + 0.035f));
+                Assert.That(Mathf.Abs(mountainStone.r - mountainStone.g), Is.LessThan(0.12f),
+                    "The baked outer mountain must show a neutral stone middle band.");
+                Assert.That(mountainSnow.r, Is.GreaterThan(0.60f),
+                    "The baked outer mountain must lead into a visible snow cap.");
+                Assert.That(mountainSnow.b, Is.GreaterThan(mountainSnow.r + 0.04f),
+                    "The upper outer band must transition from neutral stone toward blue-white snow.");
 
                 var colliders = perimeter.GetComponentsInChildren<Collider>(true);
                 AssertGateIsOpen(colliders, new Vector3(0f, 1f, -238f));
@@ -186,6 +199,26 @@ namespace WOF.Tests
         {
             Assert.That(colliders.Any(item => item.bounds.Contains(point)), Is.False,
                 $"React gate opening is blocked at {point}.");
+        }
+
+        private static Color FindNearestVertexColor(Mesh mesh, Vector3 target)
+        {
+            var vertices = mesh.vertices;
+            var colors = mesh.colors;
+            Assert.That(colors, Has.Length.EqualTo(vertices.Length));
+            var nearestIndex = 0;
+            var nearestDistance = float.PositiveInfinity;
+            for (var index = 0; index < vertices.Length; index++)
+            {
+                var dx = vertices[index].x - target.x;
+                var dz = vertices[index].z - target.z;
+                var distance = dx * dx + dz * dz;
+                if (distance >= nearestDistance) continue;
+                nearestDistance = distance;
+                nearestIndex = index;
+            }
+            Assert.That(nearestDistance, Is.LessThan(1f), $"No baked terrain vertex near {target}.");
+            return colors[nearestIndex];
         }
     }
 }
