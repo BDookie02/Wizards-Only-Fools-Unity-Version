@@ -2193,6 +2193,9 @@ namespace WOF.Editor
             var pauseAndScoreboard = canvasObject.AddComponent<WofPauseAndScoreboardRuntime>();
             pauseAndScoreboard.ConfigureGeneratedView(hud, canvasObject.transform, font);
 
+            var engineMenu = canvasObject.AddComponent<WofEngineMenuRuntime>();
+            engineMenu.ConfigureGeneratedView(hud, canvasObject.transform, font);
+
             return new WofUiReferences
             {
                 LaunchPanel = launchPanel,

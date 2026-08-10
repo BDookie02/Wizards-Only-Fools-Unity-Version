@@ -20,7 +20,9 @@ namespace WOF
         StopNavigationRecording,
         ExportNavigationRecording,
         ClearNavigationRecordings,
-        ShowNavigationRecordingStatus
+        ShowNavigationRecordingStatus,
+        OpenEngineMenu,
+        PlaceEngineObject
     }
 
     public readonly struct WofCommandSuggestion
@@ -127,6 +129,17 @@ namespace WOF
             if (normalizedCommand == "inventory" || normalizedCommand == "inv")
             {
                 return new WofCommandConsoleSubmission(WofCommandConsoleAction.OpenInventory, string.Empty);
+            }
+            if (normalizedCommand == "engine" || normalizedCommand == "devmenu" || normalizedCommand == "placemenu")
+            {
+                return new WofCommandConsoleSubmission(WofCommandConsoleAction.OpenEngineMenu, string.Empty);
+            }
+            if (normalizedCommand == "place")
+            {
+                var placeableId = commandParts.Length > 1 ? commandParts[1].ToLowerInvariant() : string.Empty;
+                return placeableId.Length == 0
+                    ? new WofCommandConsoleSubmission(WofCommandConsoleAction.None, "Usage: /place hut-log-cabin")
+                    : new WofCommandConsoleSubmission(WofCommandConsoleAction.PlaceEngineObject, string.Empty, placeableId);
             }
             if (normalizedCommand == "forage")
             {

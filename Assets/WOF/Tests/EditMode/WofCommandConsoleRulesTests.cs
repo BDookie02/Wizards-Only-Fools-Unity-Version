@@ -99,6 +99,26 @@ namespace WOF.Tests
                 Is.EqualTo(WofCommandConsoleAction.ExportNavigationRecording));
         }
 
+        [TestCase("/engine")]
+        [TestCase("/devmenu")]
+        [TestCase("/placemenu")]
+        public void Evaluate_OpensReactEngineMenuAliases(string command)
+        {
+            Assert.That(WofCommandConsoleRules.Evaluate(command).Action,
+                Is.EqualTo(WofCommandConsoleAction.OpenEngineMenu));
+        }
+
+        [Test]
+        public void Evaluate_PreservesReactPlaceCommandAndUsage()
+        {
+            var place = WofCommandConsoleRules.Evaluate("/place HUT-LOG-CABIN ignored");
+
+            Assert.That(place.Action, Is.EqualTo(WofCommandConsoleAction.PlaceEngineObject));
+            Assert.That(place.Value, Is.EqualTo("hut-log-cabin"));
+            Assert.That(WofCommandConsoleRules.Evaluate("/place").Message,
+                Is.EqualTo("Usage: /place hut-log-cabin"));
+        }
+
         [Test]
         public void Constants_MatchReactInputAndSuggestionLimits()
         {

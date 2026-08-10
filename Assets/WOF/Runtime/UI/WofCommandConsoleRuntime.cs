@@ -34,6 +34,7 @@ namespace WOF
         private WofInventoryRuntime _inventory;
         private WofQuestDialogRuntime _questDialog;
         private WofSurvivalSkyRuntime _sky;
+        private WofEngineMenuRuntime _engineMenu;
         private Canvas _canvas;
         private int _lastScreenWidth;
         private int _lastScreenHeight;
@@ -56,6 +57,7 @@ namespace WOF
             _inventory = FindFirstObjectByType<WofInventoryRuntime>();
             _questDialog = FindFirstObjectByType<WofQuestDialogRuntime>();
             _sky = FindFirstObjectByType<WofSurvivalSkyRuntime>();
+            _engineMenu = FindFirstObjectByType<WofEngineMenuRuntime>();
             _canvas = GetComponent<Canvas>() ?? GetComponentInParent<Canvas>();
             BuildRuntimeView();
         }
@@ -200,6 +202,18 @@ namespace WOF
                     break;
                 case WofCommandConsoleAction.ShowNavigationRecordingStatus:
                     ShowNavigationStatus();
+                    Close();
+                    break;
+                case WofCommandConsoleAction.OpenEngineMenu:
+                    Close(false);
+                    StartCoroutine(OpenEngineMenuAfterSubmit());
+                    break;
+                case WofCommandConsoleAction.PlaceEngineObject:
+                    _engineMenu ??= FindFirstObjectByType<WofEngineMenuRuntime>();
+                    var placeResult = _engineMenu == null
+                        ? new WofEngineMenuActionResult(false, "PLACE BLOCKED: engine menu unavailable")
+                        : _engineMenu.RequestDirectPlacement(submission.Value);
+                    ShowMessages(new[] { placeResult.Message });
                     Close();
                     break;
                 default:
@@ -397,6 +411,19 @@ namespace WOF
             yield return null;
             _inventory ??= FindFirstObjectByType<WofInventoryRuntime>();
             _inventory?.Open();
+        }
+
+        private IEnumerator OpenEngineMenuAfterSubmit()
+        {
+            var keyboard = Keyboard.current;
+            while (keyboard != null && (keyboard.enterKey.isPressed || keyboard.numpadEnterKey.isPressed))
+            {
+                yield return null;
+                keyboard = Keyboard.current;
+            }
+            yield return null;
+            _engineMenu ??= FindFirstObjectByType<WofEngineMenuRuntime>();
+            _engineMenu?.Open();
         }
 
         private void OnInputValueChanged(string value)

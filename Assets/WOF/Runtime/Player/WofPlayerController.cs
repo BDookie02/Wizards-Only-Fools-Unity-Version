@@ -122,6 +122,10 @@ namespace WOF
             0d,
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Server);
+        private readonly NetworkList<WofNetworkEnginePlaceableRecord> _enginePlaceables = new(
+            null,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
 
         private CharacterController _controller;
         private readonly HashSet<string> _activeMountainLadderZones = new();
@@ -196,6 +200,16 @@ namespace WOF
         public bool IsDarrelReturnArmed => _darrelReturnArmed;
         public WofSpellId LeftEquippedSpell => ResolveSpell(_leftEquippedSpell.Value, WofSpellLoadout.ReactDefaultLeft);
         public WofSpellId RightEquippedSpell => ResolveSpell(_rightEquippedSpell.Value, WofSpellLoadout.ReactDefaultRight);
+        public int EnginePlaceableCount
+        {
+            get
+            {
+                var count = 0;
+                for (var index = 0; index < _enginePlaceables.Count; index++)
+                    if (!IsTrainingDummy(_enginePlaceables[index])) count++;
+                return count;
+            }
+        }
         internal int ActiveMountainLadderZoneCount => _activeMountainLadderZones.Count;
         public Vector3 DamageProbePosition => transform.position + transform.up *
                                               WofMovementMath.ResolveCameraHeight(_isSliding.Value, _isCrouching.Value);
@@ -713,6 +727,149 @@ namespace WOF
             }
             Debug.Log($"[WOF-AUTOMATION] VCLIP_REQUEST enabled={enabled.ToString().ToLowerInvariant()}");
             return true;
+        }
+
+        public void CopyEnginePlaceables(List<WofEnginePlaceableRecord> destination)
+        {
+            if (destination == null) return;
+            for (var index = 0; index < _enginePlaceables.Count; index++)
+                destination.Add(_enginePlaceables[index].ToRuntimeRecord());
+        }
+
+        public void CopyPersistentEnginePlaceables(List<WofEnginePlaceableRecord> destination)
+        {
+            if (destination == null) return;
+            for (var index = 0; index < _enginePlaceables.Count; index++)
+            {
+                if (IsTrainingDummy(_enginePlaceables[index])) continue;
+                destination.Add(_enginePlaceables[index].ToRuntimeRecord());
+            }
+        }
+
+        public bool RequestEnginePlaceableUpsert(WofEnginePlaceableRecord record, string replaceInstanceId = null)
+        {
+            if (!IsOwner || !IsSpawned) return false;
+            var networkRecord = new WofNetworkEnginePlaceableRecord(record);
+            var replaceId = new Unity.Collections.FixedString64Bytes(replaceInstanceId ?? string.Empty);
+            if (IsServer) UpsertEnginePlaceableServer(networkRecord, replaceId);
+            else UpsertEnginePlaceableRpc(networkRecord, replaceId);
+            return true;
+        }
+
+        public bool RequestDeleteEnginePlaceable(string instanceId)
+        {
+            if (!IsOwner || !IsSpawned || string.IsNullOrWhiteSpace(instanceId)) return false;
+            var fixedId = new Unity.Collections.FixedString64Bytes(instanceId);
+            if (IsServer) DeleteEnginePlaceableServer(fixedId);
+            else DeleteEnginePlaceableRpc(fixedId);
+            return true;
+        }
+
+        public bool RequestClearEnginePlaceables()
+        {
+            if (!IsOwner || !IsSpawned) return false;
+            if (IsServer) ClearPersistentEnginePlaceablesServer();
+            else ClearEnginePlaceablesRpc();
+            return true;
+        }
+
+        public bool RequestReplaceEnginePlaceables(IReadOnlyList<WofEnginePlaceableRecord> records)
+        {
+            if (!IsOwner || !IsSpawned) return false;
+            var count = Mathf.Min(records?.Count ?? 0, WofEnginePlaceableCatalog.MaximumPlacedObjects);
+            var payload = new WofNetworkEnginePlaceableRecord[count];
+            for (var index = 0; index < count; index++) payload[index] = new WofNetworkEnginePlaceableRecord(records[index]);
+            if (IsServer) ReplaceEnginePlaceablesServer(payload);
+            else ReplaceEnginePlaceablesRpc(payload);
+            return true;
+        }
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+        private void UpsertEnginePlaceableRpc(
+            WofNetworkEnginePlaceableRecord record,
+            Unity.Collections.FixedString64Bytes replaceInstanceId)
+        {
+            UpsertEnginePlaceableServer(record, replaceInstanceId);
+        }
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+        private void DeleteEnginePlaceableRpc(Unity.Collections.FixedString64Bytes instanceId)
+        {
+            DeleteEnginePlaceableServer(instanceId);
+        }
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+        private void ClearEnginePlaceablesRpc()
+        {
+            ClearPersistentEnginePlaceablesServer();
+        }
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+        private void ReplaceEnginePlaceablesRpc(WofNetworkEnginePlaceableRecord[] records)
+        {
+            ReplaceEnginePlaceablesServer(records);
+        }
+
+        private void UpsertEnginePlaceableServer(
+            WofNetworkEnginePlaceableRecord record,
+            Unity.Collections.FixedString64Bytes replaceInstanceId)
+        {
+            var runtime = record.ToRuntimeRecord();
+            var definition = WofEnginePlaceableCatalog.Find(runtime.placeableId);
+            if (definition == null || string.IsNullOrWhiteSpace(runtime.instanceId) ||
+                !float.IsFinite(runtime.x) || !float.IsFinite(runtime.y) ||
+                !float.IsFinite(runtime.z) || !float.IsFinite(runtime.yaw)) return;
+
+            var replace = replaceInstanceId.ToString();
+            if (!string.IsNullOrEmpty(replace))
+            {
+                runtime.instanceId = replace;
+                record = new WofNetworkEnginePlaceableRecord(runtime);
+            }
+            for (var index = 0; index < _enginePlaceables.Count; index++)
+            {
+                if (_enginePlaceables[index].InstanceId.ToString() != runtime.instanceId) continue;
+                _enginePlaceables[index] = record;
+                return;
+            }
+            if (!IsTrainingDummy(record) && EnginePlaceableCount >= WofEnginePlaceableCatalog.MaximumPlacedObjects)
+            {
+                for (var index = 0; index < _enginePlaceables.Count; index++)
+                {
+                    if (IsTrainingDummy(_enginePlaceables[index])) continue;
+                    _enginePlaceables.RemoveAt(index);
+                    break;
+                }
+            }
+            _enginePlaceables.Add(record);
+        }
+
+        private void DeleteEnginePlaceableServer(Unity.Collections.FixedString64Bytes instanceId)
+        {
+            for (var index = _enginePlaceables.Count - 1; index >= 0; index--)
+            {
+                if (_enginePlaceables[index].InstanceId.Equals(instanceId)) _enginePlaceables.RemoveAt(index);
+            }
+        }
+
+        private void ReplaceEnginePlaceablesServer(WofNetworkEnginePlaceableRecord[] records)
+        {
+            ClearPersistentEnginePlaceablesServer();
+            if (records == null) return;
+            var count = Mathf.Min(records.Length, WofEnginePlaceableCatalog.MaximumPlacedObjects);
+            for (var index = 0; index < count; index++)
+                UpsertEnginePlaceableServer(records[index], default);
+        }
+
+        private void ClearPersistentEnginePlaceablesServer()
+        {
+            for (var index = _enginePlaceables.Count - 1; index >= 0; index--)
+                if (!IsTrainingDummy(_enginePlaceables[index])) _enginePlaceables.RemoveAt(index);
+        }
+
+        private static bool IsTrainingDummy(WofNetworkEnginePlaceableRecord record)
+        {
+            return record.PlaceableId.ToString() == "training-spell-dummy";
         }
 
         [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
