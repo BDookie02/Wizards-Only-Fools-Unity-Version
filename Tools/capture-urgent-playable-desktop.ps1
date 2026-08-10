@@ -79,6 +79,8 @@ public static class WofUrgentDesktopCapture {
 [WofUrgentDesktopCapture]::SetProcessDPIAware() | Out-Null
 
 New-Item -ItemType Directory -Force -Path $resolvedOutputRoot | Out-Null
+$profileRoot = Join-Path $resolvedOutputRoot 'profile'
+New-Item -ItemType Directory -Force -Path $profileRoot | Out-Null
 $executable = Join-Path $resolvedBuildRoot 'WizardsOnlyFools.exe'
 $logPath = Join-Path $resolvedOutputRoot 'runtime.log'
 $spellPath = Join-Path $resolvedOutputRoot 'keyboard-spell-menu.png'
@@ -136,7 +138,7 @@ function Save-WofWindow([IntPtr]$Handle, [string]$Path) {
 
 $arguments = @(
     '-force-d3d11', '-screen-width', $Width, '-screen-height', $Height, '-screen-fullscreen', '0',
-    '--wof-solo', '--wof-auto-exit=60', '-logFile', $logPath
+    '--wof-solo', '--wof-auto-exit=60', "--wof-profile-root=$profileRoot", '-logFile', $logPath
 )
 $process = Start-Process -FilePath $executable -ArgumentList $arguments -PassThru
 try {

@@ -14,13 +14,12 @@ namespace WOF
         {
             if (!SceneManager.GetSceneByName(SceneName).isLoaded)
             {
-                var operation = SceneManager.LoadSceneAsync(SceneName, LoadSceneMode.Additive);
-                if (operation == null)
-                {
-                    Debug.LogError("[WOF-AUTOMATION] CHICAGO_CITY_SCENE_FAILED stage=load-operation");
-                    yield break;
-                }
-                while (!operation.isDone) yield return null;
+                yield return WofAdditiveSceneLoadScheduler.LoadSceneAdditively(
+                    SceneName,
+                    "CHICAGO_CITY_SCENE_FAILED",
+                    IsChicagoViewProbeRequested()
+                        ? WofAdditiveSceneLoadScheduler.ProbePriority
+                        : WofAdditiveSceneLoadScheduler.ChicagoPriority);
             }
 
             var scene = SceneManager.GetSceneByName(SceneName);

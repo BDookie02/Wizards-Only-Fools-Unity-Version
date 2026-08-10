@@ -14,13 +14,12 @@ namespace WOF
         {
             if (!SceneManager.GetSceneByName(SceneName).isLoaded)
             {
-                var operation = SceneManager.LoadSceneAsync(SceneName, LoadSceneMode.Additive);
-                if (operation == null)
-                {
-                    Debug.LogError("[WOF-AUTOMATION] LILY_COIL_SCENE_FAILED stage=load-operation");
-                    yield break;
-                }
-                while (!operation.isDone) yield return null;
+                yield return WofAdditiveSceneLoadScheduler.LoadSceneAdditively(
+                    SceneName,
+                    "LILY_COIL_SCENE_FAILED",
+                    IsViewProbeRequested()
+                        ? WofAdditiveSceneLoadScheduler.ProbePriority
+                        : WofAdditiveSceneLoadScheduler.LilyCoilPriority);
             }
 
             var scene = SceneManager.GetSceneByName(SceneName);
