@@ -14,6 +14,9 @@ const villageRegistryPath = path.join(sourceRoot, "villages", "survivalVillageRe
 const biomePath = path.join(sourceRoot, "survival", "survivalBiome.ts");
 const riversPath = path.join(sourceRoot, "survival", "survivalRivers.ts");
 const mathPath = path.join(sourceRoot, "survival", "survivalMath.ts");
+const chunksPath = path.join(sourceRoot, "survival", "survivalChunks.ts");
+const positionPath = path.join(sourceRoot, "survival", "survivalPosition.ts");
+const terrainGeometryPath = path.join(sourceRoot, "terrain", "survivalTerrainGeometry.ts");
 const grassSurfacePath = path.join(sourceRoot, "survival", "survivalGrassSurface.ts");
 const treeVisualsPath = path.join(sourceRoot, "vegetation", "survivalTreeVisuals.ts");
 const foliagePalettesPath = path.join(sourceRoot, "vegetation", "survivalFoliagePalettes.ts");
@@ -27,8 +30,10 @@ const sourcePaths = [
   riversPath,
   path.join(sourceRoot, "survival", "survivalRoutes.ts"),
   mathPath,
+  chunksPath,
+  positionPath,
   path.join(sourceRoot, "survival", "survivalWorldConfig.ts"),
-  path.join(sourceRoot, "terrain", "survivalTerrainGeometry.ts"),
+  terrainGeometryPath,
   path.join(sourceRoot, "villages", "survivalGraveyardVillageTerrain.ts"),
   path.join(sourceRoot, "villages", "survivalVillagePad.ts"),
   grassSurfacePath,
@@ -42,6 +47,9 @@ const villageRegistry = await import(pathToFileURL(villageRegistryPath).href);
 const survivalBiome = await import(pathToFileURL(biomePath).href);
 const survivalRivers = await import(pathToFileURL(riversPath).href);
 const survivalMath = await import(pathToFileURL(mathPath).href);
+const survivalChunks = await import(pathToFileURL(chunksPath).href);
+const survivalPosition = await import(pathToFileURL(positionPath).href);
+const survivalTerrainGeometry = await import(pathToFileURL(terrainGeometryPath).href);
 const survivalGrassSurface = await import(pathToFileURL(grassSurfacePath).href);
 const survivalTreeVisuals = await import(pathToFileURL(treeVisualsPath).href);
 const gameStore = await import(pathToFileURL(storePath).href);
@@ -88,6 +96,22 @@ type SurvivalFoliagePlacement = {
   scaleX: number;
   scaleY: number;
   scaleZ: number;
+};
+type SurvivalStreamingSample = {
+  localX: number;
+  localZ: number;
+  height: number;
+  colorR: number;
+  colorG: number;
+  colorB: number;
+};
+type SurvivalStreamingChunkFixture = {
+  cx: number;
+  cz: number;
+  biome: SurvivalBiomeName;
+  hasRiver: boolean;
+  riverVertical: boolean;
+  samples: SurvivalStreamingSample[];
 };
 const unityMountainCenterX = 3 * blockSize;
 const unityMountainCenterZ = 0;
@@ -140,6 +164,58 @@ const makeSurvivalChunk = (cx: number, cz: number): SurvivalChunk => ({
   riverVertical: survivalMath.survivalHash01(cx, cz, 5) > 0.5,
   lod: "near",
 });
+const streamingFixtureCoords: ReadonlyArray<readonly [number, number]> = [
+  [7, 0],
+  [7, 4],
+  [-5, -5],
+  [12, -12],
+  [-17, 9],
+  [23, 19],
+];
+const streamingFixtureLocalSamples: ReadonlyArray<readonly [number, number]> = [
+  [-256, -256],
+  [-128.5, 64.25],
+  [0, 0],
+  [127.75, -193.5],
+  [256, 256],
+];
+const streamingChunkFixtures: SurvivalStreamingChunkFixture[] = streamingFixtureCoords.map(([cx, cz]) => {
+  const chunk = makeSurvivalChunk(cx, cz);
+  const samples = streamingFixtureLocalSamples.map(([localX, localZ]) => {
+    const worldX = chunk.x + localX;
+    const worldZ = chunk.z + localZ;
+    const height = terrainSurface.getSurvivalTerrainHeightForChunk(chunk, localX, localZ);
+    terrainSurface.getSurvivalRenderedTerrainColorInto(worldX, worldZ, height, colorScratch);
+    return {
+      localX,
+      localZ,
+      height,
+      colorR: colorScratch.r,
+      colorG: colorScratch.g,
+      colorB: colorScratch.b,
+    };
+  });
+  return {
+    cx,
+    cz,
+    biome: chunk.biome,
+    hasRiver: chunk.hasRiver,
+    riverVertical: chunk.riverVertical,
+    samples,
+  };
+});
+const streamingWindow = survivalChunks.makeSurvivalChunks(12, -12, true, 3).map((chunk: any) => ({
+  dx: chunk.cx - 12,
+  dz: chunk.cz + 12,
+  distance: chunk.distance,
+  lod: chunk.lod,
+  renderSegments: survivalTerrainGeometry.getSurvivalTerrainRenderSegments(chunk),
+  collisionSegments: chunk.distance <= 2
+    ? survivalTerrainGeometry.getSurvivalTerrainCollisionSegments(chunk)
+    : 0,
+}));
+const streamingChunkCoordinateFixtures = [-1536.01, -1536, -1280.01, -1280, -0.01, 0, 255.99, 256, 767.99, 768]
+  .map(value => ({ value, chunk: survivalPosition.getSurvivalChunkCoord(value) }));
 const serializeFoliageGeometry = (source: THREE.BufferGeometry) => {
   const position = source.getAttribute("position") as THREE.BufferAttribute;
   const normal = source.getAttribute("normal") as THREE.BufferAttribute | undefined;
@@ -324,6 +400,16 @@ const document = {
   segments,
   includedChunks,
   skippedChunks,
+  streamingOracle: {
+    source: "survivalChunks.ts + survivalTerrainGeometry.ts + survivalTerrainSurface.ts",
+    renderRadius: 3,
+    nearRadius: 1,
+    collisionRadius: 2,
+    centerHysteresis: blockSize * 0.72,
+    chunkCoordinates: streamingChunkCoordinateFixtures,
+    window: streamingWindow,
+    chunks: streamingChunkFixtures,
+  },
   foliage: {
     source: "survivalSolidTreeGroveRendering.tsx dense desktop + survivalTreeVisuals.ts",
     meshCount: foliageMeshes.length,
@@ -359,6 +445,8 @@ console.log(JSON.stringify({
   indexCount: document.mesh.indexCount,
   includedChunkCount: includedChunks.length,
   foliagePlacementCount: foliagePlacements.length,
+  streamingFixtureChunkCount: streamingChunkFixtures.length,
+  streamingWindowCount: streamingWindow.length,
   foliageCounts,
   skippedChunks,
   sourceSignature: document.sourceSignature,

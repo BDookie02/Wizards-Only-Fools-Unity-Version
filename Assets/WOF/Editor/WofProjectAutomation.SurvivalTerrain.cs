@@ -26,8 +26,62 @@ namespace WOF.Editor
             public WofSurvivalTerrainBounds bounds;
             public string[] includedChunks;
             public string[] skippedChunks;
+            public WofSurvivalStreamingOracle streamingOracle;
             public WofSurvivalFoliageDocument foliage;
             public WofSerializedMeshRecord mesh;
+        }
+
+        [Serializable]
+        private sealed class WofSurvivalStreamingOracle
+        {
+            public string source;
+            public int renderRadius;
+            public int nearRadius;
+            public int collisionRadius;
+            public float centerHysteresis;
+            public WofSurvivalStreamingChunkCoordinate[] chunkCoordinates;
+            public WofSurvivalStreamingWindowChunk[] window;
+            public WofSurvivalStreamingChunkFixture[] chunks;
+        }
+
+        [Serializable]
+        private sealed class WofSurvivalStreamingChunkCoordinate
+        {
+            public float value;
+            public int chunk;
+        }
+
+        [Serializable]
+        private sealed class WofSurvivalStreamingWindowChunk
+        {
+            public int dx;
+            public int dz;
+            public int distance;
+            public string lod;
+            public int renderSegments;
+            public int collisionSegments;
+        }
+
+        [Serializable]
+        private sealed class WofSurvivalStreamingChunkFixture
+        {
+            public int cx;
+            public int cz;
+            public string biome;
+            public bool hasRiver;
+            public bool riverVertical;
+            public WofSurvivalStreamingSample[] samples;
+        }
+
+        [Serializable]
+        private sealed class WofSurvivalStreamingSample
+        {
+            public float localX;
+            public float localZ;
+            public float height;
+            public float colorR;
+            public float colorG;
+            public float colorB;
         }
 
         [Serializable]
@@ -96,6 +150,7 @@ namespace WOF.Editor
                 document.includedChunks == null || document.includedChunks.Length != 82 ||
                 document.skippedChunks == null || document.skippedChunks.Length != 6 ||
                 string.IsNullOrWhiteSpace(document.sourceSignature) || document.sourceSignature.Length != 64 ||
+                !IsValidSurvivalStreamingOracle(document.streamingOracle) ||
                 !IsValidSurvivalTerrainMesh(document.mesh) || !IsValidSurvivalFoliage(document.foliage))
             {
                 throw new InvalidOperationException(
@@ -117,6 +172,24 @@ namespace WOF.Editor
             terrain.AddComponent<MeshCollider>().sharedMesh = mesh;
             MarkStatic(terrain);
             CreateSurvivalFoliage(parent, document.foliage);
+        }
+
+        private static bool IsValidSurvivalStreamingOracle(WofSurvivalStreamingOracle oracle)
+        {
+            if (oracle == null || string.IsNullOrWhiteSpace(oracle.source) ||
+                oracle.renderRadius != WofSurvivalTerrainMath.RenderRadius ||
+                oracle.nearRadius != WofSurvivalTerrainMath.NearRadius ||
+                oracle.collisionRadius != WofSurvivalTerrainMath.CollisionRadius ||
+                Math.Abs(oracle.centerHysteresis - WofSurvivalTerrainMath.CenterHysteresis) > 0.001d ||
+                oracle.chunkCoordinates?.Length != 10 || oracle.window?.Length != 37 ||
+                oracle.chunks?.Length != 6)
+                return false;
+            foreach (var chunk in oracle.chunks)
+            {
+                if (chunk == null || string.IsNullOrWhiteSpace(chunk.biome) || chunk.samples?.Length != 5)
+                    return false;
+            }
+            return true;
         }
 
         private static bool IsValidSurvivalFoliage(WofSurvivalFoliageDocument foliage)
