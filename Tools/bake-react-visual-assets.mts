@@ -1931,6 +1931,98 @@ const mountainLayout = mountainVillageSceneLayout.makeMountainVillageLayout(
   survivalTerrainSurface.getSurvivalTerrainHeightForChunk,
   { includeMineshaftLayout: true, includeVillagerHutInfos: true },
 );
+// Unity-only terrain surgery requested for the port. The exact React summit
+// remains untouched through radius 96 so every cabin, mineshaft component,
+// villager, and summit structure keeps its source position. Outside that
+// protected ring, the terrain is broadened into an irregular caldera shoulder.
+const unityMountainProtectedRadius = 96;
+const unityMountainRimPeakRadius = 116;
+const unityMountainRimOuterRadius = 142;
+const unityMountainCenterX = mountainChunk.x;
+const unityMountainCenterZ = mountainChunk.z;
+const unitySmoothstep = (value: number) => {
+  const clamped = Math.max(0, Math.min(1, value));
+  return clamped * clamped * (3 - 2 * clamped);
+};
+const getUnityMountainTargetLift = (localX: number, localZ: number) => {
+  const radius = Math.hypot(localX, localZ);
+  if (radius <= unityMountainProtectedRadius) {
+    return mountainVillageTerrain.getMountainVillageRadialLift(radius);
+  }
+  const angle = Math.atan2(localX, localZ);
+  if (radius <= unityMountainRimPeakRadius) {
+    const progress = unitySmoothstep(
+      (radius - unityMountainProtectedRadius) /
+      (unityMountainRimPeakRadius - unityMountainProtectedRadius),
+    );
+    const irregularRim = Math.sin(angle * 5 + 0.8) * 3.4 + Math.cos(angle * 9 - 0.35) * 1.8;
+    return 214 + (232 + irregularRim - 214) * progress;
+  }
+  if (radius <= unityMountainRimOuterRadius) {
+    const progress = unitySmoothstep(
+      (radius - unityMountainRimPeakRadius) /
+      (unityMountainRimOuterRadius - unityMountainRimPeakRadius),
+    );
+    const irregularRim = Math.sin(angle * 5 + 0.8) * 3.4 + Math.cos(angle * 9 - 0.35) * 1.8;
+    return (232 + irregularRim) + (196 - (232 + irregularRim)) * progress;
+  }
+
+  const irregularOuterRadius = 500 + Math.sin(angle * 3 + 0.45) * 32 + Math.cos(angle * 7 - 0.2) * 16;
+  if (radius >= irregularOuterRadius) return 0;
+  const progress = (radius - unityMountainRimOuterRadius) /
+    (irregularOuterRadius - unityMountainRimOuterRadius);
+  const shoulder = 196 * Math.pow(Math.max(0, 1 - progress), 1.28);
+  const ridge = (
+    Math.sin(angle * 4 + radius * 0.018) * 3.8 +
+    Math.cos(angle * 8 - radius * 0.011) * 2.2
+  ) * Math.pow(Math.max(0, 1 - progress), 1.6);
+  return Math.max(0, shoulder + ridge);
+};
+const getUnityMountainHeightDelta = (localX: number, localZ: number) => {
+  const radius = Math.hypot(localX, localZ);
+  if (radius <= unityMountainProtectedRadius) return 0;
+  return getUnityMountainTargetLift(localX, localZ) -
+    mountainVillageTerrain.getMountainVillageRadialLift(radius);
+};
+const reshapeUnityMountainGeometry = (geometry: THREE.BufferGeometry) => {
+  const position = geometry.getAttribute("position") as THREE.BufferAttribute;
+  for (let index = 0; index < position.count; index += 1) {
+    const localX = position.getX(index);
+    const localZ = position.getZ(index);
+    position.setY(index, position.getY(index) + getUnityMountainHeightDelta(localX, localZ));
+  }
+  position.needsUpdate = true;
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+};
+
+for (const point of mountainLayout.trailPoints) {
+  point.y += getUnityMountainHeightDelta(point.localX, point.localZ);
+}
+for (const segment of mountainLayout.trailSegments) {
+  segment.y += getUnityMountainHeightDelta(segment.localX, segment.localZ);
+  for (const support of segment.supports) {
+    support.topY += getUnityMountainHeightDelta(support.localX, support.localZ);
+  }
+  const start = mountainLayout.trailPoints[segment.index];
+  const end = mountainLayout.trailPoints[segment.index + 1];
+  if (start && end) {
+    const horizontalLength = Math.hypot(end.localX - start.localX, end.localZ - start.localZ);
+    segment.slope = Math.atan2(end.y - start.y, Math.max(0.0001, horizontalLength));
+  }
+}
+for (const patch of mountainLayout.cliffPatches) {
+  patch.y += getUnityMountainHeightDelta(patch.localX, patch.localZ);
+}
+mountainLayout.waterfall.topY += getUnityMountainHeightDelta(
+  mountainLayout.waterfall.topX,
+  mountainLayout.waterfall.topZ,
+);
+mountainLayout.waterfall.bottomY += getUnityMountainHeightDelta(
+  mountainLayout.waterfall.bottomX,
+  mountainLayout.waterfall.bottomZ,
+);
 const mountainExpectedCounts = {
   trailPoints: 25,
   trailSegments: 24,
@@ -2182,7 +2274,7 @@ for (const [key, actual] of Object.entries(mountainRuntimeActualCounts)) {
 }
 
 const mountainSourceSignature = sha256(Buffer.concat([
-  Buffer.from("react-mountain-village-v1-exact-near-chunk-11-villagers", "utf8"),
+  Buffer.from("react-mountain-village-v1-exact-near-chunk-11-villagers-unity-caldera-v1", "utf8"),
   await readFile(avatarFactoryPath),
   await readFile(villagerCharacterRuntimePath),
   await readFile(mountainSlopeGrassRuntimePath),
@@ -2277,6 +2369,12 @@ const mountainTerrainColliderGeometry = mountainVillageColliderGeometry.makeMoun
   survivalTerrainSurface.getSurvivalVillageBaseHeight,
 );
 const mountainSlopeGrassGeometry = makeExactMountainSlopeGrassGeometry(mountainSlopeGrassTufts);
+reshapeUnityMountainGeometry(mountainTerrainGeometry);
+reshapeUnityMountainGeometry(mountainTerrainColliderGeometry);
+reshapeUnityMountainGeometry(mountainSlopeGrassGeometry);
+reshapeUnityMountainGeometry(mountainLayout.trailDeckGeometry);
+reshapeUnityMountainGeometry(mountainLayout.trailTopGeometry);
+reshapeUnityMountainGeometry(mountainLayout.trailColliderGeometry);
 const mountainGeometries = {
   terrain: serializeThreeGeometry(mountainTerrainGeometry),
   terrainCollider: serializeThreeGeometry(mountainTerrainColliderGeometry),
@@ -2337,6 +2435,14 @@ const mountainLayoutBytes = Buffer.from(`${JSON.stringify({
     mineshaftExitBridgeWidth: mountainVillageTerrain.MOUNTAIN_VILLAGE_MINESHAFT_EXIT_BRIDGE_WIDTH,
     mineshaftExitBridgeYOffset: mountainVillageTerrain.MOUNTAIN_VILLAGE_MINESHAFT_EXIT_BRIDGE_Y_OFFSET,
     slopeGrassNearCount: mountainVillageTerrain.MOUNTAIN_VILLAGE_SLOPE_GRASS_NEAR_COUNT,
+    unityPerimeterReshape: {
+      protectedRadius: unityMountainProtectedRadius,
+      rimPeakRadius: unityMountainRimPeakRadius,
+      rimOuterRadius: unityMountainRimOuterRadius,
+      shoulderOuterRadius: 500,
+      centerX: unityMountainCenterX,
+      centerZ: unityMountainCenterZ,
+    },
   },
   layout: mountainSerializableLayout,
   slopeGrassTufts: mountainSlopeGrassTufts,
@@ -2864,6 +2970,114 @@ const makeExactBoostThumbnail = (kind: "jump" | "speed") => {
 await emitCanvas("HUD/SpellMenu/speedboost.png", makeExactBoostThumbnail("speed"));
 await emitCanvas("HUD/SpellMenu/jumpboost.png", makeExactBoostThumbnail("jump"));
 
+type SpellThumbnailBlock = [number, number, number, number, string, number?];
+const drawSpellThumbnailBlocks = (context: ReturnType<Canvas["getContext"]>, blocks: SpellThumbnailBlock[]) => {
+  for (const [x, y, width, height, color, rotation = 0] of blocks) {
+    context.save();
+    context.fillStyle = color;
+    if (rotation) {
+      context.translate(x + width / 2, y + height / 2);
+      context.rotate(rotation * Math.PI / 180);
+      context.fillRect(-width / 2, -height / 2, width, height);
+    } else {
+      context.fillRect(x, y, width, height);
+    }
+    context.restore();
+  }
+};
+const makeProceduralSpellThumbnail = (spell: string) => {
+  if (spell === "jumpboost") return makeExactBoostThumbnail("jump");
+  if (spell === "speedboost") return makeExactBoostThumbnail("speed");
+  const canvas = createCanvas(64, 64);
+  const context = canvas.getContext("2d");
+  context.imageSmoothingEnabled = false;
+  const radialGlow = (inner: string, middle: string, outer: string) => {
+    const glow = context.createRadialGradient(32, 32, 3, 32, 32, 31);
+    glow.addColorStop(0, inner); glow.addColorStop(0.44, middle); glow.addColorStop(1, outer);
+    context.fillStyle = glow; context.fillRect(0, 0, 64, 64);
+  };
+  if (spell === "portal") {
+    radialGlow("rgba(255,255,255,.96)", "rgba(168,85,247,.62)", "rgba(15,23,42,0)");
+    context.save(); context.translate(32, 32);
+    for (let ring = 0; ring < 4; ring += 1) {
+      context.rotate(.42 + ring * .38);
+      context.strokeStyle = ring % 2 === 0 ? "rgba(125,211,252,.95)" : "rgba(216,180,254,.88)";
+      context.lineWidth = 5 - ring * .7; context.beginPath();
+      context.ellipse(0, 0, 22 - ring * 2.4, 11 + ring * 1.2, 0, 0, Math.PI * 2); context.stroke();
+    }
+    context.restore();
+    drawSpellThumbnailBlocks(context, [[29,8,6,8,"#f8fafc"],[47,21,6,6,"#67e8f9"],[12,35,7,7,"#c084fc"],[33,49,8,6,"#e0f2fe"]]);
+  } else if (spell === "blink") {
+    radialGlow("rgba(204,251,241,.96)", "rgba(45,212,191,.48)", "rgba(15,118,110,0)");
+    context.strokeStyle = "#99f6e4"; context.lineWidth = 5; context.lineCap = "round"; context.beginPath();
+    context.moveTo(15,38); context.bezierCurveTo(25,8,53,18,39,34); context.bezierCurveTo(30,44,15,51,21,24); context.stroke();
+    drawSpellThumbnailBlocks(context, [[10,14,5,5,"#ccfbf1"],[48,12,4,4,"#5eead4"],[52,39,6,6,"#14b8a6"],[8,49,4,4,"#99f6e4"],[30,29,7,7,"#f8fafc"]]);
+  } else if (spell === "smokebomb") {
+    radialGlow("rgba(248,250,252,.88)", "rgba(148,163,184,.42)", "rgba(15,23,42,0)");
+    drawSpellThumbnailBlocks(context, [[25,31,14,14,"#111827"],[21,27,22,10,"#374151"],[28,24,8,8,"#f8fafc"],[13,15,17,9,"rgba(203,213,225,.82)"],[30,10,24,11,"rgba(226,232,240,.78)"],[40,25,16,9,"rgba(148,163,184,.76)"],[9,34,20,10,"rgba(100,116,139,.7)"],[24,46,31,9,"rgba(203,213,225,.6)"]]);
+  } else if (spell === "kunai") {
+    const glow = context.createLinearGradient(12,52,53,10); glow.addColorStop(0,"rgba(15,23,42,0)"); glow.addColorStop(.5,"rgba(226,232,240,.36)"); glow.addColorStop(1,"rgba(248,250,252,.62)"); context.fillStyle=glow; context.fillRect(0,0,64,64);
+    drawSpellThumbnailBlocks(context, [[13,48,13,4,"#94a3b8",-36],[22,41,18,5,"#1f2937",-36],[36,30,15,6,"#e5e7eb",-36],[45,20,10,5,"#f8fafc",-36],[50,14,5,5,"#cbd5e1",-36],[11,43,8,8,"#0f172a"],[13,45,4,4,"#e5e7eb"]]);
+  } else if (spell === "healingcrystals") {
+    radialGlow("rgba(220,252,231,.92)", "rgba(34,197,94,.44)", "rgba(20,83,45,0)");
+    drawSpellThumbnailBlocks(context, [[26,12,12,7,"#dcfce7"],[22,19,20,22,"#4ade80"],[26,41,12,11,"#166534"],[13,28,10,7,"#bbf7d0"],[10,35,16,14,"#22c55e"],[14,49,8,8,"#14532d"],[43,25,8,6,"#ecfdf5"],[39,31,14,18,"#16a34a"],[43,49,7,7,"#052e16"],[29,22,5,16,"rgba(255,255,255,.7)"]]);
+  } else if (spell === "orbshield") {
+    context.fillStyle="rgba(217,70,239,.18)"; context.beginPath(); context.arc(32,32,25,0,Math.PI*2); context.fill();
+    context.strokeStyle="rgba(253,244,255,.82)"; context.lineWidth=2; const radius=7; const hexHeight=Math.sqrt(3)*radius;
+    for(let y=9;y<59;y+=hexHeight*.75){const rowOffset=Math.round(y/(hexHeight*.75))%2===0?0:radius*1.5;for(let x=7+rowOffset;x<59;x+=radius*3){if(Math.hypot(x-32,y-32)>27)continue;context.beginPath();for(let i=0;i<6;i++){const angle=Math.PI/6+Math.PI/3*i;const px=x+Math.cos(angle)*radius;const py=y+Math.sin(angle)*radius;i===0?context.moveTo(px,py):context.lineTo(px,py);}context.closePath();context.stroke();}}
+    context.strokeStyle="rgba(244,114,182,.95)"; context.lineWidth=3; context.beginPath(); context.arc(32,32,27,0,Math.PI*2); context.stroke();
+  } else if (spell === "grab") {
+    radialGlow("rgba(255,244,255,.95)","rgba(244,114,182,.72)","rgba(126,34,206,0)");
+    context.lineCap="round";context.lineJoin="round";context.strokeStyle="rgba(244,114,182,.5)";context.lineWidth=15;context.beginPath();context.moveTo(8,44);context.bezierCurveTo(18,35,24,28,36,24);context.stroke();context.strokeStyle="rgba(255,214,251,.95)";context.lineWidth=7;context.beginPath();context.moveTo(8,44);context.bezierCurveTo(20,36,25,29,38,24);context.stroke();context.fillStyle="rgba(244,114,182,.72)";context.beginPath();context.ellipse(42,24,10,12,-.4,0,Math.PI*2);context.fill();
+    context.strokeStyle="rgba(255,214,251,.9)";context.lineWidth=5;for(const [x1,y1,x2,y2] of [[45,12,56,7],[51,20,62,18],[50,28,60,32],[43,34,49,45],[35,19,29,8]]){context.beginPath();context.moveTo(x1,y1);context.lineTo(x2,y2);context.stroke();}
+  } else if (spell === "tornado") {
+    drawSpellThumbnailBlocks(context, [[12,6,40,4,"rgba(209,213,219,.18)"],[7,18,52,8,"rgba(156,163,175,.14)"],[10,31,46,8,"rgba(75,85,99,.2)"],[20,7,22,4,"#f8fafc"],[10,11,46,4,"#9ca3af"],[8,22,18,5,"#4b5563"],[26,22,30,5,"#d1d5db"],[15,28,38,5,"#f3f4f6"],[11,34,18,5,"#9ca3af"],[31,34,20,5,"#374151"],[15,40,38,5,"#6b7280"],[22,46,26,5,"#d1d5db"],[26,52,18,5,"#9ca3af"],[30,58,10,4,"#f8fafc"]]);
+  } else if (spell === "meteorshower") {
+    drawSpellThumbnailBlocks(context, [[22,9,20,5,"rgba(254,215,170,.22)"],[17,16,30,8,"rgba(251,146,60,.22)"],[12,25,40,12,"rgba(239,68,68,.2)"],[22,10,20,5,"#fed7aa"],[17,15,30,7,"#fb923c"],[13,22,38,10,"#ef4444"],[11,32,42,13,"#f97316"],[16,45,32,10,"#b91c1c"],[23,55,18,5,"#fb923c"],[23,17,18,6,"#fff7ed"],[18,25,28,10,"#fde68a"],[22,35,20,10,"#facc15"],[28,45,10,7,"#fffbeb"]]);
+  } else if (spell === "magicarmor") {
+    radialGlow("rgba(224,242,254,.85)","rgba(56,189,248,.36)","rgba(14,116,144,0)");
+    drawSpellThumbnailBlocks(context, [[25,7,14,5,"#e0f2fe"],[18,12,28,6,"#7dd3fc"],[14,18,36,10,"#38bdf8"],[14,28,36,9,"#0284c7"],[18,37,28,8,"#0369a1"],[22,45,20,7,"#0c4a6e"],[27,52,10,5,"#bae6fd"],[22,20,20,4,"rgba(255,255,255,.8)"],[27,28,10,18,"rgba(224,242,254,.45)"]]);
+  } else if (spell === "magicglassorb") {
+    radialGlow("rgba(240,249,255,.95)","rgba(34,211,238,.34)","rgba(8,47,73,0)");
+    drawSpellThumbnailBlocks(context, [[19,13,26,5,"#e0f2fe"],[14,18,36,8,"#67e8f9"],[11,26,42,16,"rgba(34,211,238,.72)"],[15,42,34,8,"#0891b2"],[24,50,16,5,"#cffafe"],[21,21,14,5,"rgba(255,255,255,.92)"],[31,28,7,14,"rgba(255,255,255,.42)"],[31,29,4,18,"#fef08a"],[24,37,18,4,"#facc15",-28]]);
+  } else {
+    const palettes: Record<string,string[]> = {
+      tungstonballsack:["#e2e8f0","#94a3b8","#475569","rgba(148,163,184,.26)"], sleep:["#e0f2fe","#60a5fa","#1d4ed8","rgba(125,211,252,.26)"], poison:["#f0abfc","#a855f7","#581c87","rgba(168,85,247,.26)"], acid:["#bbf7d0","#22c55e","#166534","rgba(34,197,94,.26)"]
+    };
+    const palette=palettes[spell]??palettes.tungstonballsack;radialGlow(palette[0],palette[3],"rgba(0,0,0,0)");
+    if(spell==="tungstonballsack")drawSpellThumbnailBlocks(context,[[12,12,5,4,"#e2e8f0",-28],[18,16,5,4,"#64748b",-28],[24,20,5,4,"#cbd5e1",-28],[30,24,5,4,"#475569",-28],[36,28,5,4,"#94a3b8",-28],[35,29,18,4,"#cbd5e1"],[31,33,26,6,"#94a3b8"],[27,39,34,12,"#64748b"],[31,51,26,6,"#334155"]]);
+    else if(spell==="sleep"){drawSpellThumbnailBlocks(context,[[9,26,46,6,"#dbeafe"],[5,32,54,15,"#60a5fa"],[9,47,46,6,"#1d4ed8"],[4,36,7,8,"#93c5fd"],[53,36,7,8,"#1e3a8a"]]);context.fillStyle="#e0f2fe";context.font="bold 15px monospace";context.fillText("ZZZ",18,22);}
+    else {const acid=spell==="acid";drawSpellThumbnailBlocks(context,[[26,7,12,5,acid?"#dcfce7":"#fae8ff"],[23,12,18,4,acid?"#86efac":"#e879f9"],[18,32,28,25,palette[2]],[23,39,18,16,palette[1]],[28,45,5,5,palette[0]]]);}
+  }
+  return canvas;
+};
+
+const spellImageThumbnailSources: Record<string, string> = {
+  fireball: path.join(reactRoot,"public","sprites","fireball","fireball_1.png"),
+  iceshard: path.join(reactRoot,"public","sprites","iceshard","spells_1.png"),
+  arcanebeam: path.join(reactRoot,"public","sprites","misc","idle_1.png"),
+  healspell: path.join(reactRoot,"public","sprites","healspell","healspell_1.png"),
+  icespell: path.join(reactRoot,"public","sprites","icespell","icespell_1.png"),
+  ringsofpower: path.join(reactRoot,"public","sprites","ringsofpower","ringsofpower_1.png"),
+  lightning: path.join(reactRoot,"public","sprites","lightning","lightning_1.png"),
+  flamethrower: path.join(reactRoot,"public","sprites","fireball","castfireball_1.png"),
+  discshield: path.join(reactRoot,"public","sprites","shields","disc_shield.png"),
+};
+const exactSpellOrder = ["fireball","iceshard","arcanebeam","healspell","icespell","ringsofpower","lightning","smokebomb","portal","blink","grab","tornado","meteorshower","flamethrower","discshield","orbshield","kunai","healingcrystals","magicarmor","jumpboost","speedboost","tungstonballsack","sleep","poison","acid","magicglassorb"];
+for (const spell of exactSpellOrder) {
+  const sourcePath = spellImageThumbnailSources[spell];
+  if (!sourcePath) {
+    await emitCanvas(`HUD/SpellMenu/${spell}.png`, makeProceduralSpellThumbnail(spell));
+    continue;
+  }
+  const source = await loadImage(sourcePath);
+  const canvas = createCanvas(64,64); const context=canvas.getContext("2d",{willReadFrequently:true}); context.imageSmoothingEnabled=false;
+  const scale=Math.min(52/source.width,52/source.height); const width=source.width*scale; const height=source.height*scale;
+  context.drawImage(source,(64-width)/2,(64-height)/2,width,height);
+  const image=context.getImageData(0,0,64,64); for(let index=0;index<image.data.length;index+=4){const brightness=(image.data[index]+image.data[index+1]+image.data[index+2])/3;if(brightness<18)image.data[index+3]=0;else if(brightness<42)image.data[index+3]=Math.min(image.data[index+3],Math.round(image.data[index+3]*((brightness-18)/24)));} context.putImageData(image,0,0);
+  await emitCanvas(`HUD/SpellMenu/${spell}.png`,canvas);
+}
+
 outputs.sort((left, right) => left.path.localeCompare(right.path, "en"));
 const sourceFiles = [
   avatarFactoryPath,
@@ -2872,6 +3086,7 @@ const sourceFiles = [
   launchMenuPath,
   mobileSpellbookIconPath,
   spellThumbnailSourcePath,
+  ...Object.values(spellImageThumbnailSources),
   bushesPath,
   baseVillageHutLayoutPath,
   villagerCharacterRuntimePath,

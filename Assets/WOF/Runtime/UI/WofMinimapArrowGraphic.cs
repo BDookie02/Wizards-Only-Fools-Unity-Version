@@ -16,7 +16,7 @@ namespace WOF
             var right = center + new Vector2(halfWidth, -halfHeight);
             var notch = center + new Vector2(0f, -halfHeight * 0.52f);
             var left = center + new Vector2(-halfWidth, -halfHeight);
-            var inner = new Color32(255, 235, 59, 255);
+            var inner = (Color32)color;
             var outline = new Color32(0, 0, 0, 255);
 
             AddQuad(vertexHelper, tip + Vector2.up * 2f, right + new Vector2(2f, -2f), notch, left + new Vector2(-2f, -2f), outline);

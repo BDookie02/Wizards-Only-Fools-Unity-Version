@@ -39,7 +39,10 @@ namespace WOF
         private bool _forceMobileControls;
         private bool _forceLeftFiring;
         private bool _forceRightFiring;
+        private bool _magicArmed = true;
         private bool _gameplaySurfaceBlocked;
+        private float _leftFiringStartedAt = float.NegativeInfinity;
+        private float _rightFiringStartedAt = float.NegativeInfinity;
         private float _leftFiringUntil;
         private float _rightFiringUntil;
 
@@ -88,22 +91,52 @@ namespace WOF
             AnimateFrameClock(ref _handClock, ref _handFrame, 4, 0.28f);
             var leftFiring = ResolveFiringPoseActive(_forceLeftFiring, Time.unscaledTime, _leftFiringUntil);
             var rightFiring = ResolveFiringPoseActive(_forceRightFiring, Time.unscaledTime, _rightFiringUntil);
-            SyncFrame(leftHandImage, leftFiring ? leftFiringHandFrames : leftHandFrames, _handFrame);
-            SyncFrame(rightHandImage, rightFiring ? rightFiringHandFrames : rightHandFrames, _handFrame);
-            magicHandsLayout?.SetFiringPose(leftFiring, rightFiring);
+            var leftFlexFrame = ResolveFiringFlexFrame(
+                _forceLeftFiring,
+                Time.unscaledTime,
+                _leftFiringStartedAt,
+                _leftFiringUntil,
+                leftFiringHandFrames?.Length ?? 0);
+            var rightFlexFrame = ResolveFiringFlexFrame(
+                _forceRightFiring,
+                Time.unscaledTime,
+                _rightFiringStartedAt,
+                _rightFiringUntil,
+                rightFiringHandFrames?.Length ?? 0);
+            SyncFrame(
+                leftHandImage,
+                _magicArmed ? leftFiringHandFrames : leftHandFrames,
+                _magicArmed && leftFiring ? leftFlexFrame : (_magicArmed ? 0 : _handFrame));
+            SyncFrame(
+                rightHandImage,
+                _magicArmed ? rightFiringHandFrames : rightHandFrames,
+                _magicArmed && rightFiring ? rightFlexFrame : (_magicArmed ? 0 : _handFrame));
+            // Equipped magic always uses the outward-pointing React pose. A cast
+            // flexes the fingers inside that pose instead of swapping the arms
+            // back to the unequipped open-palm layout.
+            magicHandsLayout?.SetFiringPose(_magicArmed, _magicArmed);
             AnimateFrames(leftHeldSpellImage, leftHeldSpellFrames, ref _spellClock, ref _spellFrame, 0.1f);
             SyncFrame(heldSpellImage, rightHeldSpellFrames, _spellFrame);
         }
 
         public void PlayFiringPose(WofHandSide hand, float holdSeconds = 0.14f)
         {
-            var until = Time.unscaledTime + Mathf.Max(0.14f, holdSeconds);
+            var now = Time.unscaledTime;
+            var until = now + Mathf.Max(0.14f, holdSeconds);
             if (hand == WofHandSide.Left)
             {
+                if (now >= _leftFiringUntil)
+                {
+                    _leftFiringStartedAt = now;
+                }
                 _leftFiringUntil = Mathf.Max(_leftFiringUntil, until);
             }
             else
             {
+                if (now >= _rightFiringUntil)
+                {
+                    _rightFiringStartedAt = now;
+                }
                 _rightFiringUntil = Mathf.Max(_rightFiringUntil, until);
             }
 
@@ -123,6 +156,8 @@ namespace WOF
                 WofInputRouter.ResetMobile();
                 _leftFiringUntil = 0f;
                 _rightFiringUntil = 0f;
+                _leftFiringStartedAt = float.NegativeInfinity;
+                _rightFiringStartedAt = float.NegativeInfinity;
                 magicHandsLayout?.SetFiringPose(false, false);
             }
 
@@ -200,6 +235,7 @@ namespace WOF
 
         public void SetEquippedSpells(string leftSpell, string rightSpell, bool armed = true)
         {
+            _magicArmed = armed;
             if (leftSpellText != null)
             {
                 leftSpellText.text = armed ? $"L {NormalizeSpellLabel(leftSpell)}" : "MAGIC STOWED";
@@ -209,6 +245,7 @@ namespace WOF
                 rightSpellText.gameObject.SetActive(armed);
                 rightSpellText.text = $"R {NormalizeSpellLabel(rightSpell)}";
             }
+            magicHandsLayout?.SetFiringPose(armed, armed);
         }
 
         public void SetHeldSpellVisibility(bool leftVisible, bool rightVisible)
@@ -298,6 +335,36 @@ namespace WOF
         internal static bool ResolveFiringPoseActive(bool forced, float now, float firingUntil)
         {
             return forced || now < firingUntil;
+        }
+
+        internal static int ResolveFiringFlexFrame(
+            bool forced,
+            float now,
+            float firingStartedAt,
+            float firingUntil,
+            int frameCount)
+        {
+            if (frameCount <= 1)
+            {
+                return 0;
+            }
+
+            if (forced)
+            {
+                return Mathf.Min(frameCount - 1, 2);
+            }
+
+            var duration = firingUntil - firingStartedAt;
+            if (duration <= 0f || now < firingStartedAt || now >= firingUntil)
+            {
+                return 0;
+            }
+
+            // The exact React firing sheet has four progressive finger poses.
+            // Play a restrained flex and release during the 140 ms cast window.
+            var phase = Mathf.Clamp01((now - firingStartedAt) / duration);
+            var flex = phase < 0.25f ? 0 : phase < 0.5f ? 1 : phase < 0.75f ? 2 : 1;
+            return Mathf.Min(frameCount - 1, flex);
         }
 
         internal static string FormatVitalValue(float value, int maximum)

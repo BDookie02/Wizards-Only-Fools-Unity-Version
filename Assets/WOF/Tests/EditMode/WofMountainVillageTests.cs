@@ -47,6 +47,27 @@ namespace WOF.Tests
         }
 
         [Test]
+        public void UnityCalderaReshapeChangesOnlyTheRequestedMountainPerimeter()
+        {
+            var document = LoadLayout();
+            var reshape = document.constants.unityPerimeterReshape;
+            Assert.That(reshape, Is.Not.Null);
+            Assert.That(reshape.protectedRadius, Is.EqualTo(96f));
+            Assert.That(reshape.rimPeakRadius, Is.EqualTo(116f));
+            Assert.That(reshape.rimOuterRadius, Is.EqualTo(142f));
+            Assert.That(reshape.shoulderOuterRadius, Is.EqualTo(500f));
+            Assert.That(reshape.centerX, Is.EqualTo(WofMountainVillageLayout.WorldOrigin.x));
+            Assert.That(reshape.centerZ, Is.EqualTo(WofMountainVillageLayout.WorldOrigin.z));
+
+            // These exact summit contracts prove the protected center structures
+            // have not moved while the terrain, trail, cliffs, and waterfall outside it reshape.
+            Assert.That(document.summitY, Is.EqualTo(WofMountainVillageLayout.ReactSummitY).Within(0.000001f));
+            Assert.That(document.constants.summitColliderRadius, Is.EqualTo(reshape.protectedRadius));
+            Assert.That(document.layout.interiorHuts, Has.Length.EqualTo(3));
+            Assert.That(document.layout.interiorLadders, Has.Length.EqualTo(4));
+        }
+
+        [Test]
         public void OpeningWallBanquetAndLadderContractsRemainExact()
         {
             var document = LoadLayout();

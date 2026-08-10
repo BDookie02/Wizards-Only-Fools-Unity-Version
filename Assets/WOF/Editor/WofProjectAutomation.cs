@@ -227,8 +227,8 @@ namespace WOF.Editor
         {
             PlayerSettings.companyName = "Wizards Only Fools";
             PlayerSettings.productName = "Wizards Only Fools";
-            PlayerSettings.bundleVersion = "0.4.0";
-            PlayerSettings.Android.bundleVersionCode = 3;
+            PlayerSettings.bundleVersion = "0.4.1";
+            PlayerSettings.Android.bundleVersionCode = 4;
             PlayerSettings.runInBackground = true;
             PlayerSettings.colorSpace = ColorSpace.Linear;
             PlayerSettings.defaultScreenWidth = 1280;
@@ -468,6 +468,15 @@ namespace WOF.Editor
                 pipeline.shadowDistance = 70f;
                 AssetDatabase.CreateAsset(pipeline, PipelinePath);
             }
+
+            // Match the React oracle's intentionally low-resolution WebGL canvas
+            // (desktop DPR 0.46, antialias disabled, CSS image-rendering: pixelated)
+            // without reducing the resolution of Unity's overlay HUD.
+            var pipelineSettings = new SerializedObject(pipeline);
+            pipelineSettings.FindProperty("m_MSAA").intValue = 1;
+            pipelineSettings.FindProperty("m_RenderScale").floatValue = 0.46f;
+            pipelineSettings.FindProperty("m_UpscalingFilter").intValue = 2;
+            pipelineSettings.ApplyModifiedPropertiesWithoutUndo();
 
             GraphicsSettings.defaultRenderPipeline = pipeline;
             QualitySettings.renderPipeline = pipeline;
@@ -807,7 +816,8 @@ namespace WOF.Editor
             glow.transform.SetParent(root.transform, false);
             glow.transform.localScale = Vector3.one * 0.38f;
             Object.DestroyImmediate(glow.GetComponent<Collider>());
-            glow.GetComponent<MeshRenderer>().sharedMaterial = fireballMaterial;
+            var glowRenderer = glow.GetComponent<MeshRenderer>();
+            glowRenderer.sharedMaterial = fireballMaterial;
 
             var spriteObject = new GameObject("Sprite");
             spriteObject.transform.SetParent(root.transform, false);
@@ -827,6 +837,15 @@ namespace WOF.Editor
 
             SetObjectReference(projectile, "spriteRenderer", spriteRenderer);
             SetObjectReferenceArray(projectile, "frames", frames);
+            SetObjectReferenceArray(
+                projectile,
+                "spellThumbnails",
+                WofSpellLoadout.PlayableSpells
+                    .Select(spell => LoadRequiredAsset<Sprite>(
+                        $"Assets/WOF/Art/Generated/React/HUD/SpellMenu/{WofSpellLoadout.GetReactId(spell)}.png"))
+                    .ToArray());
+            SetObjectReference(projectile, "glowRenderer", glowRenderer);
+            SetObjectReference(projectile, "spellLight", light);
 
             var prefab = PrefabUtility.SaveAsPrefabAsset(root, FireballPrefabPath);
             Object.DestroyImmediate(root);
@@ -2153,7 +2172,11 @@ namespace WOF.Editor
                 LoadRequiredAsset<Sprite>("Assets/WOF/Art/Generated/React/HUD/SpellMenu/spellbook_icon.png"),
                 LoadRequiredAsset<Sprite>("Assets/WOF/Art/Generated/React/HUD/Fireball/fireball_1.png"),
                 LoadRequiredAsset<Sprite>("Assets/WOF/Art/Generated/React/HUD/SpellMenu/speedboost.png"),
-                LoadRequiredAsset<Sprite>("Assets/WOF/Art/Generated/React/HUD/SpellMenu/jumpboost.png"));
+                LoadRequiredAsset<Sprite>("Assets/WOF/Art/Generated/React/HUD/SpellMenu/jumpboost.png"),
+                WofSpellLoadout.PlayableSpells
+                    .Select(spell => LoadRequiredAsset<Sprite>(
+                        $"Assets/WOF/Art/Generated/React/HUD/SpellMenu/{WofSpellLoadout.GetReactId(spell)}.png"))
+                    .ToArray());
 
             var navigationMap = canvasObject.AddComponent<WofNavigationMapRuntime>();
             navigationMap.ConfigureGeneratedView(

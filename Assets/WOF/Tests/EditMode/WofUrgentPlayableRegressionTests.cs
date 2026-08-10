@@ -11,6 +11,19 @@ namespace WOF.Tests
     public sealed class WofUrgentPlayableRegressionTests
     {
         [Test]
+        public void RenderPipelinePreservesExactReactPixelTreatment()
+        {
+            var pipeline = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(
+                "Assets/WOF/Generated/Settings/WofUniversalPipeline.asset");
+            Assert.That(pipeline, Is.Not.Null);
+
+            var serialized = new SerializedObject(pipeline);
+            Assert.That(serialized.FindProperty("m_MSAA").intValue, Is.EqualTo(1));
+            Assert.That(serialized.FindProperty("m_RenderScale").floatValue, Is.EqualTo(0.46f).Within(0.0001f));
+            Assert.That(serialized.FindProperty("m_UpscalingFilter").intValue, Is.EqualTo(2));
+        }
+
+        [Test]
         public void ReactDefaultLoadoutAndSelfBuffTuningRemainExact()
         {
             Assert.That(WofSpellLoadout.ReactDefaultLeft, Is.EqualTo(WofSpellId.SpeedBoost));
@@ -22,9 +35,37 @@ namespace WOF.Tests
             Assert.That(WofSpellLoadout.PlayableSpells, Is.EqualTo(new[]
             {
                 WofSpellId.Fireball,
+                WofSpellId.IceShard,
+                WofSpellId.ArcaneBeam,
+                WofSpellId.Heal,
+                WofSpellId.IceSpell,
+                WofSpellId.RingsOfPower,
+                WofSpellId.Lightning,
+                WofSpellId.SmokeBomb,
+                WofSpellId.Portal,
+                WofSpellId.Blink,
+                WofSpellId.Grab,
+                WofSpellId.Tornado,
+                WofSpellId.MeteorShower,
+                WofSpellId.Flamethrower,
+                WofSpellId.DiscShield,
+                WofSpellId.OrbShield,
+                WofSpellId.Kunai,
+                WofSpellId.HealingCrystals,
+                WofSpellId.MagicArmor,
+                WofSpellId.JumpBoost,
                 WofSpellId.SpeedBoost,
-                WofSpellId.JumpBoost
+                WofSpellId.TungstonBallsack,
+                WofSpellId.Sleep,
+                WofSpellId.Poison,
+                WofSpellId.Acid,
+                WofSpellId.MagicGlassOrb
             }));
+            Assert.That(WofSpellLoadout.GetDisplayName(WofSpellId.IceShard), Is.EqualTo("Biden Blast"));
+            Assert.That(WofSpellLoadout.GetDisplayName(WofSpellId.Lightning), Is.EqualTo("Chidori"));
+            Assert.That(WofSpellLoadout.GetFamilyName(WofSpellId.MagicArmor), Is.EqualTo("DEFENSE"));
+            Assert.That(WofSpellLoadout.IsValid(25), Is.True);
+            Assert.That(WofSpellLoadout.IsValid(26), Is.False);
         }
 
         [Test]
@@ -38,19 +79,32 @@ namespace WOF.Tests
         }
 
         [Test]
-        public void ReactSurvivalTerrainBakeCoversTheExactBaseRenderRadius()
+        public void SpellGridUsesReactDesktopAndMobileColumnCountsWithControllerRows()
+        {
+            Assert.That(WofSpellMenuRuntime.ResolveGridColumnCount(1280, 720), Is.EqualTo(5));
+            Assert.That(WofSpellMenuRuntime.ResolveGridColumnCount(412, 915), Is.EqualTo(3));
+            Assert.That(WofSpellMenuRuntime.ResolveGridCellHeight(720), Is.EqualTo(62f));
+            Assert.That(WofSpellMenuRuntime.ResolveGridCellHeight(600), Is.EqualTo(51f));
+            Assert.That(WofSpellMenuRuntime.ResolveControllerIndex(0, 0, 1, 5, 26), Is.EqualTo(5));
+            Assert.That(WofSpellMenuRuntime.ResolveControllerIndex(25, 1, 0, 5, 26), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void ReactSurvivalTerrainBakeCoversTheFullWorldMap()
         {
             var path = Path.GetFullPath(
                 "Assets/WOF/Art/Generated/React/SurvivalTerrain/base-region.json");
             var text = File.ReadAllText(path);
             StringAssert.Contains("\"generator\":\"Tools/bake-survival-terrain-assets.mts\"", text);
-            StringAssert.Contains("\"radius\":3", text);
+            StringAssert.Contains("\"bounds\":{\"minimumChunkX\":-4,\"maximumChunkX\":6,\"minimumChunkZ\":-4,\"maximumChunkZ\":3}", text);
             StringAssert.Contains("\"segments\":32", text);
-            StringAssert.Contains("\"vertexCount\":49005", text);
-            StringAssert.Contains("\"indexCount\":276480", text);
+            StringAssert.Contains("\"vertexCount\":89298", text);
+            StringAssert.Contains("\"indexCount\":503808", text);
             StringAssert.Contains("\"-3:-3:chicago\"", text);
             StringAssert.Contains("\"0:-3:swamp\"", text);
             StringAssert.Contains("\"3:0:mountain\"", text);
+            StringAssert.Contains("\"4:-4:desert\"", text);
+            StringAssert.Contains("\"5:2:graveyard\"", text);
             StringAssert.Contains("\"0:0:base-village\"", text);
         }
 
@@ -74,7 +128,7 @@ namespace WOF.Tests
 
                 var openWorld = roots.SelectMany(root => root.GetComponentsInChildren<Transform>(true))
                     .Single(item => item.name == "ReactSurvivalOpenWorldBaseRegion");
-                Assert.That(openWorld.GetComponent<MeshFilter>().sharedMesh.vertexCount, Is.EqualTo(49005));
+                Assert.That(openWorld.GetComponent<MeshFilter>().sharedMesh.vertexCount, Is.EqualTo(89298));
                 Assert.That(openWorld.GetComponent<MeshCollider>().sharedMesh, Is.SameAs(
                     openWorld.GetComponent<MeshFilter>().sharedMesh));
 

@@ -20,7 +20,6 @@ namespace WOF
         private const int InstancesPerBatch = 1023;
         private const int CandidatesPerFrameDesktop = 2200;
         private const int CandidatesPerFrameMobile = 1600;
-        private const float GoldenAngle = 2.399963229728653f;
         private const string OpenWorldTerrainName = "ReactSurvivalOpenWorldBaseRegion";
         private static readonly RaycastHit[] TerrainHits = new RaycastHit[16];
         private static readonly Color GrassDark = new Color32(0x3c, 0x8b, 0x2d, 0xff);
@@ -51,6 +50,7 @@ namespace WOF
         private readonly List<InstanceBatch> _buildingGrass = new();
         private readonly List<InstanceBatch> _activeFlowers = new();
         private readonly List<InstanceBatch> _buildingFlowers = new();
+        private readonly Dictionary<Mesh, TerrainMeshSurfaceData> _terrainSurfaceData = new();
         private Mesh _grassMesh;
         private Mesh _flowerMesh;
         private Material _grassMaterial;
@@ -61,6 +61,7 @@ namespace WOF
         private int _acceptedGrass;
         private int _acceptedFlowers;
         private bool _building;
+        private bool _hasCompletedBuild;
         private float _nextViewerResolveAt;
         private float _buildStartedAt;
 
@@ -120,7 +121,10 @@ namespace WOF
             ResolveViewer();
             if (_viewer == null) return;
 
-            if (!_building && (_activeGrass.Count == 0 || HorizontalDistance(_viewer.position, _center) >= RecenterDistance))
+            if (ShouldStartBuild(
+                    _building,
+                    _hasCompletedBuild,
+                    HorizontalDistance(_viewer.position, _center)))
             {
                 StartBuild(QuantizeCenter(_viewer.position));
             }
@@ -179,23 +183,25 @@ namespace WOF
             SwapBatches(_activeGrass, _buildingGrass);
             SwapBatches(_activeFlowers, _buildingFlowers);
             _building = false;
+            _hasCompletedBuild = true;
             Debug.Log($"[WOF-AUTOMATION] BOTW_GRASS_BUILD_COMPLETE center={_center.x:F0},{_center.z:F0} blades={_acceptedGrass} flowers={_acceptedFlowers} ms={(Time.realtimeSinceStartup - _buildStartedAt) * 1000f:F0}");
         }
 
         private bool TryMakeGrass(int candidate, out Matrix4x4 matrix, out Vector4 color)
         {
-            var radialCandidate = candidate * 8191 % CandidateCount;
-            var radial = Mathf.Sqrt((radialCandidate + 0.5f) / CandidateCount);
             var seedX = Mathf.FloorToInt(_center.x * 0.25f);
             var seedZ = Mathf.FloorToInt(_center.z * 0.25f);
-            var angleOffset = Hash01(seedX, seedZ, 1850) * Mathf.PI * 2f;
-            var angle = angleOffset + candidate * GoldenAngle;
-            var jitter = (Hash01(seedX + candidate * 17, seedZ - candidate * 11, 1900) - 0.5f) * 0.56f;
-            var distance = Radius * radial + jitter;
-            var worldX = _center.x + Mathf.Cos(angle) * distance;
-            var worldZ = _center.z + Mathf.Sin(angle) * distance;
+            var distribution = GetIrregularDistributionPoint(candidate, seedX, seedZ);
+            if (distribution.sqrMagnitude > 1f)
+            {
+                matrix = default;
+                color = default;
+                return false;
+            }
+            var worldX = _center.x + distribution.x * Radius;
+            var worldZ = _center.z + distribution.y * Radius;
             if (IsBaseVillageBlocked(worldX, worldZ) || IsStrictDesert(worldX, worldZ) ||
-                !TrySampleTerrain(worldX, worldZ, 0.68f, out var hit))
+                !TrySampleTerrain(worldX, worldZ, 0.68f, out var hit, out var surfaceNormal))
             {
                 matrix = default;
                 color = default;
@@ -203,16 +209,22 @@ namespace WOF
             }
 
             var meadow = RestoredMeadowMask(worldX, worldZ);
-            var slopeCompression = Mathf.Lerp(1f, 0.96f, Smoothstep(0.34f, 0.78f, 1f - hit.normal.y));
-            var baseHeight = (1.1f + Hash01(seedX + candidate * 31, seedZ, 2500) * 0.34f + meadow * 0.12f) *
-                             slopeCompression * Mathf.Lerp(1f, 1.16f, meadow);
-            var baseWidth = (1.42f + Hash01(seedX, seedZ + candidate * 37, 2700) * 0.54f) * Mathf.Lerp(1f, 1.42f, meadow);
-            var hillside = Smoothstep(18f, 58f, hit.point.y) * Smoothstep(0.01f, 0.22f, 1f - hit.normal.y);
+            var broadClump = ValueNoise2D(worldX * 0.017f, worldZ * 0.017f, 6100);
+            var fineClump = ValueNoise2D(worldX * 0.052f, worldZ * 0.052f, 6400);
+            var clumpScale = Mathf.Lerp(0.84f, 1.18f, broadClump) * Mathf.Lerp(0.94f, 1.08f, fineClump);
+            var slopeCompression = Mathf.Lerp(1f, 0.96f, Smoothstep(0.34f, 0.78f, 1f - surfaceNormal.y));
+            var baseHeight = (0.96f + Hash01(seedX + candidate * 31, seedZ, 2500) * 0.58f + meadow * 0.1f) *
+                             slopeCompression * Mathf.Lerp(1f, 1.12f, meadow) * clumpScale;
+            // Keep individual clusters narrow enough that overhead views read as
+            // irregular blades rather than overlapping contour-line bands.
+            var baseWidth = (0.72f + Hash01(seedX, seedZ + candidate * 37, 2700) * 0.38f) *
+                            Mathf.Lerp(1f, 1.2f, meadow) * Mathf.Lerp(0.92f, 1.08f, fineClump);
+            var hillside = Smoothstep(18f, 58f, hit.point.y) * Smoothstep(0.01f, 0.22f, 1f - surfaceNormal.y);
             var height = baseHeight * Mathf.Lerp(1f, 0.94f, hillside);
             var width = baseWidth * Mathf.Lerp(1f, 1.12f, hillside);
             var yaw = Hash01(seedX - candidate * 41, seedZ + candidate * 43, 2900) * 360f;
-            var rotation = Quaternion.FromToRotation(Vector3.up, hit.normal) * Quaternion.AngleAxis(yaw, Vector3.up);
-            matrix = Matrix4x4.TRS(hit.point + hit.normal * 0.018f, rotation, new Vector3(width, height, width));
+            var rotation = GetSurfaceAlignedRotation(surfaceNormal, yaw);
+            matrix = Matrix4x4.TRS(hit.point + surfaceNormal * 0.018f, rotation, new Vector3(width, height, width));
             color = ResolveGrassColor(worldX, worldZ, hit.point.y, candidate, meadow, hillside);
             return true;
         }
@@ -222,16 +234,15 @@ namespace WOF
             var seedX = Mathf.FloorToInt(_center.x * 0.25f);
             var seedZ = Mathf.FloorToInt(_center.z * 0.25f);
             var flowerCandidate = candidate / 7;
-            var count = Mathf.RoundToInt(FlowerCount * 6.4f);
-            var radial = Mathf.Sqrt((flowerCandidate + 0.5f) / count);
-            var angle = Hash01(seedX, seedZ, 4850) * Mathf.PI * 2f + flowerCandidate * GoldenAngle;
             var radius = Radius * 0.84f;
-            var worldX = _center.x + Mathf.Cos(angle) * (radius * radial + (Hash01(seedX + flowerCandidate * 13, seedZ - flowerCandidate * 19, 4900) - 0.5f) * 2.2f);
-            var worldZ = _center.z + Mathf.Sin(angle) * (radius * radial + (Hash01(seedX - flowerCandidate * 17, seedZ + flowerCandidate * 23, 5360) - 0.5f) * 2.2f);
+            var distribution = GetIrregularDistributionPoint(flowerCandidate, seedX + 311, seedZ - 197);
+            var worldX = _center.x + distribution.x * radius;
+            var worldZ = _center.z + distribution.y * radius;
             var patchWave = Mathf.Sin(worldX * 0.041f + seedX * 0.013f) + Mathf.Cos(worldZ * 0.049f - seedZ * 0.019f) * 0.52f;
-            if (Hash01(seedX - flowerCandidate * 23, seedZ + flowerCandidate * 17, 4920) > Mathf.Lerp(0.62f, 1f, Smoothstep(0.18f, 0.92f, patchWave)) ||
+            if (distribution.sqrMagnitude > 1f ||
+                Hash01(seedX - flowerCandidate * 23, seedZ + flowerCandidate * 17, 4920) > Mathf.Lerp(0.62f, 1f, Smoothstep(0.18f, 0.92f, patchWave)) ||
                 IsBaseVillageBlocked(worldX, worldZ) || IsStrictDesert(worldX, worldZ) ||
-                !TrySampleTerrain(worldX, worldZ, 0.84f, out var hit))
+                !TrySampleTerrain(worldX, worldZ, 0.84f, out var hit, out var surfaceNormal))
             {
                 matrix = default;
                 color = default;
@@ -239,35 +250,101 @@ namespace WOF
             }
 
             var variant = Hash01(seedX + flowerCandidate * 29, seedZ - flowerCandidate * 31, 4940);
-            var stemHeight = Mathf.Lerp(0.58f, 0.96f, variant);
-            var bloomSize = 0.72f + Hash01(seedX, seedZ + flowerCandidate * 43, 5020) * 0.22f;
-            var rotation = Quaternion.FromToRotation(Vector3.up, hit.normal) *
-                           Quaternion.AngleAxis(Hash01(seedX + flowerCandidate * 59, seedZ - flowerCandidate * 61, 5180) * 360f, Vector3.up);
-            matrix = Matrix4x4.TRS(hit.point + hit.normal * 0.018f, rotation, new Vector3(bloomSize, stemHeight, bloomSize));
+            // Keep the stem rooted on the sampled slope while placing the bloom
+            // just above the local grass canopy so flowers survive overhead views.
+            var canopy = ValueNoise2D(worldX * 0.017f, worldZ * 0.017f, 6100);
+            var stemHeight = Mathf.Lerp(1.5f, 1.92f, variant) + canopy * 0.14f;
+            var bloomSize = 0.82f + Hash01(seedX, seedZ + flowerCandidate * 43, 5020) * 0.28f;
+            var rotation = GetSurfaceAlignedRotation(
+                surfaceNormal,
+                Hash01(seedX + flowerCandidate * 59, seedZ - flowerCandidate * 61, 5180) * 360f);
+            matrix = Matrix4x4.TRS(hit.point + surfaceNormal * 0.018f, rotation, new Vector3(bloomSize, stemHeight, bloomSize));
             color = ResolveFlowerColor(worldX, worldZ, variant);
             return true;
         }
 
-        private static bool TrySampleTerrain(float x, float z, float minimumNormalY, out RaycastHit hit)
+        private bool TrySampleTerrain(
+            float x,
+            float z,
+            float minimumNormalY,
+            out RaycastHit hit,
+            out Vector3 surfaceNormal)
         {
             var count = Physics.RaycastNonAlloc(new Vector3(x, 900f, z), Vector3.down, TerrainHits, 1400f, ~0,
                 QueryTriggerInteraction.Ignore);
             hit = default;
+            surfaceNormal = Vector3.up;
             var found = false;
             for (var index = 0; index < count; index++)
             {
                 var candidate = TerrainHits[index];
-                if (candidate.collider == null || candidate.normal.y < minimumNormalY) continue;
+                if (candidate.collider == null) continue;
                 var name = candidate.collider.gameObject.name;
                 if (!string.Equals(name, OpenWorldTerrainName, StringComparison.Ordinal) &&
                     name.IndexOf("Terrain", StringComparison.OrdinalIgnoreCase) < 0)
                     continue;
+                var candidateNormal = GetSmoothedSurfaceNormal(candidate);
+                if (candidateNormal.y < minimumNormalY) continue;
                 if (found && candidate.point.y <= hit.point.y) continue;
                 hit = candidate;
+                surfaceNormal = candidateNormal;
                 found = true;
             }
 
             return found;
+        }
+
+        internal static Quaternion GetSurfaceAlignedRotation(Vector3 surfaceNormal, float yawDegrees)
+        {
+            var normalized = surfaceNormal.sqrMagnitude > 0.000001f ? surfaceNormal.normalized : Vector3.up;
+            // Roots follow the slope, while blades still grow mostly against gravity.
+            // Full normal alignment made steep hills resemble repeated brushed rows.
+            var growthDirection = Vector3.Slerp(Vector3.up, normalized, 0.38f).normalized;
+            return Quaternion.FromToRotation(Vector3.up, growthDirection) *
+                   Quaternion.AngleAxis(yawDegrees, Vector3.up);
+        }
+
+        internal static Vector3 InterpolateSurfaceNormal(
+            Vector3 first,
+            Vector3 second,
+            Vector3 third,
+            Vector3 barycentric)
+        {
+            var normal = first * barycentric.x + second * barycentric.y + third * barycentric.z;
+            return normal.sqrMagnitude > 0.000001f ? normal.normalized : Vector3.up;
+        }
+
+        private Vector3 GetSmoothedSurfaceNormal(RaycastHit hit)
+        {
+            if (hit.collider is not MeshCollider meshCollider || hit.triangleIndex < 0 || meshCollider.sharedMesh == null)
+                return hit.normal.normalized;
+
+            var mesh = meshCollider.sharedMesh;
+            if (!_terrainSurfaceData.TryGetValue(mesh, out var surfaceData))
+            {
+                surfaceData = new TerrainMeshSurfaceData(mesh.triangles, mesh.normals);
+                _terrainSurfaceData.Add(mesh, surfaceData);
+            }
+
+            var triangleOffset = hit.triangleIndex * 3;
+            if (triangleOffset < 0 || triangleOffset + 2 >= surfaceData.Triangles.Length ||
+                surfaceData.Normals.Length == 0)
+                return hit.normal.normalized;
+
+            var firstIndex = surfaceData.Triangles[triangleOffset];
+            var secondIndex = surfaceData.Triangles[triangleOffset + 1];
+            var thirdIndex = surfaceData.Triangles[triangleOffset + 2];
+            if (firstIndex >= surfaceData.Normals.Length || secondIndex >= surfaceData.Normals.Length ||
+                thirdIndex >= surfaceData.Normals.Length)
+                return hit.normal.normalized;
+
+            var localNormal = InterpolateSurfaceNormal(
+                surfaceData.Normals[firstIndex],
+                surfaceData.Normals[secondIndex],
+                surfaceData.Normals[thirdIndex],
+                hit.barycentricCoordinate);
+            var worldNormal = meshCollider.transform.TransformDirection(localNormal).normalized;
+            return worldNormal.y < 0f ? -worldNormal : worldNormal;
         }
 
         private static bool IsBaseVillageBlocked(float x, float z)
@@ -354,10 +431,35 @@ namespace WOF
             return Mathf.Sqrt(x * x + z * z);
         }
 
+        internal static bool ShouldStartBuild(bool building, bool hasCompletedBuild, float distanceFromCenter)
+        {
+            return !building && (!hasCompletedBuild || distanceFromCenter >= RecenterDistance);
+        }
+
         public static float Hash01(float x, float z, float salt = 0f)
         {
             var value = Mathf.Sin(x * 127.1f + z * 311.7f + salt * 74.7f) * 43758.5453123f;
             return value - Mathf.Floor(value);
+        }
+
+        internal static Vector2 GetIrregularDistributionPoint(int candidate, int seedX, int seedZ)
+        {
+            // Independent hashed axes remove the visible golden-angle spirals
+            // that appeared as repeating rows when the meadow was seen above.
+            return new Vector2(
+                Hash01(candidate * 17 + seedX, candidate * 47 - seedZ, 1911) * 2f - 1f,
+                Hash01(candidate * 71 - seedX, candidate * 29 + seedZ, 1979) * 2f - 1f);
+        }
+
+        private static float ValueNoise2D(float x, float z, float salt)
+        {
+            var x0 = Mathf.FloorToInt(x);
+            var z0 = Mathf.FloorToInt(z);
+            var tx = Smoothstep(0f, 1f, x - x0);
+            var tz = Smoothstep(0f, 1f, z - z0);
+            var a = Mathf.Lerp(Hash01(x0, z0, salt), Hash01(x0 + 1, z0, salt), tx);
+            var b = Mathf.Lerp(Hash01(x0, z0 + 1, salt), Hash01(x0 + 1, z0 + 1, salt), tx);
+            return Mathf.Lerp(a, b, tz);
         }
 
         private static float Smoothstep(float edge0, float edge1, float value)
@@ -379,7 +481,7 @@ namespace WOF
             {
                 var angle = card / (float)cards * Mathf.PI;
                 var side = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
-                var width = card % 2 == 0 ? 0.72f : 0.58f;
+                var width = card % 2 == 0 ? 0.5f : 0.42f;
                 var vertex = card * 4;
                 vertices[vertex] = -side * width;
                 vertices[vertex + 1] = side * width;
@@ -439,6 +541,18 @@ namespace WOF
             var mesh = new Mesh { name = "ReactBotwWildflower", vertices = vertices.ToArray(), colors = colors.ToArray(), triangles = triangles.ToArray() };
             mesh.RecalculateBounds();
             return mesh;
+        }
+
+        private sealed class TerrainMeshSurfaceData
+        {
+            public readonly int[] Triangles;
+            public readonly Vector3[] Normals;
+
+            public TerrainMeshSurfaceData(int[] triangles, Vector3[] normals)
+            {
+                Triangles = triangles ?? Array.Empty<int>();
+                Normals = normals ?? Array.Empty<Vector3>();
+            }
         }
 
         private sealed class InstanceBatch

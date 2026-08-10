@@ -220,6 +220,35 @@ MonoBehaviour:
   - {fileID: 21300000, guid: d1093858eb8c4f64ba3af5b332961b42, type: 3}
   - {fileID: 21300000, guid: ff09f7c8b1a963541a45d9e4768a90be, type: 3}
   - {fileID: 21300000, guid: abbfa8aa7c2a1ac49a3a9361c7e570a2, type: 3}
+  spellThumbnails:
+  - {fileID: 21300000, guid: be8dcb7b6b54ce840aaa38a76d120fa0, type: 3}
+  - {fileID: 21300000, guid: 6ecbae97d59fa9e4f806a67a590e0dac, type: 3}
+  - {fileID: 21300000, guid: 5d4f9c10e191a97469f118fd19b823c6, type: 3}
+  - {fileID: 21300000, guid: e213f844ff3d6e04283166338e5f023f, type: 3}
+  - {fileID: 21300000, guid: cc868b06f1b6f654589699f6297237a3, type: 3}
+  - {fileID: 21300000, guid: 05fabfac770225c40a41d52883e89ba4, type: 3}
+  - {fileID: 21300000, guid: 46c1460018390c348a0639de27fd3bda, type: 3}
+  - {fileID: 21300000, guid: 444ce6a9f37d50241ba7393fc797511a, type: 3}
+  - {fileID: 21300000, guid: 439d7b0114ec71f439f1c920ab8360ab, type: 3}
+  - {fileID: 21300000, guid: 83a03659a3c5dfc4785f8e0378c484c9, type: 3}
+  - {fileID: 21300000, guid: cd44f469835822e49a849146a300d794, type: 3}
+  - {fileID: 21300000, guid: 3408a8944f043c34a93a417a0c9a03e4, type: 3}
+  - {fileID: 21300000, guid: be872e933b070324593e371073083010, type: 3}
+  - {fileID: 21300000, guid: ecfbc1fc0fad7fd4d8fdf9b7beea3579, type: 3}
+  - {fileID: 21300000, guid: 1b546ee5a6341c84e830e26104f32fe7, type: 3}
+  - {fileID: 21300000, guid: 1b85e4a5b2e89644bb2a880204e7e7fc, type: 3}
+  - {fileID: 21300000, guid: 4927e8027a54fa945be716097d2dedf9, type: 3}
+  - {fileID: 21300000, guid: f86ab87298493c74e8b6da96ebb87e96, type: 3}
+  - {fileID: 21300000, guid: 9a9e8f90dc011d540b966711576254ca, type: 3}
+  - {fileID: 21300000, guid: 6cf181b6b1dabac4b9bcd4cca19f5e99, type: 3}
+  - {fileID: 21300000, guid: d8a2b60283cf0b648b2df179f8925899, type: 3}
+  - {fileID: 21300000, guid: 1a75b25713dbbad45b8a103335f72240, type: 3}
+  - {fileID: 21300000, guid: 498d70c69aa7f524a9445511a5dbf10b, type: 3}
+  - {fileID: 21300000, guid: 31bb41837d5f4e74d859fe50016fc341, type: 3}
+  - {fileID: 21300000, guid: 7b08131f881b95547bf76a5c521b6416, type: 3}
+  - {fileID: 21300000, guid: 2df9ecc2c6975e54aa640f38e4e2d4cc, type: 3}
+  glowRenderer: {fileID: 4236656118739177680}
+  spellLight: {fileID: 9217162691775021379}
 --- !u!108 &9217162691775021379
 Light:
   m_ObjectHideFlags: 0

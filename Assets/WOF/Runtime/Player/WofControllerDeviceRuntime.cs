@@ -148,6 +148,42 @@ namespace WOF
             yield return new WaitForSecondsRealtime(0.6f);
             yield return CaptureProbeScreenshot("controller-navigation-map.png");
 
+            yield return TapControllerButtonUntil(GamepadButton.Y, () => !WofNavigationMapRuntime.HasWaypoint, 2f);
+            InputSystem.QueueStateEvent(_automationGamepad, new GamepadState { rightTrigger = 1f });
+            var zoomInDeadline = Time.realtimeSinceStartup + 2f;
+            while (WofNavigationMapRuntime.ExpandedZoom < 1.35f &&
+                   Time.realtimeSinceStartup < zoomInDeadline) yield return null;
+            InputSystem.QueueStateEvent(_automationGamepad, new GamepadState());
+            yield return null;
+            if (WofNavigationMapRuntime.ExpandedZoom < 1.35f)
+            {
+                FailProbe($"controller-map-zoom-in-failed zoom={WofNavigationMapRuntime.ExpandedZoom:F2}");
+                yield break;
+            }
+            InputSystem.QueueStateEvent(_automationGamepad, new GamepadState { rightStick = new Vector2(0.75f, 0.45f) });
+            yield return new WaitForSecondsRealtime(0.7f);
+            InputSystem.QueueStateEvent(_automationGamepad, new GamepadState());
+            yield return null;
+            yield return TapControllerButtonUntil(GamepadButton.X, () => WofNavigationMapRuntime.HasWaypoint, 3f);
+            if (!WofNavigationMapRuntime.HasWaypoint)
+            {
+                FailProbe("controller-x-did-not-set-map-waypoint");
+                yield break;
+            }
+            yield return CaptureProbeScreenshot("controller-map-waypoint-zoomed.png");
+            InputSystem.QueueStateEvent(_automationGamepad, new GamepadState { leftTrigger = 1f });
+            var zoomOutDeadline = Time.realtimeSinceStartup + 3f;
+            while (WofNavigationMapRuntime.ExpandedZoom > 1.01f &&
+                   Time.realtimeSinceStartup < zoomOutDeadline) yield return null;
+            InputSystem.QueueStateEvent(_automationGamepad, new GamepadState());
+            yield return null;
+            if (WofNavigationMapRuntime.ExpandedZoom > 1.01f)
+            {
+                FailProbe($"controller-map-zoom-out-failed zoom={WofNavigationMapRuntime.ExpandedZoom:F2}");
+                yield break;
+            }
+            Debug.Log("[WOF-AUTOMATION] CONTROLLER_MAP_ZOOM_WAYPOINT_PASS zoom=1.00 waypoint=true");
+
             var playerObject = NetworkManager.Singleton?.LocalClient?.PlayerObject;
             var player = playerObject == null ? null : playerObject.GetComponent<WofPlayerController>();
             if (player == null)
@@ -166,6 +202,12 @@ namespace WOF
                 yield break;
             }
             Debug.Log($"[WOF-AUTOMATION] CONTROLLER_FAST_TRAVEL_PASS destination=Base position={player.transform.position}");
+            if (!WofNavigationMapRuntime.HasWaypoint)
+            {
+                FailProbe("waypoint-was-not-preserved-after-fast-travel");
+                yield break;
+            }
+            yield return CaptureProbeScreenshot("controller-waypoint-compass.png");
 
             yield return TapControllerButtonUntil(GamepadButton.DpadLeft, () => WofNavigationMapRuntime.IsExpanded, 5f);
             yield return TapControllerButtonUntil(GamepadButton.B, () => !WofNavigationMapRuntime.IsExpanded, 5f);

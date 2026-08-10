@@ -1,7 +1,7 @@
 param(
     [string]$BuildRoot = 'D:\CodexProjects\Wizards-Only-Fools-Unity\Builds\Windows',
     [string]$OutputRoot = 'D:\tmp\wof-unity',
-    [ValidateSet('exterior', 'summit', 'banquet', 'catwalk')]
+    [ValidateSet('exterior', 'summit', 'aerial', 'banquet', 'catwalk')]
     [string]$View = 'exterior',
     [ValidateSet('none', 'left', 'right', 'both')]
     [string]$HandFire = 'none'
@@ -32,6 +32,7 @@ public static class WofMountainVillageCapture {
   [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int command);
   [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
   [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
+  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
 }
 '@
 [WofMountainVillageCapture]::SetProcessDPIAware() | Out-Null
@@ -104,7 +105,15 @@ try {
     $bitmap = New-Object System.Drawing.Bitmap $width, $height
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
     try {
-        $graphics.CopyFromScreen($point.X, $point.Y, 0, 0, $bitmap.Size)
+        $deviceContext = $graphics.GetHdc()
+        try {
+            if (-not [WofMountainVillageCapture]::PrintWindow($windowHandle, $deviceContext, 3)) {
+                throw 'PrintWindow failed to capture the Unity client.'
+            }
+        }
+        finally {
+            $graphics.ReleaseHdc($deviceContext)
+        }
         $bitmap.Save($capturePath, [System.Drawing.Imaging.ImageFormat]::Png)
     }
     finally {

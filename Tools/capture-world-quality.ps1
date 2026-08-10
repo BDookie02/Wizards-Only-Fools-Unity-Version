@@ -2,7 +2,11 @@ param(
     [string]$BuildRoot = 'D:\CodexProjects\Wizards-Only-Fools-Unity\Builds\Windows',
     [string]$OutputRoot = 'D:\tmp\wof-unity',
     [ValidateSet('day', 'night')]
-    [string]$View = 'day'
+    [string]$View = 'day',
+    [ValidateRange(320, 7680)]
+    [int]$Width = 1280,
+    [ValidateRange(240, 4320)]
+    [int]$Height = 720
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,7 +43,7 @@ $logRoot = Join-Path $resolvedOutputRoot 'logs'
 $profileRoot = Join-Path $resolvedOutputRoot ("world-quality-$View-profile-" + [Guid]::NewGuid().ToString('N'))
 $playerTempRoot = Join-Path $resolvedOutputRoot 'player-temp'
 $logPath = Join-Path $logRoot "world-quality-$View.log"
-$capturePath = Join-Path $resolvedOutputRoot "world-quality-$View-desktop.png"
+$capturePath = Join-Path $resolvedOutputRoot "world-quality-$View-${Width}x${Height}.png"
 foreach ($requiredRoot in @($logRoot, $profileRoot, $playerTempRoot)) {
     New-Item -ItemType Directory -Force -Path $requiredRoot | Out-Null
 }
@@ -51,7 +55,7 @@ foreach ($target in @($logPath, $capturePath)) {
 }
 
 $arguments = @(
-    '-force-d3d11', '-screen-width', '1280', '-screen-height', '720', '-screen-fullscreen', '0',
+    '-force-d3d11', '-screen-width', $Width, '-screen-height', $Height, '-screen-fullscreen', '0',
     '--wof-solo', '--wof-grass-view-probe', "--wof-sky-probe=$View", '--wof-auto-exit=90',
     "--wof-profile-root=$profileRoot", '-logFile', $logPath
 )
@@ -81,10 +85,10 @@ try {
 
     $rect = New-Object WofWorldQualityCapture+RECT
     if (-not [WofWorldQualityCapture]::GetClientRect($windowHandle, [ref]$rect)) { throw 'GetClientRect failed.' }
-    $width = $rect.Right - $rect.Left
-    $height = $rect.Bottom - $rect.Top
-    if ($width -ne 1280 -or $height -ne 720) { throw "Unexpected client dimensions: ${width}x${height}." }
-    $bitmap = New-Object System.Drawing.Bitmap $width, $height
+    $capturedWidth = $rect.Right - $rect.Left
+    $capturedHeight = $rect.Bottom - $rect.Top
+    if ($capturedWidth -ne $Width -or $capturedHeight -ne $Height) { throw "Unexpected client dimensions: ${capturedWidth}x${capturedHeight}." }
+    $bitmap = New-Object System.Drawing.Bitmap $capturedWidth, $capturedHeight
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
     try {
         $deviceContext = $graphics.GetHdc()
@@ -104,7 +108,7 @@ try {
     }
 
     $grassLine = Select-String -LiteralPath $logPath -SimpleMatch 'BOTW_GRASS_BUILD_COMPLETE' | Select-Object -Last 1
-    [PSCustomObject]@{ View=$View; Capture=$capturePath; Log=$logPath; Grass=$grassLine.Line; Width=$width; Height=$height; Bytes=(Get-Item -LiteralPath $capturePath).Length }
+    [PSCustomObject]@{ View=$View; Capture=$capturePath; Log=$logPath; Grass=$grassLine.Line; Width=$capturedWidth; Height=$capturedHeight; Bytes=(Get-Item -LiteralPath $capturePath).Length }
 }
 finally {
     if (-not $process.HasExited) {

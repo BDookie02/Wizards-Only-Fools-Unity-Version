@@ -9,6 +9,15 @@
     "src/game/ui/launch/LaunchMenu.tsx": "7db3f233a12cc0ecac505029e5652ef3a78dc5fc71b65c7ee75e8f79b1a26a7a",
     "public/sprites/misc/spellbook_icon.png": "cd9ade1f42ae87a5eb0eb8be0e1536a0b774658d17e9d6cb892aa1dc328341ef",
     "src/game/ui/hud/SpellThumbnail.tsx": "91b955329f5b6de51624342f8adc3f4c08445b040c33e4d3fdb49643e2b67c23",
+    "public/sprites/fireball/fireball_1.png": "21f89300dce845db64a21a9b33de195e4153fae316f962a88e73cccb5e73dee6",
+    "public/sprites/iceshard/spells_1.png": "164c1c43540c23c3c1c4add55e0f8c0c2d0d905ec42a3a1a1d3f0af71bc7d05a",
+    "public/sprites/misc/idle_1.png": "45d558e6993ae20f7b689ff7c07fb66fd28d20343411b83bf1a70e769b0bd2d6",
+    "public/sprites/healspell/healspell_1.png": "58ad1b797f2eeadaaa1c3ef99550e611ebad5fb0766083652d0d10fe22c4b12c",
+    "public/sprites/icespell/icespell_1.png": "654d7cb041c53056a90a3b3bcc2729ac5b9ffd261d087307c031c6815b495006",
+    "public/sprites/ringsofpower/ringsofpower_1.png": "7f087fd6dfd6d1e7fef2b487a2263f021c105f5706ff6bab316a2b716bcfc70a",
+    "public/sprites/lightning/lightning_1.png": "dadc7d73c304c02a063b7cf92cfa4570ca773747393c4ff13cbd92d2dfbe7674",
+    "public/sprites/fireball/castfireball_1.png": "1ca7b23f826db24c730a6421e526ab98c48fd902dc476caabd63bf936044cb8c",
+    "public/sprites/shields/disc_shield.png": "1e131d54ba9d3f25ea68974b086de088f49a18f5eff2c186fd51d45ca9bb01b1",
     "src/game/Bushes.tsx": "8d7b0e6857d87270fce8a8075598645a40b5b858c3463263e61553aece73bec1",
     "src/game/systems/world/villages/baseVillageHutLayout.ts": "a7f5e216d1f7cd83b19c92f36c51d5c46145c90ab884df386c1f26c9a965e039",
     "src/game/systems/world/villages/villagerCharacterRuntime.ts": "c26b6a0cd10fb02491405dab652aaef4ddda4c65eecbf1a75b889e883da79b8b",
@@ -82,7 +91,7 @@
     "src/game/systems/world/terrain/survivalTerrainTextures.ts": "56bdd4fc89b936cdd7efa54a234d07b68b1cadec12522e35f500eb3f4a2ee9b7",
     "src/game/systems/world/vegetation/survivalGrassTextures.ts": "80d8bab68bc827c6c640d302420e4ad84ca3254adb281c0cfdc30e3c080ee8a1"
   },
-  "outputCount": 1240,
+  "outputCount": 1266,
   "outputs": [
     {
       "path": "Avatar/Default/angry/d0_f0.png",
@@ -3980,9 +3989,129 @@
       "sha256": "032f732a43dabda1ba3d357a00807a56638d99a844f29a7d30efc08412dc4f46"
     },
     {
+      "path": "HUD/SpellMenu/acid.png",
+      "bytes": 4361,
+      "sha256": "575e7f2d07bb7bf0bd966efbb168be6751536449938d425a2df477708bc8a4d9"
+    },
+    {
+      "path": "HUD/SpellMenu/arcanebeam.png",
+      "bytes": 1808,
+      "sha256": "12e9000c23fc21e36425bd24c58713c9e032a0669688aedddb8be9e3a136c766"
+    },
+    {
+      "path": "HUD/SpellMenu/blink.png",
+      "bytes": 6033,
+      "sha256": "3be6d5a46095f131d5e238ac3386b90335ba0cde64bf01d0c2dc4ba12b329b07"
+    },
+    {
+      "path": "HUD/SpellMenu/discshield.png",
+      "bytes": 6257,
+      "sha256": "df7705880cc1dda4bb7f9862dbc614ec3097c19051ecfd19ebc4bc3d1bae68c5"
+    },
+    {
+      "path": "HUD/SpellMenu/fireball.png",
+      "bytes": 424,
+      "sha256": "c5c741c69631842999d8a06231304157c1b1e666879bcd717b2466bcef69944b"
+    },
+    {
+      "path": "HUD/SpellMenu/flamethrower.png",
+      "bytes": 2565,
+      "sha256": "dd728f8c067a312c2fc9d660b67fe9ec496600748ff9a12c438c50e60eb76534"
+    },
+    {
+      "path": "HUD/SpellMenu/grab.png",
+      "bytes": 7230,
+      "sha256": "ecd35d1692460737b878b71e8adae9c0f33a5076622aebaddc4e33f2704b7b03"
+    },
+    {
+      "path": "HUD/SpellMenu/healingcrystals.png",
+      "bytes": 3994,
+      "sha256": "26b99d55dabb047160829d4b85c4ec4051e2fc860258a0aee191808890edcfda"
+    },
+    {
+      "path": "HUD/SpellMenu/healspell.png",
+      "bytes": 3482,
+      "sha256": "cf5ab054cc77c66779c8f89bdd3df612b7de749ab3496d4597664e5c48d29c1e"
+    },
+    {
+      "path": "HUD/SpellMenu/iceshard.png",
+      "bytes": 4717,
+      "sha256": "523c5acfe9676b200b108a290f5c68ce55eb50c462ab6e70f54435cce9d3f5f2"
+    },
+    {
+      "path": "HUD/SpellMenu/icespell.png",
+      "bytes": 3136,
+      "sha256": "0db7172c25c58bb50b8e9a0ab5cad85e44e6aee26fba79b240da4c7bb8186ce5"
+    },
+    {
       "path": "HUD/SpellMenu/jumpboost.png",
       "bytes": 411,
       "sha256": "37c9f36b874be7a91a8c90c40bfb102c6d85416bafa20222bd744affec8366f6"
+    },
+    {
+      "path": "HUD/SpellMenu/jumpboost.png",
+      "bytes": 411,
+      "sha256": "37c9f36b874be7a91a8c90c40bfb102c6d85416bafa20222bd744affec8366f6"
+    },
+    {
+      "path": "HUD/SpellMenu/kunai.png",
+      "bytes": 5163,
+      "sha256": "828645861d47d077d678ad6d1a1a9668fe747ad553cf24a3f65e83e6b35fd307"
+    },
+    {
+      "path": "HUD/SpellMenu/lightning.png",
+      "bytes": 2409,
+      "sha256": "2428945f942aa44341a19776adb47bbd7aac76803fabd66b98fbe604ef88bfde"
+    },
+    {
+      "path": "HUD/SpellMenu/magicarmor.png",
+      "bytes": 4030,
+      "sha256": "7b68bdbe424ace3f709d5a14d361ef2a6d0a6a75ef070f5b12cb43b78ff53401"
+    },
+    {
+      "path": "HUD/SpellMenu/magicglassorb.png",
+      "bytes": 4620,
+      "sha256": "5e9dc9aaf97bab6867d33ad789211bd9fbbe71ec2370929cd58af0bb5508c4c1"
+    },
+    {
+      "path": "HUD/SpellMenu/meteorshower.png",
+      "bytes": 482,
+      "sha256": "5638cf91da0c0b8d645e43baf7e4043f2d7ddeb3f911f86693570f7040ef4959"
+    },
+    {
+      "path": "HUD/SpellMenu/orbshield.png",
+      "bytes": 5228,
+      "sha256": "4916d31b625a2a3c420976959506ff6b498af9c6d6a5557d16c0e7cf32c400c4"
+    },
+    {
+      "path": "HUD/SpellMenu/poison.png",
+      "bytes": 4630,
+      "sha256": "5e654ac1168375d33c4efc94277f80ed92c3f289101b93a0a3066fc6388b801e"
+    },
+    {
+      "path": "HUD/SpellMenu/portal.png",
+      "bytes": 6823,
+      "sha256": "e21f989a1bf205fb68f6f9a893aa83574ed7b8a48d9dda11b7bcfb6c005a3314"
+    },
+    {
+      "path": "HUD/SpellMenu/ringsofpower.png",
+      "bytes": 4741,
+      "sha256": "531af21a2b38cba9c1024bd8e8aa67b7ad928cdc913d6a8ab5671a95b48e33eb"
+    },
+    {
+      "path": "HUD/SpellMenu/sleep.png",
+      "bytes": 3655,
+      "sha256": "b81d645e20449112f2caca9f32b47af9a228813f9ea3fb8d4a1f98a02538c873"
+    },
+    {
+      "path": "HUD/SpellMenu/smokebomb.png",
+      "bytes": 5241,
+      "sha256": "9303a8df0d89ced449698094a0866936a296fee2b3f9669c7a0147f20231a945"
+    },
+    {
+      "path": "HUD/SpellMenu/speedboost.png",
+      "bytes": 1775,
+      "sha256": "c7a17325deb2e31d396fe69e74096164cadc3e07a6adf8dbf2e1da3a75f694b9"
     },
     {
       "path": "HUD/SpellMenu/speedboost.png",
@@ -3993,6 +4122,16 @@
       "path": "HUD/SpellMenu/spellbook_icon.png",
       "bytes": 9449,
       "sha256": "cd9ade1f42ae87a5eb0eb8be0e1536a0b774658d17e9d6cb892aa1dc328341ef"
+    },
+    {
+      "path": "HUD/SpellMenu/tornado.png",
+      "bytes": 495,
+      "sha256": "bc82b198b813ba75e9a295678e8bfa1af105b247a96deaa6ac3827815ae3e055"
+    },
+    {
+      "path": "HUD/SpellMenu/tungstonballsack.png",
+      "bytes": 5017,
+      "sha256": "d223f0789cea9a14653dc7c533559adb67c1918f2b140a9c193c78ccc8cb381c"
     },
     {
       "path": "Huts/dirt_door.png",
@@ -4056,8 +4195,8 @@
     },
     {
       "path": "MountainVillage/runtime-layout.json",
-      "bytes": 25097549,
-      "sha256": "09f0e60f3433800bc0aa826d90d4c7fb0410eed230ff9ffed0306fc64695d796"
+      "bytes": 25088686,
+      "sha256": "fe922ed78b7bd50cccb6f655da7bff11af2c536fa8f9055a4ed2e3b8d966e413"
     },
     {
       "path": "MountainVillage/Textures/terrain-detail.png",

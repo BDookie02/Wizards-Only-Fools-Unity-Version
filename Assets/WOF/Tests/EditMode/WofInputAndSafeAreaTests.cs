@@ -134,6 +134,20 @@ namespace WOF.Tests
         }
 
         [Test]
+        public void EquippedFiringHandUsesRestrainedFlexThenReturnsToPointingFrame()
+        {
+            const float startedAt = 20f;
+            const float firingUntil = startedAt + 0.14f;
+
+            Assert.That(WofHud.ResolveFiringFlexFrame(false, startedAt, startedAt, firingUntil, 4), Is.EqualTo(0));
+            Assert.That(WofHud.ResolveFiringFlexFrame(false, startedAt + 0.04f, startedAt, firingUntil, 4), Is.EqualTo(1));
+            Assert.That(WofHud.ResolveFiringFlexFrame(false, startedAt + 0.08f, startedAt, firingUntil, 4), Is.EqualTo(2));
+            Assert.That(WofHud.ResolveFiringFlexFrame(false, startedAt + 0.12f, startedAt, firingUntil, 4), Is.EqualTo(1));
+            Assert.That(WofHud.ResolveFiringFlexFrame(false, firingUntil, startedAt, firingUntil, 4), Is.EqualTo(0));
+            Assert.That(WofHud.ResolveFiringFlexFrame(true, firingUntil + 5f, startedAt, firingUntil, 4), Is.EqualTo(2));
+        }
+
+        [Test]
         public void ResolveLookPreservesLegacyMouseScaleWithoutScalingTouchLook()
         {
             var look = WofInputRouter.ResolveLook(new Vector2(20f, -10f), new Vector2(0.5f, 0.25f));

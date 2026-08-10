@@ -104,7 +104,7 @@ namespace WOF
                 const string prefix = "--wof-mountain-village-view-probe=";
                 if (!argument.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
                 var value = argument.Substring(prefix.Length).Trim().ToLowerInvariant();
-                if (value == "summit" || value == "banquet" || value == "catwalk") return value;
+                if (value == "summit" || value == "aerial" || value == "banquet" || value == "catwalk") return value;
             }
             return "exterior";
         }
@@ -114,6 +114,7 @@ namespace WOF
             return variant switch
             {
                 "summit" => WofMountainVillageLayout.SummitViewProbeSpawn,
+                "aerial" => WofMountainVillageLayout.AerialViewProbeSpawn,
                 "banquet" => WofMountainVillageLayout.BanquetViewProbeSpawn,
                 "catwalk" => WofMountainVillageLayout.CatwalkViewProbeSpawn,
                 _ => WofMountainVillageLayout.ViewProbeSpawn
@@ -125,9 +126,10 @@ namespace WOF
             return variant switch
             {
                 "summit" => 180f,
+                "aerial" => 0f,
                 "banquet" => 153.4f,
                 "catwalk" => 121f,
-                _ => 151f
+                _ => 180f
             };
         }
 
@@ -136,9 +138,10 @@ namespace WOF
             return variant switch
             {
                 "summit" => 6f,
+                "aerial" => 82f,
                 "banquet" => 5f,
                 "catwalk" => 1f,
-                _ => -30f
+                _ => -11f
             };
         }
 

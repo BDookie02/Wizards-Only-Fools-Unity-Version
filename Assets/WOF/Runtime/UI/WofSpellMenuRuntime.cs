@@ -16,14 +16,21 @@ namespace WOF
         [SerializeField] private Sprite fireballThumbnail;
         [SerializeField] private Sprite speedBoostThumbnail;
         [SerializeField] private Sprite jumpBoostThumbnail;
+        [SerializeField] private Sprite[] spellThumbnails;
 
         private GameObject _overlay;
         private Button _leftHandButton;
         private Button _rightHandButton;
         private Button[] _spellButtons;
         private Text _bindingStatus;
+        private ScrollRect _spellScroll;
+        private RectTransform _spellViewport;
+        private RectTransform _spellContent;
+        private GridLayoutGroup _spellGrid;
         private WofHandSide _bindingHand = WofHandSide.Left;
         private int _selectedIndex;
+        private int _gridColumns = 5;
+        private Vector2Int _lastGridScreen;
         private WofPlayerController _localPlayer;
         private bool _controllerToggleHeld;
         private bool _controllerBackHeld;
@@ -39,7 +46,8 @@ namespace WOF
             Sprite generatedSpellbookIcon,
             Sprite generatedFireballThumbnail,
             Sprite generatedSpeedBoostThumbnail,
-            Sprite generatedJumpBoostThumbnail)
+            Sprite generatedJumpBoostThumbnail,
+            Sprite[] generatedSpellThumbnails)
         {
             hud = generatedHud;
             uiParent = generatedUiParent;
@@ -49,6 +57,7 @@ namespace WOF
             fireballThumbnail = generatedFireballThumbnail;
             speedBoostThumbnail = generatedSpeedBoostThumbnail;
             jumpBoostThumbnail = generatedJumpBoostThumbnail;
+            spellThumbnails = generatedSpellThumbnails;
         }
 
         private void Awake()
@@ -89,7 +98,13 @@ namespace WOF
                 return;
             }
 
-            if (!_overlay.activeSelf || gamepad == null)
+            if (!_overlay.activeSelf)
+            {
+                return;
+            }
+
+            RefreshGridLayout();
+            if (gamepad == null)
             {
                 return;
             }
@@ -102,22 +117,29 @@ namespace WOF
                 SetOpen(false);
                 return;
             }
-            if (gamepad.dpad.left.wasPressedThisFrame || gamepad.leftShoulder.wasPressedThisFrame)
+            if (gamepad.leftShoulder.wasPressedThisFrame)
             {
                 SetBindingHand(WofHandSide.Left);
             }
-            else if (gamepad.dpad.right.wasPressedThisFrame || gamepad.rightShoulder.wasPressedThisFrame)
+            else if (gamepad.rightShoulder.wasPressedThisFrame)
             {
                 SetBindingHand(WofHandSide.Right);
             }
-            if (gamepad.dpad.down.wasPressedThisFrame)
+            if (gamepad.dpad.left.wasPressedThisFrame)
             {
-                SetSelectedIndex((_selectedIndex + 1) % WofSpellLoadout.PlayableSpells.Length);
+                SetSelectedIndex(ResolveControllerIndex(_selectedIndex, -1, 0, _gridColumns, WofSpellLoadout.PlayableSpells.Length));
+            }
+            else if (gamepad.dpad.right.wasPressedThisFrame)
+            {
+                SetSelectedIndex(ResolveControllerIndex(_selectedIndex, 1, 0, _gridColumns, WofSpellLoadout.PlayableSpells.Length));
+            }
+            else if (gamepad.dpad.down.wasPressedThisFrame)
+            {
+                SetSelectedIndex(ResolveControllerIndex(_selectedIndex, 0, 1, _gridColumns, WofSpellLoadout.PlayableSpells.Length));
             }
             else if (gamepad.dpad.up.wasPressedThisFrame)
             {
-                SetSelectedIndex((_selectedIndex - 1 + WofSpellLoadout.PlayableSpells.Length) %
-                                 WofSpellLoadout.PlayableSpells.Length);
+                SetSelectedIndex(ResolveControllerIndex(_selectedIndex, 0, -1, _gridColumns, WofSpellLoadout.PlayableSpells.Length));
             }
             if (gamepad.buttonSouth.wasPressedThisFrame)
             {
@@ -149,8 +171,8 @@ namespace WOF
             var hologram = CreatePanel(
                 "SpellMenuHologram",
                 _overlay.transform,
-                new Vector2(0.18f, 0.15f),
-                new Vector2(0.82f, 0.85f),
+                new Vector2(0.18f, 0.06f),
+                new Vector2(0.82f, 0.94f),
                 new Color32(18, 7, 31, 244));
             var outline = hologram.AddComponent<Outline>();
             outline.effectColor = new Color32(103, 232, 249, 180);
@@ -163,13 +185,13 @@ namespace WOF
                 27,
                 TextAnchor.MiddleLeft,
                 new Color32(207, 250, 254, 255));
-            SetRect(title.rectTransform, new Vector2(0.045f, 0.86f), new Vector2(0.62f, 0.97f));
+            SetRect(title.rectTransform, new Vector2(0.045f, 0.88f), new Vector2(0.62f, 0.98f));
             var close = CreateButton(
                 "Close",
                 hologram.transform,
                 "CLOSE",
                 new Color32(68, 68, 78, 255));
-            SetRect(close.GetComponent<RectTransform>(), new Vector2(0.78f, 0.865f), new Vector2(0.955f, 0.965f));
+            SetRect(close.GetComponent<RectTransform>(), new Vector2(0.78f, 0.885f), new Vector2(0.955f, 0.975f));
             close.onClick.AddListener(() => SetOpen(false));
 
             var handLabel = CreateText(
@@ -179,34 +201,67 @@ namespace WOF
                 13,
                 TextAnchor.MiddleLeft,
                 new Color32(165, 243, 252, 200));
-            SetRect(handLabel.rectTransform, new Vector2(0.045f, 0.75f), new Vector2(0.29f, 0.83f));
+            SetRect(handLabel.rectTransform, new Vector2(0.045f, 0.79f), new Vector2(0.29f, 0.86f));
             _leftHandButton = CreateButton(
                 "LeftHand",
                 hologram.transform,
                 "LEFT",
                 new Color32(14, 116, 144, 255));
-            SetRect(_leftHandButton.GetComponent<RectTransform>(), new Vector2(0.30f, 0.75f), new Vector2(0.48f, 0.83f));
+            SetRect(_leftHandButton.GetComponent<RectTransform>(), new Vector2(0.30f, 0.79f), new Vector2(0.48f, 0.86f));
             _leftHandButton.onClick.AddListener(() => SetBindingHand(WofHandSide.Left));
             _rightHandButton = CreateButton(
                 "RightHand",
                 hologram.transform,
                 "RIGHT",
                 new Color32(39, 39, 53, 255));
-            SetRect(_rightHandButton.GetComponent<RectTransform>(), new Vector2(0.50f, 0.75f), new Vector2(0.68f, 0.83f));
+            SetRect(_rightHandButton.GetComponent<RectTransform>(), new Vector2(0.50f, 0.79f), new Vector2(0.68f, 0.86f));
             _rightHandButton.onClick.AddListener(() => SetBindingHand(WofHandSide.Right));
+
+            var spellViewportObject = CreatePanel(
+                "SpellViewport",
+                hologram.transform,
+                new Vector2(0.045f, 0.12f),
+                new Vector2(0.955f, 0.77f),
+                new Color32(3, 10, 20, 82));
+            _spellViewport = spellViewportObject.GetComponent<RectTransform>();
+            spellViewportObject.AddComponent<RectMask2D>();
+
+            var contentObject = new GameObject("SpellGrid", typeof(RectTransform));
+            contentObject.transform.SetParent(spellViewportObject.transform, false);
+            _spellContent = contentObject.GetComponent<RectTransform>();
+            _spellContent.anchorMin = new Vector2(0f, 1f);
+            _spellContent.anchorMax = new Vector2(1f, 1f);
+            _spellContent.pivot = new Vector2(0.5f, 1f);
+            _spellContent.anchoredPosition = Vector2.zero;
+            _spellContent.sizeDelta = Vector2.zero;
+            _spellGrid = contentObject.AddComponent<GridLayoutGroup>();
+            _spellGrid.startCorner = GridLayoutGroup.Corner.UpperLeft;
+            _spellGrid.startAxis = GridLayoutGroup.Axis.Horizontal;
+            _spellGrid.childAlignment = TextAnchor.UpperLeft;
+            _spellGrid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+            _spellGrid.padding = new RectOffset(8, 8, 8, 8);
+            _spellGrid.spacing = new Vector2(8f, 5f);
+            var fitter = contentObject.AddComponent<ContentSizeFitter>();
+            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            _spellScroll = spellViewportObject.AddComponent<ScrollRect>();
+            _spellScroll.viewport = _spellViewport;
+            _spellScroll.content = _spellContent;
+            _spellScroll.horizontal = false;
+            _spellScroll.vertical = true;
+            _spellScroll.movementType = ScrollRect.MovementType.Clamped;
+            _spellScroll.scrollSensitivity = 34f;
 
             _spellButtons = new Button[WofSpellLoadout.PlayableSpells.Length];
             for (var index = 0; index < _spellButtons.Length; index++)
             {
                 var capturedIndex = index;
                 var spell = WofSpellLoadout.PlayableSpells[index];
-                var top = 0.69f - index * 0.17f;
                 var button = CreateButton(
                     $"Spell_{spell}",
-                    hologram.transform,
+                    _spellContent,
                     string.Empty,
                     index == 0 ? new Color32(51, 28, 68, 255) : new Color32(24, 16, 36, 255));
-                SetRect(button.GetComponent<RectTransform>(), new Vector2(0.045f, top - 0.135f), new Vector2(0.955f, top));
                 button.onClick.AddListener(() =>
                 {
                     SetSelectedIndex(capturedIndex);
@@ -216,12 +271,7 @@ namespace WOF
                 var thumbnail = new GameObject("Thumbnail", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
                 thumbnail.transform.SetParent(button.transform, false);
                 var thumbnailImage = thumbnail.GetComponent<Image>();
-                thumbnailImage.sprite = spell switch
-                {
-                    WofSpellId.SpeedBoost => speedBoostThumbnail,
-                    WofSpellId.JumpBoost => jumpBoostThumbnail,
-                    _ => fireballThumbnail
-                };
+                thumbnailImage.sprite = GetThumbnail(spell);
                 thumbnailImage.preserveAspect = true;
                 thumbnailImage.raycastTarget = false;
                 SetRect(thumbnail.GetComponent<RectTransform>(), new Vector2(0.02f, 0.10f), new Vector2(0.16f, 0.90f));
@@ -232,12 +282,8 @@ namespace WOF
                     WofSpellLoadout.GetDisplayName(spell).ToUpperInvariant(),
                     18,
                     TextAnchor.MiddleLeft,
-                    spell == WofSpellId.Fireball
-                        ? new Color32(249, 115, 22, 255)
-                        : spell == WofSpellId.SpeedBoost
-                            ? new Color32(253, 224, 71, 255)
-                            : new Color32(190, 242, 100, 255));
-                SetRect(name.rectTransform, new Vector2(0.19f, 0.35f), new Vector2(0.72f, 0.90f));
+                    GetSpellColor(spell));
+                SetRect(name.rectTransform, new Vector2(0.19f, 0.36f), new Vector2(0.98f, 0.90f));
                 var family = CreateText(
                     "Family",
                     button.transform,
@@ -245,7 +291,7 @@ namespace WOF
                     10,
                     TextAnchor.MiddleLeft,
                     new Color32(165, 243, 252, 175));
-                SetRect(family.rectTransform, new Vector2(0.19f, 0.08f), new Vector2(0.72f, 0.38f));
+                SetRect(family.rectTransform, new Vector2(0.19f, 0.08f), new Vector2(0.98f, 0.38f));
                 var action = CreateText(
                     "Action",
                     button.transform,
@@ -253,7 +299,7 @@ namespace WOF
                     12,
                     TextAnchor.MiddleCenter,
                     new Color32(207, 250, 254, 255));
-                SetRect(action.rectTransform, new Vector2(0.76f, 0.22f), new Vector2(0.96f, 0.78f));
+                SetRect(action.rectTransform, new Vector2(0.70f, 0.02f), new Vector2(0.98f, 0.28f));
                 _spellButtons[index] = button;
             }
 
@@ -287,6 +333,7 @@ namespace WOF
             }
 
             _overlay.SetActive(false);
+            RefreshGridLayout(true);
             RefreshSelectionVisuals();
         }
 
@@ -307,6 +354,7 @@ namespace WOF
                 _bindingHand = WofHandSide.Left;
                 _selectedIndex = GetEquippedIndex(_localPlayer, _bindingHand);
                 RefreshSelectionVisuals();
+                RefreshGridLayout(true);
                 EventSystem.current?.SetSelectedGameObject(_spellButtons?[_selectedIndex]?.gameObject);
             }
             else
@@ -328,6 +376,7 @@ namespace WOF
             _selectedIndex = Mathf.Clamp(index, 0, WofSpellLoadout.PlayableSpells.Length - 1);
             RefreshSelectionVisuals();
             EventSystem.current?.SetSelectedGameObject(_spellButtons?[_selectedIndex]?.gameObject);
+            EnsureSelectedVisible();
         }
 
         private void EquipSelectedSpell()
@@ -380,6 +429,109 @@ namespace WOF
                 if (WofSpellLoadout.PlayableSpells[index] == equipped) return index;
             }
             return 0;
+        }
+
+        private Sprite GetThumbnail(WofSpellId spell)
+        {
+            var index = (int)spell;
+            if (spellThumbnails != null && index >= 0 && index < spellThumbnails.Length && spellThumbnails[index] != null)
+            {
+                return spellThumbnails[index];
+            }
+            return spell switch
+            {
+                WofSpellId.SpeedBoost => speedBoostThumbnail,
+                WofSpellId.JumpBoost => jumpBoostThumbnail,
+                _ => fireballThumbnail
+            };
+        }
+
+        private static Color GetSpellColor(WofSpellId spell)
+        {
+            return WofSpellLoadout.GetFamilyName(spell) switch
+            {
+                "DAMAGE" => new Color32(251, 146, 60, 255),
+                "MOVEMENT" => new Color32(190, 242, 100, 255),
+                "DEFENSE" => new Color32(216, 180, 254, 255),
+                "STATUS" => new Color32(196, 181, 253, 255),
+                "QUEST" => new Color32(134, 239, 172, 255),
+                _ => new Color32(165, 243, 252, 255)
+            };
+        }
+
+        private void RefreshGridLayout(bool force = false)
+        {
+            if (_spellGrid == null || _spellViewport == null)
+            {
+                return;
+            }
+            var screen = new Vector2Int(Screen.width, Screen.height);
+            if (!force && screen == _lastGridScreen)
+            {
+                return;
+            }
+            _lastGridScreen = screen;
+            _gridColumns = ResolveGridColumnCount(screen.x, screen.y);
+            _spellGrid.constraintCount = _gridColumns;
+            var viewportWidth = _spellViewport.rect.width;
+            if (viewportWidth <= 0f)
+            {
+                viewportWidth = Mathf.Max(240f, Screen.width * 0.58f);
+            }
+            var innerWidth = Mathf.Max(
+                180f,
+                viewportWidth - _spellGrid.padding.left - _spellGrid.padding.right -
+                _spellGrid.spacing.x * (_gridColumns - 1));
+            _spellGrid.cellSize = new Vector2(innerWidth / _gridColumns, ResolveGridCellHeight(screen.y));
+            LayoutRebuilder.ForceRebuildLayoutImmediate(_spellContent);
+            EnsureSelectedVisible();
+        }
+
+        private void EnsureSelectedVisible()
+        {
+            if (_spellScroll == null || _spellButtons == null || _spellButtons.Length == 0)
+            {
+                return;
+            }
+            var row = _selectedIndex / Mathf.Max(1, _gridColumns);
+            var rowCount = Mathf.CeilToInt(_spellButtons.Length / (float)Mathf.Max(1, _gridColumns));
+            _spellScroll.verticalNormalizedPosition = rowCount <= 1
+                ? 1f
+                : 1f - row / (float)(rowCount - 1);
+        }
+
+        internal static int ResolveGridColumnCount(int width, int height)
+        {
+            return height > width || width < 900 ? 3 : 5;
+        }
+
+        internal static float ResolveGridCellHeight(int screenHeight)
+        {
+            return screenHeight >= 680 ? 62f : 51f;
+        }
+
+        internal static int ResolveControllerIndex(
+            int current,
+            int horizontal,
+            int vertical,
+            int columns,
+            int count)
+        {
+            if (count <= 0)
+            {
+                return 0;
+            }
+            columns = Mathf.Max(1, columns);
+            var next = current + horizontal + vertical * columns;
+            if (next < 0)
+            {
+                next = count - 1;
+            }
+            else if (next >= count)
+            {
+                next = 0;
+            }
+            return Mathf.Clamp(next, 0, count - 1);
         }
 
         private static WofPlayerController ResolveLocalPlayer()

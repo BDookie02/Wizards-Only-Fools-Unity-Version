@@ -14,7 +14,7 @@ namespace WOF.Tests
                 "Assets", "WOF", "Art", "Generated", "React", "react-visual-assets.json");
             var text = File.ReadAllText(manifestPath);
 
-            StringAssert.Contains("\"outputCount\": 1240", text);
+            StringAssert.Contains("\"outputCount\": 1266", text);
             StringAssert.Contains("Avatar/Default/launch-preview.png", text);
             StringAssert.Contains("HUD/Hands/idle_1.png", text);
             StringAssert.Contains("Huts/mushroom_cap_0.png", text);
@@ -29,6 +29,7 @@ namespace WOF.Tests
             StringAssert.Contains("HUD/SpellMenu/spellbook_icon.png", text);
             StringAssert.Contains("HUD/SpellMenu/speedboost.png", text);
             StringAssert.Contains("HUD/SpellMenu/jumpboost.png", text);
+            StringAssert.Contains("HUD/SpellMenu/magicglassorb.png", text);
             StringAssert.Contains("Geometry/bush-dodecahedron.json", text);
             StringAssert.Contains("Villagers/base-village.json", text);
             StringAssert.Contains("StreamingAssets/WOF/Villagers/Base/-224--224.wofavatar", text);
@@ -186,6 +187,21 @@ namespace WOF.Tests
             Assert.That(importer.textureCompression, Is.EqualTo(TextureImporterCompression.Uncompressed));
             Assert.That(importer.alphaIsTransparency, Is.True);
             Assert.That(importer.sRGBTexture, Is.True);
+        }
+
+        [Test]
+        public void FullWorldMapRetainsTheReactAtlasAspectAndUiSamplingSettings()
+        {
+            var importer = AssetImporter.GetAtPath(
+                "Assets/WOF/Resources/Maps/dagamemap.png") as TextureImporter;
+
+            Assert.That(importer, Is.Not.Null);
+            Assert.That(importer.textureType, Is.EqualTo(TextureImporterType.Default));
+            Assert.That(importer.npotScale, Is.EqualTo(TextureImporterNPOTScale.None));
+            Assert.That(importer.filterMode, Is.EqualTo(FilterMode.Bilinear));
+            Assert.That(importer.wrapMode, Is.EqualTo(TextureWrapMode.Clamp));
+            Assert.That(importer.sRGBTexture, Is.True);
+            Assert.That(Resources.Load<Shader>("Shaders/WofUiMapColorGrade"), Is.Not.Null);
         }
 
         [TestCase("GraveyardVillage/Tombs/00-inscription.png")]
