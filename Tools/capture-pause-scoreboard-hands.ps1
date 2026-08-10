@@ -60,6 +60,13 @@ public static class WofPauseScoreCapture {
     keybd_event(key, scan, 2, UIntPtr.Zero);
   }
 
+  public static void TapExtended(byte key) {
+    byte scan = (byte)MapVirtualKey(key, 0);
+    keybd_event(key, scan, 1, UIntPtr.Zero);
+    System.Threading.Thread.Sleep(90);
+    keybd_event(key, scan, 3, UIntPtr.Zero);
+  }
+
   public static void SetKey(byte key, bool pressed) {
     byte scan = (byte)MapVirtualKey(key, 0);
     keybd_event(key, scan, pressed ? 0u : 2u, UIntPtr.Zero);
@@ -73,8 +80,9 @@ $executable = Join-Path $resolvedBuildRoot 'WizardsOnlyFools.exe'
 $logPath = Join-Path $resolvedOutputRoot 'runtime.log'
 $handPath = Join-Path $resolvedOutputRoot 'idle-hands-frame.png'
 $pausePath = Join-Path $resolvedOutputRoot 'pause-menu.png'
+$settingsPath = Join-Path $resolvedOutputRoot 'settings-menu-fullscreen-toggled.png'
 $scorePath = Join-Path $resolvedOutputRoot 'scoreboard-held.png'
-foreach ($target in @($logPath, $handPath, $pausePath, $scorePath)) {
+foreach ($target in @($logPath, $handPath, $pausePath, $settingsPath, $scorePath)) {
     if (Test-Path -LiteralPath $target -PathType Leaf) { Remove-Item -LiteralPath $target -Force }
 }
 
@@ -97,7 +105,9 @@ function Save-WofWindow([IntPtr]$Handle, [string]$Path) {
     if (-not [WofPauseScoreCapture]::ClientToScreen($Handle, [ref]$point)) { throw 'ClientToScreen failed.' }
     $width = $rect.Right - $rect.Left
     $height = $rect.Bottom - $rect.Top
-    if ($width -ne 1280 -or $height -ne 720) { throw "Unexpected Unity client size: ${width}x${height}." }
+    $isWindowedProbe = $width -eq 1280 -and $height -eq 720
+    $isFullscreenProbe = $width -eq 1920 -and $height -eq 1080
+    if (-not $isWindowedProbe -and -not $isFullscreenProbe) { throw "Unexpected Unity client size: ${width}x${height}." }
     $bitmap = New-Object System.Drawing.Bitmap $width, $height
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
     try {
@@ -129,6 +139,19 @@ try {
     if (-not (Wait-WofMarker -Pattern 'PAUSE_MENU open=True' -Seconds 5)) { throw 'Physical Escape did not open the pause menu.' }
     Start-Sleep -Milliseconds 250
     Save-WofWindow -Handle $handle -Path $pausePath
+
+    [WofPauseScoreCapture]::TapExtended(0x28)
+    Start-Sleep -Milliseconds 250
+    [WofPauseScoreCapture]::Tap(0x0D)
+    if (-not (Wait-WofMarker -Pattern 'SETTINGS_MENU open=True' -Seconds 5)) { throw 'Physical Down/Enter did not open Settings.' }
+    [WofPauseScoreCapture]::Tap(0x0D)
+    Start-Sleep -Milliseconds 700
+    Save-WofWindow -Handle $handle -Path $settingsPath
+    [WofPauseScoreCapture]::Tap(0x0D)
+    Start-Sleep -Milliseconds 700
+    [WofPauseScoreCapture]::Tap(0x1B)
+    if (-not (Wait-WofMarker -Pattern 'SETTINGS_MENU open=False' -Count 2 -Seconds 5)) { throw 'Physical Escape did not return from Settings.' }
+
     [WofPauseScoreCapture]::Tap(0x1B)
     if (-not (Wait-WofMarker -Pattern 'PAUSE_MENU open=False' -Seconds 5)) { throw 'Second physical Escape did not close the pause menu.' }
 
@@ -149,6 +172,7 @@ try {
         Status = 'PASS'
         IdleHands = $handPath
         PauseMenu = $pausePath
+        SettingsMenu = $settingsPath
         ScoreboardHeld = $scorePath
         Log = $logPath
     }

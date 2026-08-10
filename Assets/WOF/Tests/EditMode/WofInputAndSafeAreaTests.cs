@@ -159,6 +159,17 @@ namespace WOF.Tests
         }
 
         [Test]
+        public void ScoreboardStatusMatchesReactCombinedEffectOrder()
+        {
+            Assert.That(WofPauseAndScoreboardRuntime.BuildScoreboardStatus(0f, true, true, true, true), Is.EqualTo("DOWN"));
+            Assert.That(WofPauseAndScoreboardRuntime.BuildScoreboardStatus(100f, false, false, false, false), Is.EqualTo("READY"));
+            Assert.That(WofPauseAndScoreboardRuntime.BuildScoreboardStatus(100f, true, true, true, true),
+                Is.EqualTo("SLEEP / SLOWED / POISON / ACID"));
+            Assert.That(WofPauseAndScoreboardRuntime.BuildScoreboardStatus(100f, false, true, false, true),
+                Is.EqualTo("SLOWED / ACID"));
+        }
+
+        [Test]
         public void ResolveLookPreservesLegacyMouseScaleWithoutScalingTouchLook()
         {
             var look = WofInputRouter.ResolveLook(new Vector2(20f, -10f), new Vector2(0.5f, 0.25f));

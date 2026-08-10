@@ -172,6 +172,10 @@ namespace WOF
         public bool IsDead => _isDead.Value;
         public bool HasActiveSpellShield => IsTimedBuffActive(_discShieldUntil.Value) ||
                                             IsTimedBuffActive(_orbShieldUntil.Value);
+        public bool IsSleepEffectActive => IsTimedBuffActive(_sleepUntil.Value);
+        public bool IsSlowEffectActive => IsTimedBuffActive(_slowUntil.Value);
+        public bool IsPoisonEffectActive => IsTimedBuffActive(_poisonUntil.Value);
+        public bool IsAcidEffectActive => IsTimedBuffActive(_acidUntil.Value);
         public bool IsGrounded => !IsVClipEnabled && (IsLocalLilyCoilActive
             ? _lastLilyCoilGrounded
             : _controller != null && (!_controller.enabled || _controller.isGrounded));

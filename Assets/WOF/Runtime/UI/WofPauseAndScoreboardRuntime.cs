@@ -17,12 +17,21 @@ namespace WOF
         [SerializeField] private Font font;
 
         private GameObject _pauseRoot;
+        private GameObject _pauseHomeRoot;
+        private GameObject _settingsRoot;
         private GameObject _scoreboardRoot;
         private Button[] _pauseButtons;
+        private Button[] _settingsButtons;
         private Text[] _scoreRows;
-        private Text _scoreRoom;
+        private GameObject[] _scoreRowPanels;
+        private Text _fullscreenValue;
+        private Text _vSyncValue;
+        private Text _frameLimitValue;
         private int _pauseSelection;
+        private int _settingsSelection;
+        private int _frameLimitIndex = 1;
         private float _nextRosterRefreshAt;
+        private bool _settingsOpen;
         private bool _pauseProbe;
         private bool _scoreboardProbe;
         private bool _probeApplied;
@@ -116,6 +125,12 @@ namespace WOF
 
         private void UpdatePauseInput()
         {
+            if (_settingsOpen)
+            {
+                UpdateSettingsInput();
+                return;
+            }
+
             var keyboard = Keyboard.current;
             var gamepad = Gamepad.current;
             if ((keyboard?.escapeKey.wasPressedThisFrame ?? false) ||
@@ -141,7 +156,41 @@ namespace WOF
                 (gamepad?.buttonSouth.wasPressedThisFrame ?? false))
             {
                 if (_pauseSelection == 0) SetPauseOpen(false);
-                else Application.Quit(0);
+                else SetSettingsOpen(true);
+            }
+        }
+
+        private void UpdateSettingsInput()
+        {
+            var keyboard = Keyboard.current;
+            var gamepad = Gamepad.current;
+            if ((keyboard?.escapeKey.wasPressedThisFrame ?? false) ||
+                (gamepad?.buttonEast.wasPressedThisFrame ?? false))
+            {
+                SetSettingsOpen(false);
+                return;
+            }
+
+            if ((keyboard?.upArrowKey.wasPressedThisFrame ?? false) ||
+                (gamepad?.dpad.up.wasPressedThisFrame ?? false))
+                SetSettingsSelection(_settingsSelection - 1);
+            else if ((keyboard?.downArrowKey.wasPressedThisFrame ?? false) ||
+                     (gamepad?.dpad.down.wasPressedThisFrame ?? false))
+                SetSettingsSelection(_settingsSelection + 1);
+
+            var activate = (keyboard?.enterKey.wasPressedThisFrame ?? false) ||
+                           (keyboard?.leftArrowKey.wasPressedThisFrame ?? false) ||
+                           (keyboard?.rightArrowKey.wasPressedThisFrame ?? false) ||
+                           (gamepad?.buttonSouth.wasPressedThisFrame ?? false) ||
+                           (gamepad?.dpad.left.wasPressedThisFrame ?? false) ||
+                           (gamepad?.dpad.right.wasPressedThisFrame ?? false);
+            if (!activate) return;
+            switch (_settingsSelection)
+            {
+                case 0: ToggleFullscreen(); break;
+                case 1: ToggleVSync(); break;
+                case 2: CycleFrameLimit(); break;
+                default: SetSettingsOpen(false); break;
             }
         }
 
@@ -156,6 +205,7 @@ namespace WOF
             Cursor.visible = open;
             if (open)
             {
+                SetSettingsOpen(false);
                 SetPauseSelection(0);
                 EventSystem.current?.SetSelectedGameObject(_pauseButtons?[0]?.gameObject);
             }
@@ -188,6 +238,63 @@ namespace WOF
             EventSystem.current?.SetSelectedGameObject(_pauseButtons[_pauseSelection].gameObject);
         }
 
+        private void SetSettingsOpen(bool open)
+        {
+            _settingsOpen = open;
+            if (_pauseHomeRoot != null) _pauseHomeRoot.SetActive(!open);
+            if (_settingsRoot != null) _settingsRoot.SetActive(open);
+            if (open)
+            {
+                RefreshSettingsLabels();
+                SetSettingsSelection(0);
+            }
+            else if (IsPauseOpen)
+            {
+                SetPauseSelection(1);
+            }
+            Debug.Log($"[WOF-AUTOMATION] SETTINGS_MENU open={open}");
+        }
+
+        private void SetSettingsSelection(int selection)
+        {
+            if (_settingsButtons == null || _settingsButtons.Length == 0) return;
+            _settingsSelection = ((selection % _settingsButtons.Length) + _settingsButtons.Length) % _settingsButtons.Length;
+            for (var index = 0; index < _settingsButtons.Length; index++)
+                _settingsButtons[index].GetComponent<Image>().color = index == _settingsSelection
+                    ? new Color32(88, 28, 135, 255)
+                    : new Color32(55, 55, 62, 255);
+            EventSystem.current?.SetSelectedGameObject(_settingsButtons[_settingsSelection].gameObject);
+        }
+
+        private void ToggleFullscreen()
+        {
+            Screen.fullScreenMode = Screen.fullScreen
+                ? FullScreenMode.Windowed
+                : FullScreenMode.FullScreenWindow;
+            RefreshSettingsLabels();
+        }
+
+        private void ToggleVSync()
+        {
+            QualitySettings.vSyncCount = QualitySettings.vSyncCount > 0 ? 0 : 1;
+            RefreshSettingsLabels();
+        }
+
+        private void CycleFrameLimit()
+        {
+            _frameLimitIndex = (_frameLimitIndex + 1) % 3;
+            Application.targetFrameRate = _frameLimitIndex == 0 ? 60 : _frameLimitIndex == 1 ? 120 : -1;
+            RefreshSettingsLabels();
+        }
+
+        private void RefreshSettingsLabels()
+        {
+            if (_fullscreenValue != null) _fullscreenValue.text = Screen.fullScreen ? "FULLSCREEN" : "WINDOWED";
+            if (_vSyncValue != null) _vSyncValue.text = QualitySettings.vSyncCount > 0 ? "ON" : "OFF";
+            if (_frameLimitValue != null)
+                _frameLimitValue.text = _frameLimitIndex == 0 ? "60" : _frameLimitIndex == 1 ? "120" : "UNCAPPED";
+        }
+
         private void RefreshScoreboard()
         {
             _nextRosterRefreshAt = Time.unscaledTime + 0.2f;
@@ -202,7 +309,7 @@ namespace WOF
                 var row = _scoreRows[index];
                 if (index >= players.Length)
                 {
-                    row.gameObject.SetActive(false);
+                    _scoreRowPanels[index].SetActive(false);
                     continue;
                 }
 
@@ -210,19 +317,44 @@ namespace WOF
                 var label = player.IsOwner
                     ? $"YOU - {localName} LVL {localLevel}"
                     : $"WIZARD {player.OwnerClientId + 1} ({player.OwnerClientId:X4})";
-                var status = player.Health <= 0f ? "DOWN" : "READY";
+                var status = BuildScoreboardStatus(
+                    player.Health,
+                    player.IsSleepEffectActive,
+                    player.IsSlowEffectActive,
+                    player.IsPoisonEffectActive,
+                    player.IsAcidEffectActive);
                 var score = Mathf.Max(0, Mathf.RoundToInt(player.Health + player.Armor));
                 row.text = $"{Trim(label, 26),-26} {status,-10} {Mathf.RoundToInt(player.Health),4} {Mathf.RoundToInt(player.Armor),5} {score,5}";
                 row.color = player.IsOwner ? new Color32(255, 248, 198, 255) : new Color32(207, 250, 254, 225);
-                row.gameObject.SetActive(true);
+                var panel = _scoreRowPanels[index];
+                panel.GetComponent<Image>().color = player.IsOwner
+                    ? new Color32(250, 204, 21, 26)
+                    : new Color32(34, 211, 238, 13);
+                panel.GetComponent<Outline>().effectColor = player.IsOwner
+                    ? new Color32(254, 240, 138, 140)
+                    : new Color32(165, 243, 252, 52);
+                panel.SetActive(true);
             }
-            if (_scoreRoom != null)
-            {
-                var room = WofBootstrap.Instance?.RoomCode;
-                _scoreRoom.text = string.IsNullOrWhiteSpace(room)
-                    ? $"PLAYERS {players.Length}"
-                    : $"ROOM {room.ToUpperInvariant()}  |  PLAYERS {players.Length}";
-            }
+        }
+
+        internal static string BuildScoreboardStatus(
+            float health,
+            bool sleeping,
+            bool slowed,
+            bool poisoned,
+            bool acid)
+        {
+            if (health <= 0f) return "DOWN";
+            var status = sleeping ? "SLEEP" : string.Empty;
+            if (slowed) status = AppendStatus(status, "SLOWED");
+            if (poisoned) status = AppendStatus(status, "POISON");
+            if (acid) status = AppendStatus(status, "ACID");
+            return string.IsNullOrEmpty(status) ? "READY" : status;
+        }
+
+        private static string AppendStatus(string current, string next)
+        {
+            return string.IsNullOrEmpty(current) ? next : current + " / " + next;
         }
 
         private static string Trim(string value, int length)
@@ -234,34 +366,48 @@ namespace WOF
         {
             if (uiParent == null || font == null || _pauseRoot != null) return;
 
-            _pauseRoot = CreatePanel("PauseMenuOverlay", uiParent, Vector2.zero, Vector2.one, new Color32(3, 1, 7, 226));
-            var card = CreatePanel("PauseCard", _pauseRoot.transform, new Vector2(0.25f, 0.12f), new Vector2(0.75f, 0.88f), new Color32(18, 7, 31, 250));
-            var outline = card.AddComponent<Outline>();
-            outline.effectColor = new Color32(103, 232, 249, 180);
-            outline.effectDistance = new Vector2(3f, -3f);
-            var title = CreateText("Title", card.transform, "WIZARDS\nONLY\nFOOLS!", 54, TextAnchor.MiddleCenter, new Color32(255, 179, 71, 255));
-            SetRect(title.rectTransform, new Vector2(0.05f, 0.53f), new Vector2(0.95f, 0.96f));
-            var paused = CreateText("Paused", card.transform, "PAUSED", 22, TextAnchor.MiddleCenter, new Color32(165, 243, 252, 220));
-            SetRect(paused.rectTransform, new Vector2(0.18f, 0.46f), new Vector2(0.82f, 0.56f));
-            var controls = CreateText(
-                "Controls",
-                card.transform,
-                "ESC / START  RESUME     TAB / SELECT  HOLD PLAYER LIST\n1-0  LEFT SPELL SLOTS     Q + 1-0  RIGHT SPELL SLOTS\nLB / RB  CYCLE HAND HOTBARS",
-                15,
-                TextAnchor.MiddleCenter,
-                new Color32(207, 250, 254, 190));
-            SetRect(controls.rectTransform, new Vector2(0.06f, 0.25f), new Vector2(0.94f, 0.45f));
-            var resume = CreateButton("Resume", card.transform, "RESUME", new Color32(88, 28, 135, 255));
-            SetRect(resume.GetComponent<RectTransform>(), new Vector2(0.14f, 0.13f), new Vector2(0.86f, 0.23f));
+            _pauseRoot = CreatePanel("PauseMenuOverlay", uiParent, Vector2.zero, Vector2.one, new Color32(5, 2, 7, 247));
+            _pauseHomeRoot = CreatePanel("PauseHome", _pauseRoot.transform, Vector2.zero, Vector2.one, Color.clear);
+            _pauseHomeRoot.GetComponent<Image>().raycastTarget = false;
+            var title = CreateText("Title", _pauseHomeRoot.transform, "WIZARDS\nONLY\nFOOLS!", 62, TextAnchor.MiddleCenter, new Color32(255, 179, 71, 255));
+            SetRect(title.rectTransform, new Vector2(0.16f, 0.48f), new Vector2(0.84f, 0.94f));
+            var resume = CreateButton("Resume", _pauseHomeRoot.transform, "CLICK TO PLAY / START TO RESUME", new Color32(31, 15, 43, 255));
+            SetRect(resume.GetComponent<RectTransform>(), new Vector2(0.29f, 0.34f), new Vector2(0.71f, 0.46f));
+            var resumeOutline = resume.gameObject.AddComponent<Outline>();
+            resumeOutline.effectColor = new Color32(103, 232, 249, 160);
+            resumeOutline.effectDistance = new Vector2(2f, -2f);
             resume.onClick.AddListener(() => SetPauseOpen(false));
-            var quit = CreateButton("Quit", card.transform, "CLOSE GAME", new Color32(55, 55, 62, 255));
-            SetRect(quit.GetComponent<RectTransform>(), new Vector2(0.14f, 0.025f), new Vector2(0.86f, 0.115f));
-            quit.onClick.AddListener(() => Application.Quit(0));
-            _pauseButtons = new[] { resume, quit };
+            var settings = CreateButton("Settings", _pauseHomeRoot.transform, "SETTINGS", new Color32(55, 55, 62, 255));
+            SetRect(settings.GetComponent<RectTransform>(), new Vector2(0.41f, 0.23f), new Vector2(0.59f, 0.31f));
+            settings.onClick.AddListener(() => SetSettingsOpen(true));
+            _pauseButtons = new[] { resume, settings };
+
+            _settingsRoot = CreatePanel("SettingsPanel", _pauseRoot.transform, new Vector2(0.22f, 0.12f), new Vector2(0.78f, 0.88f), new Color32(9, 5, 16, 245));
+            var settingsOutline = _settingsRoot.AddComponent<Outline>();
+            settingsOutline.effectColor = new Color32(103, 232, 249, 155);
+            settingsOutline.effectDistance = new Vector2(2f, -2f);
+            var settingsTitle = CreateText("SettingsTitle", _settingsRoot.transform, "SETTINGS", 38, TextAnchor.MiddleLeft, Color.white);
+            SetRect(settingsTitle.rectTransform, new Vector2(0.06f, 0.82f), new Vector2(0.94f, 0.97f));
+            var settingsKicker = CreateText("SettingsKicker", _settingsRoot.transform, "VIDEO", 14, TextAnchor.MiddleLeft, new Color32(165, 243, 252, 180));
+            SetRect(settingsKicker.rectTransform, new Vector2(0.06f, 0.75f), new Vector2(0.94f, 0.84f));
+            var fullscreen = CreateSettingButton("Fullscreen", _settingsRoot.transform, "DISPLAY MODE", out _fullscreenValue);
+            SetRect(fullscreen.GetComponent<RectTransform>(), new Vector2(0.07f, 0.59f), new Vector2(0.93f, 0.7f));
+            fullscreen.onClick.AddListener(ToggleFullscreen);
+            var vSync = CreateSettingButton("VSync", _settingsRoot.transform, "VSYNC", out _vSyncValue);
+            SetRect(vSync.GetComponent<RectTransform>(), new Vector2(0.07f, 0.45f), new Vector2(0.93f, 0.56f));
+            vSync.onClick.AddListener(ToggleVSync);
+            var frameLimit = CreateSettingButton("FrameLimit", _settingsRoot.transform, "FRAME LIMIT", out _frameLimitValue);
+            SetRect(frameLimit.GetComponent<RectTransform>(), new Vector2(0.07f, 0.31f), new Vector2(0.93f, 0.42f));
+            frameLimit.onClick.AddListener(CycleFrameLimit);
+            var back = CreateButton("Back", _settingsRoot.transform, "BACK", new Color32(55, 55, 62, 255));
+            SetRect(back.GetComponent<RectTransform>(), new Vector2(0.34f, 0.1f), new Vector2(0.66f, 0.2f));
+            back.onClick.AddListener(() => SetSettingsOpen(false));
+            _settingsButtons = new[] { fullscreen, vSync, frameLimit, back };
+            RefreshSettingsLabels();
 
             _scoreboardRoot = CreatePanel("PlayerScoreOverlay", uiParent, Vector2.zero, Vector2.one, Color.clear);
             _scoreboardRoot.GetComponent<Image>().raycastTarget = false;
-            var scoreCard = CreatePanel("PlayerScoreCard", _scoreboardRoot.transform, new Vector2(0.18f, 0.35f), new Vector2(0.82f, 0.91f), new Color32(9, 5, 16, 226));
+            var scoreCard = CreatePanel("PlayerScoreCard", _scoreboardRoot.transform, new Vector2(0.2f, 0.32f), new Vector2(0.8f, 0.92f), new Color32(9, 5, 16, 199));
             var scoreOutline = scoreCard.AddComponent<Outline>();
             scoreOutline.effectColor = new Color32(103, 232, 249, 150);
             scoreOutline.effectDistance = new Vector2(2f, -2f);
@@ -274,17 +420,30 @@ namespace WOF
             var headings = CreateText("Headings", scoreCard.transform, "PLAYER                     STATE        HP ARMOR SCORE", 15, TextAnchor.MiddleLeft, new Color32(207, 250, 254, 145));
             SetRect(headings.rectTransform, new Vector2(0.035f, 0.68f), new Vector2(0.965f, 0.77f));
             _scoreRows = new Text[MaximumScoreRows];
+            _scoreRowPanels = new GameObject[MaximumScoreRows];
             for (var index = 0; index < _scoreRows.Length; index++)
             {
-                var top = 0.675f - index * 0.037f;
-                var row = CreateText($"Player{index}", scoreCard.transform, string.Empty, 14, TextAnchor.MiddleLeft, new Color32(207, 250, 254, 225));
-                SetRect(row.rectTransform, new Vector2(0.035f, top - 0.034f), new Vector2(0.965f, top));
-                row.gameObject.SetActive(false);
+                var top = 0.675f - index * 0.0375f;
+                var rowPanel = CreatePanel($"PlayerPanel{index}", scoreCard.transform, new Vector2(0.03f, top - 0.033f), new Vector2(0.97f, top), new Color32(34, 211, 238, 13));
+                var rowOutline = rowPanel.AddComponent<Outline>();
+                rowOutline.effectColor = new Color32(165, 243, 252, 52);
+                rowOutline.effectDistance = new Vector2(1f, -1f);
+                var row = CreateText($"Player{index}", rowPanel.transform, string.Empty, 14, TextAnchor.MiddleLeft, new Color32(207, 250, 254, 225));
+                SetRect(row.rectTransform, new Vector2(0.012f, 0f), new Vector2(0.988f, 1f));
+                rowPanel.SetActive(false);
                 _scoreRows[index] = row;
+                _scoreRowPanels[index] = rowPanel;
             }
-            _scoreRoom = CreateText("Room", scoreCard.transform, string.Empty, 12, TextAnchor.MiddleLeft, new Color32(207, 250, 254, 125));
-            SetRect(_scoreRoom.rectTransform, new Vector2(0.035f, 0.015f), new Vector2(0.965f, 0.075f));
+            var scoreFooter = CreateText(
+                "Footer",
+                scoreCard.transform,
+                "SCORE IS CURRENT BATTLE POWER UNTIL KILL TRACKING IS ADDED",
+                11,
+                TextAnchor.MiddleLeft,
+                new Color32(207, 250, 254, 115));
+            SetRect(scoreFooter.rectTransform, new Vector2(0.035f, 0.015f), new Vector2(0.965f, 0.075f));
 
+            _settingsRoot.SetActive(false);
             _pauseRoot.SetActive(false);
             _scoreboardRoot.SetActive(false);
         }
@@ -322,6 +481,18 @@ namespace WOF
             button.targetGraphic = item.GetComponent<Image>();
             var text = CreateText("Label", item.transform, label, 22, TextAnchor.MiddleCenter, Color.white);
             SetRect(text.rectTransform, Vector2.zero, Vector2.one);
+            return button;
+        }
+
+        private Button CreateSettingButton(string name, Transform parent, string label, out Text value)
+        {
+            var item = CreatePanel(name, parent, Vector2.zero, Vector2.one, new Color32(55, 55, 62, 255));
+            var button = item.AddComponent<Button>();
+            button.targetGraphic = item.GetComponent<Image>();
+            var labelText = CreateText("Label", item.transform, label, 17, TextAnchor.MiddleLeft, Color.white);
+            SetRect(labelText.rectTransform, new Vector2(0.035f, 0f), new Vector2(0.62f, 1f));
+            value = CreateText("Value", item.transform, string.Empty, 17, TextAnchor.MiddleRight, new Color32(165, 243, 252, 255));
+            SetRect(value.rectTransform, new Vector2(0.62f, 0f), new Vector2(0.965f, 1f));
             return button;
         }
 
