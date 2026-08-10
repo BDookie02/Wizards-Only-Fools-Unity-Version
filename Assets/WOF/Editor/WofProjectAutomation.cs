@@ -2133,6 +2133,8 @@ namespace WOF.Editor
             SetObjectReference(hud, "rightManaFill", gameplayHud.RightManaFill);
             SetObjectReference(hud, "leftSpellText", gameplayHud.LeftSpellText);
             SetObjectReference(hud, "rightSpellText", gameplayHud.RightSpellText);
+            SetObjectReference(hud, "leftHotkeysText", gameplayHud.LeftHotkeysText);
+            SetObjectReference(hud, "rightHotkeysText", gameplayHud.RightHotkeysText);
             SetObjectReference(hud, "statusText", statusText);
             SetObjectReference(hud, "roomText", roomText);
             SetObjectReference(hud, "leftHandImage", leftHandImage);
@@ -2178,12 +2180,18 @@ namespace WOF.Editor
                         $"Assets/WOF/Art/Generated/React/HUD/SpellMenu/{WofSpellLoadout.GetReactId(spell)}.png"))
                     .ToArray());
 
+            var spellHotbar = canvasObject.AddComponent<WofSpellHotbarRuntime>();
+            spellHotbar.ConfigureGeneratedView(hud);
+
             var navigationMap = canvasObject.AddComponent<WofNavigationMapRuntime>();
             navigationMap.ConfigureGeneratedView(
                 hud,
                 canvasObject.transform,
                 font,
                 GetOrCreateCircularUiMaskSprite());
+
+            var pauseAndScoreboard = canvasObject.AddComponent<WofPauseAndScoreboardRuntime>();
+            pauseAndScoreboard.ConfigureGeneratedView(hud, canvasObject.transform, font);
 
             return new WofUiReferences
             {

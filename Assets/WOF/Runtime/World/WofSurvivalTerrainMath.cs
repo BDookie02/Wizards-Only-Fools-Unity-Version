@@ -112,14 +112,17 @@ namespace WOF
         };
 
         private static readonly HexOffset[] BiomeOffsets = MakeBiomeOffsets();
-        private static readonly double[] RawHeightWeights = new double[BiomeCount];
-        private static readonly double[] WaterWeights = new double[BiomeCount];
-        private static readonly double[] ColorWeights = new double[BiomeCount];
-        private static readonly double[] StrictDesertWeights = new double[BiomeCount];
+        [ThreadStatic] private static double[] _rawHeightWeights;
+        [ThreadStatic] private static double[] _waterWeights;
+        [ThreadStatic] private static double[] _colorWeights;
+        [ThreadStatic] private static double[] _strictDesertWeights;
+        private static double[] RawHeightWeights => _rawHeightWeights ??= new double[BiomeCount];
+        private static double[] WaterWeights => _waterWeights ??= new double[BiomeCount];
+        private static double[] ColorWeights => _colorWeights ??= new double[BiomeCount];
+        private static double[] StrictDesertWeights => _strictDesertWeights ??= new double[BiomeCount];
         private static readonly ChunkPoint[] RestoredMeadowCenters =
         {
-            new(3, -3), new(3, -4), new(4, -3), new(5, -3),
-            new(4, -4), new(5, -4), new(6, -3), new(6, -4)
+            new(6, -3), new(6, -4)
         };
 
         private static readonly RouteSegment[] TownRoutes =
@@ -215,7 +218,8 @@ namespace WOF
         internal static WofSurvivalBiome GetBiome(int cx, int cz)
         {
             if (cx == 0 && cz == 0) return WofSurvivalBiome.Plains;
-            if (cz == -3 && (cx == 3 || cx == 4 || cx == 5 || cx == 6)) return WofSurvivalBiome.Tallgrass;
+            if (IsDesertVillageExpansionChunk(cx, cz)) return WofSurvivalBiome.Desert;
+            if (cz == -3 && cx == 6) return WofSurvivalBiome.Tallgrass;
             if (cz == -4 && (cx == 4 || cx == 6)) return WofSurvivalBiome.Desert;
             if (cz == -2 && (cx == 4 || cx == 5)) return WofSurvivalBiome.Plains;
             return Biomes[(int)Math.Floor(Hash01(cx, cz, 1) * BiomeCount) % BiomeCount];
@@ -686,6 +690,9 @@ namespace WOF
 
         private static double GetRestoredMeadowMask(double worldX, double worldZ)
         {
+            if (IsDesertVillageExpansionChunk(
+                    GetChunkCoordinate(worldX),
+                    GetChunkCoordinate(worldZ))) return 0d;
             var mask = 0d;
             var radialInner = BlockSize * 0.82d;
             var radialOuter = BlockSize * 1.42d;
@@ -704,6 +711,11 @@ namespace WOF
                 mask = Math.Max(mask, Clamp01(squareMask * 0.72d + radialMask * 0.38d));
             }
             return Clamp01(mask);
+        }
+
+        internal static bool IsDesertVillageExpansionChunk(int cx, int cz)
+        {
+            return cx >= 3 && cx <= 5 && cz >= -4 && cz <= -3;
         }
 
         private static bool IsRestoredMeadowWaterSuppressed(double worldX, double worldZ, double radius)

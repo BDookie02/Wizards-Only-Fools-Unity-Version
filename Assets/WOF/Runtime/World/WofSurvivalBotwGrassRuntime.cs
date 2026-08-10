@@ -17,9 +17,16 @@ namespace WOF
         public const int FlowerCount = 760;
         public const int CandidateCount = 71680;
         public const int RenderLayer = 30;
+        public const float FlowerStemMinimum = 1.02f;
+        public const float FlowerStemMaximum = 1.34f;
+        public const float FlowerBloomMinimum = 0.56f;
+        public const float FlowerBloomMaximum = 0.76f;
+        public const float BladeAlphaCutoff = 0.14f;
         private const int InstancesPerBatch = 1023;
-        private const int CandidatesPerFrameDesktop = 2200;
-        private const int CandidatesPerFrameMobile = 1600;
+        public const int MaxCandidatesPerFrameDesktop = 384;
+        public const int MaxCandidatesPerFrameMobile = 256;
+        public const double DesktopBuildBudgetMilliseconds = 3.5;
+        public const double MobileBuildBudgetMilliseconds = 2.0;
         private const string OpenWorldTerrainName = "ReactSurvivalOpenWorldBaseRegion";
         private static readonly RaycastHit[] TerrainHits = new RaycastHit[16];
         private static readonly Color GrassDark = new Color32(0x3c, 0x8b, 0x2d, 0xff);
@@ -28,8 +35,8 @@ namespace WOF
         private static readonly Color MeadowGreen = new Color32(0x83, 0xc7, 0x50, 0xff);
         private static readonly Color HillsideDark = new Color32(0x66, 0x7f, 0x43, 0xff);
         private static readonly Color HillsideLight = new Color32(0x89, 0x92, 0x5a, 0xff);
-        private static readonly Color GrassMeshRoot = new Color32(0x85, 0xd2, 0x4a, 0xff);
-        private static readonly Color GrassMeshTip = new Color32(0xf0, 0xff, 0x90, 0xff);
+        private static readonly Color GrassMeshRoot = new Color32(0x62, 0xad, 0x3f, 0xff);
+        private static readonly Color GrassMeshTip = new Color32(0xc8, 0xeb, 0x72, 0xff);
         private static readonly Color FlowerStem = new Color32(0x61, 0xb6, 0x40, 0xff);
         private static readonly Color[] MeadowFlowerPalette =
         {
@@ -64,6 +71,7 @@ namespace WOF
         private bool _hasCompletedBuild;
         private float _nextViewerResolveAt;
         private float _buildStartedAt;
+        private double _maxBuildSliceMilliseconds;
 
         public void Configure(Texture2D exactReactBladeTexture)
         {
@@ -95,11 +103,12 @@ namespace WOF
                 name = "ReactBotwGrassRuntimeMaterial",
                 mainTexture = bladeTexture,
                 enableInstancing = true,
-                renderQueue = 3000
+                renderQueue = (int)RenderQueue.Transparent
             };
             _grassMaterial.SetColor("_Color", new Color(1f, 1f, 1f, 0.98f));
             _grassMaterial.SetFloat("_Radius", Radius + EdgeFade * 0.72f);
             _grassMaterial.SetFloat("_FadeWidth", EdgeFade);
+            _grassMaterial.SetFloat("_Cutoff", BladeAlphaCutoff);
             _flowerMaterial = new Material(foliageShader)
             {
                 name = "ReactBotwWildflowerRuntimeMaterial",
@@ -155,36 +164,44 @@ namespace WOF
             _buildingFlowers.Clear();
             _building = true;
             _buildStartedAt = Time.realtimeSinceStartup;
+            _maxBuildSliceMilliseconds = 0d;
             Debug.Log($"[WOF-AUTOMATION] BOTW_GRASS_BUILD_STARTED center={center.x:F0},{center.z:F0}");
         }
 
         private void ContinueBuild()
         {
-            var frameLimit = WofPerformanceModeRuntime.IsMobilePerformanceMode
-                ? CandidatesPerFrameMobile
-                : CandidatesPerFrameDesktop;
-            var end = Mathf.Min(CandidateCount, _candidate + frameLimit);
-            for (; _candidate < end && _acceptedGrass < BladeCount; _candidate++)
+            var mobile = WofPerformanceModeRuntime.IsMobilePerformanceMode;
+            var frameLimit = mobile ? MaxCandidatesPerFrameMobile : MaxCandidatesPerFrameDesktop;
+            var budgetMilliseconds = mobile ? MobileBuildBudgetMilliseconds : DesktopBuildBudgetMilliseconds;
+            var timer = System.Diagnostics.Stopwatch.StartNew();
+            var processed = 0;
+            while (_candidate < CandidateCount && _acceptedGrass < BladeCount && processed < frameLimit)
             {
-                if (TryMakeGrass(_candidate, out var matrix, out var color))
+                var candidate = _candidate++;
+                if (TryMakeGrass(candidate, out var matrix, out var color))
                 {
                     AddInstance(_buildingGrass, matrix, color);
                     _acceptedGrass++;
                 }
 
-                if (_acceptedFlowers < FlowerCount && _candidate % 7 == 0 && TryMakeFlower(_candidate, out matrix, out color))
+                if (_acceptedFlowers < FlowerCount && candidate % 7 == 0 && TryMakeFlower(candidate, out matrix, out color))
                 {
                     AddInstance(_buildingFlowers, matrix, color);
                     _acceptedFlowers++;
                 }
+
+                processed++;
+                if ((processed & 15) == 0 && timer.Elapsed.TotalMilliseconds >= budgetMilliseconds) break;
             }
+            timer.Stop();
+            _maxBuildSliceMilliseconds = Math.Max(_maxBuildSliceMilliseconds, timer.Elapsed.TotalMilliseconds);
 
             if (_candidate < CandidateCount && _acceptedGrass < BladeCount) return;
             SwapBatches(_activeGrass, _buildingGrass);
             SwapBatches(_activeFlowers, _buildingFlowers);
             _building = false;
             _hasCompletedBuild = true;
-            Debug.Log($"[WOF-AUTOMATION] BOTW_GRASS_BUILD_COMPLETE center={_center.x:F0},{_center.z:F0} blades={_acceptedGrass} flowers={_acceptedFlowers} ms={(Time.realtimeSinceStartup - _buildStartedAt) * 1000f:F0}");
+            Debug.Log($"[WOF-AUTOMATION] BOTW_GRASS_BUILD_COMPLETE center={_center.x:F0},{_center.z:F0} blades={_acceptedGrass} flowers={_acceptedFlowers} ms={(Time.realtimeSinceStartup - _buildStartedAt) * 1000f:F0} maxSliceMs={_maxBuildSliceMilliseconds:F2}");
         }
 
         private bool TryMakeGrass(int candidate, out Matrix4x4 matrix, out Vector4 color)
@@ -212,16 +229,17 @@ namespace WOF
             var broadClump = ValueNoise2D(worldX * 0.017f, worldZ * 0.017f, 6100);
             var fineClump = ValueNoise2D(worldX * 0.052f, worldZ * 0.052f, 6400);
             var clumpScale = Mathf.Lerp(0.84f, 1.18f, broadClump) * Mathf.Lerp(0.94f, 1.08f, fineClump);
-            var slopeCompression = Mathf.Lerp(1f, 0.96f, Smoothstep(0.34f, 0.78f, 1f - surfaceNormal.y));
-            var baseHeight = (0.96f + Hash01(seedX + candidate * 31, seedZ, 2500) * 0.58f + meadow * 0.1f) *
-                             slopeCompression * Mathf.Lerp(1f, 1.12f, meadow) * clumpScale;
-            // Keep individual clusters narrow enough that overhead views read as
-            // irregular blades rather than overlapping contour-line bands.
-            var baseWidth = (0.72f + Hash01(seedX, seedZ + candidate * 37, 2700) * 0.38f) *
-                            Mathf.Lerp(1f, 1.2f, meadow) * Mathf.Lerp(0.92f, 1.08f, fineClump);
+            var slopeCompression = Mathf.Lerp(1f, 0.9f, Smoothstep(0.34f, 0.78f, 1f - surfaceNormal.y));
+            // The texture is a whole tuft, not one two-metre blade. Keep the
+            // canopy below the player's knees like the React/BOTW reference;
+            // the previous metre-plus scale exposed the cards as green walls.
+            var baseHeight = (0.48f + Hash01(seedX + candidate * 31, seedZ, 2500) * 0.34f + meadow * 0.04f) *
+                             slopeCompression * Mathf.Lerp(1f, 1.08f, meadow) * clumpScale;
+            var baseWidth = (0.38f + Hash01(seedX, seedZ + candidate * 37, 2700) * 0.2f) *
+                            Mathf.Lerp(1f, 1.1f, meadow) * Mathf.Lerp(0.92f, 1.08f, fineClump);
             var hillside = Smoothstep(18f, 58f, hit.point.y) * Smoothstep(0.01f, 0.22f, 1f - surfaceNormal.y);
-            var height = baseHeight * Mathf.Lerp(1f, 0.94f, hillside);
-            var width = baseWidth * Mathf.Lerp(1f, 1.12f, hillside);
+            var height = baseHeight * Mathf.Lerp(1f, 0.9f, hillside);
+            var width = baseWidth * Mathf.Lerp(1f, 1.06f, hillside);
             var yaw = Hash01(seedX - candidate * 41, seedZ + candidate * 43, 2900) * 360f;
             var rotation = GetSurfaceAlignedRotation(surfaceNormal, yaw);
             matrix = Matrix4x4.TRS(hit.point + surfaceNormal * 0.018f, rotation, new Vector3(width, height, width));
@@ -253,8 +271,11 @@ namespace WOF
             // Keep the stem rooted on the sampled slope while placing the bloom
             // just above the local grass canopy so flowers survive overhead views.
             var canopy = ValueNoise2D(worldX * 0.017f, worldZ * 0.017f, 6100);
-            var stemHeight = Mathf.Lerp(1.5f, 1.92f, variant) + canopy * 0.14f;
-            var bloomSize = 0.82f + Hash01(seedX, seedZ + flowerCandidate * 43, 5020) * 0.28f;
+            var stemHeight = Mathf.Lerp(FlowerStemMinimum, FlowerStemMaximum, variant) + canopy * 0.08f;
+            var bloomSize = Mathf.Lerp(
+                FlowerBloomMinimum,
+                FlowerBloomMaximum,
+                Hash01(seedX, seedZ + flowerCandidate * 43, 5020));
             var rotation = GetSurfaceAlignedRotation(
                 surfaceNormal,
                 Hash01(seedX + flowerCandidate * 59, seedZ - flowerCandidate * 61, 5180) * 360f);
@@ -299,7 +320,7 @@ namespace WOF
             var normalized = surfaceNormal.sqrMagnitude > 0.000001f ? surfaceNormal.normalized : Vector3.up;
             // Roots follow the slope, while blades still grow mostly against gravity.
             // Full normal alignment made steep hills resemble repeated brushed rows.
-            var growthDirection = Vector3.Slerp(Vector3.up, normalized, 0.38f).normalized;
+            var growthDirection = Vector3.Slerp(Vector3.up, normalized, 0.2f).normalized;
             return Quaternion.FromToRotation(Vector3.up, growthDirection) *
                    Quaternion.AngleAxis(yawDegrees, Vector3.up);
         }
@@ -362,7 +383,9 @@ namespace WOF
 
         private static bool IsStrictDesert(float x, float z)
         {
-            return x >= 1792f && x < 2304f && z >= -2304f && z < -1792f;
+            return WofSurvivalTerrainMath.IsDesertVillageExpansionChunk(
+                WofSurvivalTerrainMath.GetChunkCoordinate(x),
+                WofSurvivalTerrainMath.GetChunkCoordinate(z));
         }
 
         private static float RestoredMeadowMask(float x, float z)
@@ -470,7 +493,7 @@ namespace WOF
 
         private static Mesh CreateGrassClusterMesh()
         {
-            const int cards = 4;
+            const int cards = 3;
             var vertices = new Vector3[cards * 4];
             var colors = new Color[cards * 4];
             var uvs = new Vector2[cards * 4];
@@ -479,14 +502,19 @@ namespace WOF
             var tip = GrassMeshTip;
             for (var card = 0; card < cards; card++)
             {
-                var angle = card / (float)cards * Mathf.PI;
+                var angle = card / (float)cards * Mathf.PI + card * 0.13f;
                 var side = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
-                var width = card % 2 == 0 ? 0.5f : 0.42f;
+                var forward = new Vector3(-side.z, 0f, side.x);
+                var width = card == 0 ? 0.46f : card == 1 ? 0.4f : 0.35f;
+                var height = card == 0 ? 1f : card == 1 ? 0.9f : 1.06f;
+                var offset = forward * (card == 0 ? -0.07f : card == 1 ? 0.1f : -0.12f) +
+                             side * (card == 2 ? 0.07f : -0.03f);
+                var tipOffset = forward * (card == 0 ? 0.03f : card == 1 ? -0.04f : 0.055f);
                 var vertex = card * 4;
-                vertices[vertex] = -side * width;
-                vertices[vertex + 1] = side * width;
-                vertices[vertex + 2] = -side * width * 0.78f + Vector3.up;
-                vertices[vertex + 3] = side * width * 0.78f + Vector3.up;
+                vertices[vertex] = offset - side * width;
+                vertices[vertex + 1] = offset + side * width;
+                vertices[vertex + 2] = offset + tipOffset - side * width * 0.94f + Vector3.up * height;
+                vertices[vertex + 3] = offset + tipOffset + side * width * 0.94f + Vector3.up * height;
                 colors[vertex] = colors[vertex + 1] = root;
                 colors[vertex + 2] = colors[vertex + 3] = tip;
                 uvs[vertex] = new Vector2(0f, 0f);

@@ -151,6 +151,7 @@ namespace WOF
         private bool _chicagoCityViewProbe;
         private bool _mountainVillageViewProbe;
         private bool _grassViewProbe;
+        private bool _grassOverheadViewProbe;
         private bool _hasDarrelReturnPosition;
         private bool _darrelReturnArmed;
         private Vector3 _darrelReturnPosition;
@@ -241,6 +242,11 @@ namespace WOF
                 {
                     _grassViewProbe = true;
                 }
+                else if (argument.Equals("--wof-grass-view-probe=overhead", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    _grassViewProbe = true;
+                    _grassOverheadViewProbe = true;
+                }
             }
             _villagerViewProbe = WofPerformanceModeRuntime.IsVillagerViewProbe;
             _darrelDialogProbe = WofPerformanceModeRuntime.IsDarrelDialogProbe;
@@ -305,7 +311,7 @@ namespace WOF
                 var useChicagoProbeSpawn = OwnerClientId == 0 && _chicagoCityViewProbe;
                 var useDesertProbeSpawn = OwnerClientId == 0 && _desertVillageViewProbe && !useChicagoProbeSpawn;
                 var spawn = useGrassProbeSpawn
-                    ? new Vector3(0f, 80f, -360f)
+                    ? new Vector3(0f, _grassOverheadViewProbe ? 128f : 80f, -360f)
                     : useChicagoProbeSpawn
                     ? WofChicagoCityLayout.ViewProbeSpawn
                     : useDesertProbeSpawn
@@ -367,9 +373,9 @@ namespace WOF
                 else if (_grassViewProbe)
                 {
                     _yaw = 180f;
-                    _pitch = -8f;
+                    _pitch = _grassOverheadViewProbe ? 82f : -8f;
                     ApplyCameraRotation();
-                    Debug.Log($"[WOF-AUTOMATION] GRASS_VIEW_PROBE_READY position={transform.position} yaw={_yaw} pitch={_pitch}");
+                    Debug.Log($"[WOF-AUTOMATION] GRASS_VIEW_PROBE_READY variant={(_grassOverheadViewProbe ? "overhead" : "ground")} position={transform.position} yaw={_yaw} pitch={_pitch}");
                 }
                 else if (_desertVillageViewProbe)
                 {

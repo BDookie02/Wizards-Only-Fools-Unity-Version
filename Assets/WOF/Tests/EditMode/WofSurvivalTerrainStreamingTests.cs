@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -19,6 +20,7 @@ namespace WOF.Tests
             Assert.That(oracle.nearRadius, Is.EqualTo(WofSurvivalTerrainMath.NearRadius));
             Assert.That(oracle.collisionRadius, Is.EqualTo(WofSurvivalTerrainMath.CollisionRadius));
             Assert.That(oracle.centerHysteresis, Is.EqualTo(WofSurvivalTerrainMath.CenterHysteresis).Within(0.001d));
+            Assert.That(WofSurvivalTerrainStreamingRuntime.MaxConcurrentChunkBuilds, Is.EqualTo(1));
 
             foreach (var fixture in oracle.chunkCoordinates)
                 Assert.That(WofSurvivalTerrainMath.GetChunkCoordinate(fixture.value), Is.EqualTo(fixture.chunk),
@@ -124,6 +126,37 @@ namespace WOF.Tests
             Assert.That(WofSurvivalTerrainMath.IsAuthoredChunk(12, -12), Is.True);
             Assert.That(WofSurvivalTerrainMath.IsLilyRealmCenter(47, -49), Is.True);
             Assert.That(WofSurvivalTerrainMath.IsLilyRealmCenter(46, -48), Is.False);
+        }
+
+        [Test]
+        public void DesertVillageHasFiveDesertNeighborsAndNoRestoredGrassBiome()
+        {
+            foreach (var coordinate in new[]
+                     {
+                         (3, -4), (5, -4), (3, -3), (4, -3), (5, -3)
+                     })
+            {
+                Assert.That(WofSurvivalTerrainMath.IsDesertVillageExpansionChunk(coordinate.Item1, coordinate.Item2),
+                    Is.True, $"Missing requested desert neighbor {coordinate.Item1}:{coordinate.Item2}.");
+                Assert.That(WofSurvivalTerrainMath.GetBiome(coordinate.Item1, coordinate.Item2),
+                    Is.EqualTo(WofSurvivalBiome.Desert));
+            }
+            Assert.That(WofSurvivalTerrainMath.GetBiome(4, -4), Is.EqualTo(WofSurvivalBiome.Desert));
+            Assert.That(WofSurvivalTerrainMath.GetBiome(6, -3), Is.EqualTo(WofSurvivalBiome.Tallgrass));
+        }
+
+        [Test]
+        public void TerrainMathIsDeterministicAcrossStreamingWorkerThreads()
+        {
+            var coordinates = new[] { (7, 4), (-17, 9), (23, 19), (3, -3), (5, -4) };
+            var expected = coordinates.Select(item =>
+                WofSurvivalTerrainMath.GetTerrainHeight(item.Item1, item.Item2, 73.25d, -119.5d)).ToArray();
+            var tasks = Enumerable.Range(0, 4).Select(_ => Task.Run(() => coordinates.Select(item =>
+                WofSurvivalTerrainMath.GetTerrainHeight(item.Item1, item.Item2, 73.25d, -119.5d)).ToArray())).ToArray();
+            Task.WaitAll(tasks);
+            foreach (var task in tasks)
+            for (var index = 0; index < expected.Length; index++)
+                Assert.That(task.Result[index], Is.EqualTo(expected[index]).Within(0.0000001d));
         }
 
         private static void AssertMesh(Mesh mesh, int vertices, int indices, bool hasRenderData)

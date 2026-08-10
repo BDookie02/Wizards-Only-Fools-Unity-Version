@@ -69,6 +69,36 @@ namespace WOF.Tests
         }
 
         [Test]
+        public void ReactTenSlotHotbarsExposeBothHandsAndAllOriginalDefaults()
+        {
+            Assert.That(WofSpellHotbarRuntime.SlotCount, Is.EqualTo(10));
+            Assert.That(WofSpellHotbarRuntime.ReactDefaultLeft, Is.EqualTo(new[]
+            {
+                WofSpellId.SpeedBoost, WofSpellId.Fireball, WofSpellId.IceShard,
+                WofSpellId.ArcaneBeam, WofSpellId.Heal, WofSpellId.IceSpell,
+                WofSpellId.RingsOfPower, WofSpellId.Lightning, WofSpellId.SmokeBomb,
+                WofSpellId.Portal
+            }));
+            Assert.That(WofSpellHotbarRuntime.ReactDefaultRight, Is.EqualTo(new[]
+            {
+                WofSpellId.JumpBoost, WofSpellId.Lightning, WofSpellId.Portal,
+                WofSpellId.Grab, WofSpellId.Tornado, WofSpellId.MeteorShower,
+                WofSpellId.Fireball, WofSpellId.IceSpell, WofSpellId.SmokeBomb,
+                WofSpellId.Kunai
+            }));
+            Assert.That(WofSpellHotbarRuntime.WrapSlot(-1), Is.EqualTo(9));
+            Assert.That(WofSpellHotbarRuntime.WrapSlot(10), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void MagicHandsRetainSubtleContinuousIdleBreathing()
+        {
+            Assert.That(WofMagicHandsLayout.IdleBreathCycleSeconds, Is.InRange(2f, 4f));
+            Assert.That(WofMagicHandsLayout.IdleBreathAmplitudePixels, Is.InRange(2f, 5f));
+            Assert.That(WofMagicHandsLayout.IdleBreathScaleAmplitude, Is.InRange(0.002f, 0.008f));
+        }
+
+        [Test]
         public void NavigationBlockCenterMatchesReactBoundaries()
         {
             Assert.That(WofNavigationMapRuntime.GetSurvivalBlockCenter(0f), Is.EqualTo(0f));
@@ -140,6 +170,8 @@ namespace WOF.Tests
                 Assert.That(colliders.Any(item => item.bounds.Contains(new Vector3(60f, 1f, -238f))), Is.True);
 
                 Assert.That(roots.SelectMany(root => root.GetComponentsInChildren<WofSpellMenuRuntime>(true)).Count(), Is.EqualTo(1));
+                Assert.That(roots.SelectMany(root => root.GetComponentsInChildren<WofSpellHotbarRuntime>(true)).Count(), Is.EqualTo(1));
+                Assert.That(roots.SelectMany(root => root.GetComponentsInChildren<WofPauseAndScoreboardRuntime>(true)).Count(), Is.EqualTo(1));
                 var navigation = roots.SelectMany(root => root.GetComponentsInChildren<WofNavigationMapRuntime>(true)).Single();
                 var serializedNavigation = new SerializedObject(navigation);
                 Assert.That(serializedNavigation.FindProperty("circularMaskSprite").objectReferenceValue, Is.Not.Null);

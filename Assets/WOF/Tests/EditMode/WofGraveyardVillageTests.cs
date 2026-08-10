@@ -16,7 +16,7 @@ namespace WOF.Tests
 
             Assert.That(document.schemaVersion, Is.EqualTo(1));
             Assert.That(document.sourceSignature,
-                Is.EqualTo("c912e41f24db629cb75d7f725a1ce3e4c5499dc364c7165e84120ccfc6f8f016"));
+                Is.EqualTo("3d38e64e4ec07ad69212cfa3998f0fbbcbc8ca37a8fef3473c59e33cf8ff6f0f"));
             Assert.That(document.chunk.key, Is.EqualTo("5:2"));
             Assert.That(document.chunk.cx, Is.EqualTo(WofGraveyardVillageLayout.ChunkX));
             Assert.That(document.chunk.cz, Is.EqualTo(WofGraveyardVillageLayout.ChunkZ));

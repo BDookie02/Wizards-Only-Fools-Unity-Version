@@ -197,10 +197,10 @@ namespace WOF.Editor
             if (foliage == null || foliage.meshCount != WofSurvivalFoliageRuntime.ExactReactMeshCount ||
                 foliage.placementCount != WofSurvivalFoliageRuntime.ExactReactDenseTreeCount ||
                 foliage.meshes?.Length != foliage.meshCount || foliage.placements?.Length != foliage.placementCount ||
-                foliage.countsByBiome == null || foliage.countsByBiome.plains != 627 ||
-                foliage.countsByBiome.jungle != 360 || foliage.countsByBiome.desert != 280 ||
+                foliage.countsByBiome == null || foliage.countsByBiome.plains != 594 ||
+                foliage.countsByBiome.jungle != 360 || foliage.countsByBiome.desert != 380 ||
                 foliage.countsByBiome.swamp != 490 || foliage.countsByBiome.mushroom != 372 ||
-                foliage.countsByBiome.tallgrass != 462)
+                foliage.countsByBiome.tallgrass != 330)
                 return false;
             foreach (var mesh in foliage.meshes)
             {
@@ -248,7 +248,7 @@ namespace WOF.Editor
                 };
             }
 
-            var runtimeObject = new GameObject("ReactSurvivalBiomeTreeGroves_2591");
+            var runtimeObject = new GameObject("ReactSurvivalBiomeTreeGroves_2526");
             runtimeObject.transform.SetParent(parent, false);
             runtimeObject.AddComponent<WofSurvivalFoliageRuntime>().Configure(
                 meshes,
@@ -295,7 +295,7 @@ namespace WOF.Editor
 
         private static Material GetOrCreateSurvivalFoliageMaterial()
         {
-            var shader = Shader.Find("WOF/Vertex Color Texture");
+            var shader = Shader.Find("WOF/Instanced Foliage");
             if (shader == null) throw new InvalidOperationException("Required foliage vertex-color shader was not imported.");
             var material = AssetDatabase.LoadAssetAtPath<Material>(SurvivalFoliageMaterialPath);
             if (material == null)
@@ -304,8 +304,7 @@ namespace WOF.Editor
                 AssetDatabase.CreateAsset(material, SurvivalFoliageMaterialPath);
             }
             else material.shader = shader;
-            material.SetColor("_BaseColor", Color.white);
-            material.SetTexture("_BaseMap", Texture2D.whiteTexture);
+            material.SetColor("_Color", Color.white);
             material.enableInstancing = true;
             material.doubleSidedGI = true;
             EditorUtility.SetDirty(material);

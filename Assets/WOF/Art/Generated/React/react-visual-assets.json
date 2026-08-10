@@ -84,8 +84,8 @@
     "src/game/systems/world/villages/survivalGraveyardVillageTombs.tsx": "99ba40b018b57d416541b64965864ad3caff0491b920009acfc65c45fbd6a13e",
     "src/game/systems/world/vegetation/survivalMountainSlopeGrass.ts": "de79d0c54fbdc21d904605078c2f50c1eaeecd98f2f330b471c1b9825ec44a2a",
     "src/game/systems/world/vegetation/survivalGrassGeometry.ts": "a4233a7085882acb98cf36564c057b8d47274841b5a6419a1e6bb9790e880fbb",
-    "src/game/systems/world/survival/survivalTerrainSurface.ts": "59a1c9400efd10d3f58ade8b32668cf8786ed97c3ecb468fc02460e2f1640738",
-    "src/game/systems/world/survival/survivalBiome.ts": "7dd8f5b92e737fae4375062d6d2a4ed9b72e2c5a578d29165b490f2fb37158af",
+    "src/game/systems/world/survival/survivalTerrainSurface.ts": "ad85225aefe0903be387a74f77a0866e3ceba975dc69aa46bd960e9d6b84fa44",
+    "src/game/systems/world/survival/survivalBiome.ts": "5b786dbbff6fed8800d721935d45520a2856d29d4a365d04fea01d3fdca57b4a",
     "src/game/systems/world/survival/survivalRivers.ts": "b86bd711803f737da5809880cc6bbf846d94371857c3823e0a0a80db573397a1",
     "src/game/systems/world/survival/survivalMath.ts": "9cdb487a22e0bc1b31e910cc23bfdaf44b9bba67038d508d18eebe431dfbede6",
     "src/game/systems/world/terrain/survivalTerrainTextures.ts": "56bdd4fc89b936cdd7efa54a234d07b68b1cadec12522e35f500eb3f4a2ee9b7",
@@ -2836,7 +2836,7 @@
     {
       "path": "ChicagoCity/runtime-layout.json",
       "bytes": 524361,
-      "sha256": "920d1b8f8bbcf1767fe9b091a7d2fe6cce7bdf0b3087341adab28ad440e6d2a1"
+      "sha256": "b05e0a73f68527f1b38bf2eb4f1df41a4e46120f8f7b2d0182eef051031c3f63"
     },
     {
       "path": "ChicagoCity/Textures/ad-0.png",
@@ -3235,8 +3235,8 @@
     },
     {
       "path": "DesertVillage/runtime-layout.json",
-      "bytes": 424637,
-      "sha256": "e0d9bcef5d8627332c74ed484f0ce7a2749fe39756cdac90c8f79af2b5a6a37a"
+      "bytes": 424521,
+      "sha256": "d75e27467826e23c909e0751d2ac28bfd606fca3de750d8c643381e83e58a2ac"
     },
     {
       "path": "DesertVillage/Textures/desert-adobe-wall.png",
@@ -3256,7 +3256,7 @@
     {
       "path": "GraveyardVillage/runtime-layout.json",
       "bytes": 1226209,
-      "sha256": "75d41b7e20c08e569041b7f1a2903d196dba7fa9fdfd06ccb50a9f8dd8ff19bf"
+      "sha256": "1809321c02843028ca162d616ea5047cae3fffb9f353669a71adddd769a867cb"
     },
     {
       "path": "GraveyardVillage/Textures/chapel-dark-stone.png",
@@ -4195,8 +4195,8 @@
     },
     {
       "path": "MountainVillage/runtime-layout.json",
-      "bytes": 25088686,
-      "sha256": "fe922ed78b7bd50cccb6f655da7bff11af2c536fa8f9055a4ed2e3b8d966e413"
+      "bytes": 25092851,
+      "sha256": "d65352c1d3b67995bec36872096f264c3c1edb8d584ee39de33d6f39c26c1b79"
     },
     {
       "path": "MountainVillage/Textures/terrain-detail.png",
@@ -6180,8 +6180,8 @@
     },
     {
       "path": "SwampVillage/runtime-layout.json",
-      "bytes": 222877,
-      "sha256": "7f460b9149383549ea024981c21622f0dacde0a02501a1755d1f7bb24a29e920"
+      "bytes": 222882,
+      "sha256": "08955b7b3ae0f6a1bdfe01c829158cba5e0469c0876d416067e6185929426867"
     },
     {
       "path": "SwampVillage/Textures/terrain-detail.png",
@@ -6415,8 +6415,8 @@
     },
     {
       "path": "Vegetation/botw-grass.png",
-      "bytes": 12288,
-      "sha256": "d9532dcbef80ce0691e7dfeac60fb2faab42781ff00a7d5a3ea278671488a888"
+      "bytes": 11679,
+      "sha256": "3d18291268c5bed82be4f5600e50fa8fdb9cdd31aa8ecddb225489a4a7bf8a22"
     },
     {
       "path": "Villagers/base-village.json",

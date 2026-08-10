@@ -8,7 +8,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: SurvivalReactFoliage
-  m_Shader: {fileID: 4800000, guid: cfcf5ff42d565e24b9b7ac333cbfddc0, type: 3}
+  m_Shader: {fileID: 4800000, guid: 99585660bdf43a940afaa4bea4b93c6a, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
@@ -31,5 +31,6 @@ Material:
     m_Floats: []
     m_Colors:
     - _BaseColor: {r: 1, g: 1, b: 1, a: 1}
+    - _Color: {r: 1, g: 1, b: 1, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

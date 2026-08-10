@@ -53,9 +53,9 @@ namespace WOF.Tests
             var reshape = document.constants.unityPerimeterReshape;
             Assert.That(reshape, Is.Not.Null);
             Assert.That(reshape.protectedRadius, Is.EqualTo(96f));
-            Assert.That(reshape.rimPeakRadius, Is.EqualTo(116f));
-            Assert.That(reshape.rimOuterRadius, Is.EqualTo(142f));
-            Assert.That(reshape.shoulderOuterRadius, Is.EqualTo(500f));
+            Assert.That(reshape.rimPeakRadius, Is.EqualTo(142f));
+            Assert.That(reshape.rimOuterRadius, Is.EqualTo(205f));
+            Assert.That(reshape.shoulderOuterRadius, Is.EqualTo(720f));
             Assert.That(reshape.centerX, Is.EqualTo(WofMountainVillageLayout.WorldOrigin.x));
             Assert.That(reshape.centerZ, Is.EqualTo(WofMountainVillageLayout.WorldOrigin.z));
 
@@ -65,6 +65,27 @@ namespace WOF.Tests
             Assert.That(document.constants.summitColliderRadius, Is.EqualTo(reshape.protectedRadius));
             Assert.That(document.layout.interiorHuts, Has.Length.EqualTo(3));
             Assert.That(document.layout.interiorLadders, Has.Length.EqualTo(4));
+
+            var positions = document.geometries.terrain.positions;
+            var crestLift = float.MinValue;
+            var shoulderLiftSum = 0f;
+            var shoulderVertexCount = 0;
+            for (var index = 0; index < positions.Length; index += 3)
+            {
+                var radius = Mathf.Sqrt(positions[index] * positions[index] +
+                                        positions[index + 2] * positions[index + 2]);
+                var lift = positions[index + 1] - document.baseHeight;
+                if (radius >= 125f && radius <= 160f) crestLift = Mathf.Max(crestLift, lift);
+                if (radius >= 300f && radius <= 360f)
+                {
+                    shoulderLiftSum += lift;
+                    shoulderVertexCount++;
+                }
+            }
+            Assert.That(crestLift, Is.GreaterThan(250f), "The perimeter must read as a raised caldera rim.");
+            Assert.That(shoulderVertexCount, Is.GreaterThan(0));
+            Assert.That(shoulderLiftSum / shoulderVertexCount, Is.GreaterThan(140f),
+                "The mountain must keep a broad shoulder instead of collapsing into the old dome.");
         }
 
         [Test]
@@ -114,6 +135,8 @@ namespace WOF.Tests
             Assert.That(WofMountainVillageLayout.ExactSlopeGrassCount, Is.EqualTo(1793));
             Assert.That(document.constants.slopeGrassNearCount, Is.EqualTo(2200));
             Assert.That(WofMountainVillageLayout.WorldOrigin, Is.EqualTo(new Vector3(1536f, 0f, 0f)));
+            Assert.That(WofMountainVillageLayout.ViewProbeSpawn,
+                Is.EqualTo(new Vector3(1536f, 110f, 900f)));
             Assert.That(WofMountainVillageLayout.SummitViewProbeSpawn,
                 Is.EqualTo(new Vector3(1536f, 225.54496789422794f, 92f)));
             Assert.That(WofMountainVillageLayout.BanquetViewProbeSpawn,

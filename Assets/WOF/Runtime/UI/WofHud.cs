@@ -17,6 +17,8 @@ namespace WOF
         [SerializeField] private Image rightManaFill;
         [SerializeField] private Text leftSpellText;
         [SerializeField] private Text rightSpellText;
+        [SerializeField] private Text leftHotkeysText;
+        [SerializeField] private Text rightHotkeysText;
         [SerializeField] private Text statusText;
         [SerializeField] private Text roomText;
         [SerializeField] private Image leftHandImage;
@@ -246,6 +248,35 @@ namespace WOF
                 rightSpellText.text = $"R {NormalizeSpellLabel(rightSpell)}";
             }
             magicHandsLayout?.SetFiringPose(armed, armed);
+        }
+
+        public void SetHotbarSelection(int leftSlot, int rightSlot)
+        {
+            if (leftHotkeysText != null)
+            {
+                leftHotkeysText.text = BuildHotbarLabel("L", leftSlot, "#FDE047", "#FACC15");
+            }
+            if (rightHotkeysText != null)
+            {
+                rightHotkeysText.text = BuildHotbarLabel("R", rightSlot, "#F0ABFC", "#E879F9");
+            }
+        }
+
+        private static string BuildHotbarLabel(string hand, int selectedSlot, string handColor, string selectedColor)
+        {
+            selectedSlot = Mathf.Clamp(selectedSlot, 0, WofSpellHotbarRuntime.SlotCount - 1);
+            var builder = new System.Text.StringBuilder(180);
+            builder.Append("<color=").Append(handColor).Append('>').Append(hand).Append("</color>   ");
+            for (var index = 0; index < WofSpellHotbarRuntime.SlotCount; index++)
+            {
+                if (index > 0) builder.Append(' ');
+                builder.Append("<color=")
+                    .Append(index == selectedSlot ? selectedColor : "#555555")
+                    .Append('>')
+                    .Append(index == 9 ? 0 : index + 1)
+                    .Append("</color>");
+            }
+            return builder.ToString();
         }
 
         public void SetHeldSpellVisibility(bool leftVisible, bool rightVisible)
