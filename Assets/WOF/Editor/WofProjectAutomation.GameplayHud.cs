@@ -59,7 +59,7 @@ namespace WOF.Editor
                 new Vector2(0.05f, 0.70f),
                 new Vector2(0.95f, 0.93f),
                 HexColor("#a8a8a8"));
-            CreateHudText(
+            var leftHotkeysText = CreateHudText(
                 "LeftHotkeys",
                 panels[0].transform,
                 font,
@@ -69,7 +69,7 @@ namespace WOF.Editor
                 new Vector2(0.945f, 0.64f),
                 Color.white,
                 TextAnchor.MiddleLeft);
-            CreateHudText(
+            var rightHotkeysText = CreateHudText(
                 "RightHotkeys",
                 panels[0].transform,
                 font,
@@ -202,7 +202,9 @@ namespace WOF.Editor
                 LeftManaFill = leftManaFill,
                 RightManaFill = rightManaFill,
                 LeftSpellText = leftSpellText,
-                RightSpellText = rightSpellText
+                RightSpellText = rightSpellText,
+                LeftHotkeysText = leftHotkeysText,
+                RightHotkeysText = rightHotkeysText
             };
         }
 
@@ -324,6 +326,8 @@ namespace WOF.Editor
             public Image RightManaFill;
             public Text LeftSpellText;
             public Text RightSpellText;
+            public Text LeftHotkeysText;
+            public Text RightHotkeysText;
         }
 
         private readonly struct HudMeterReferences

@@ -17,6 +17,9 @@ namespace WOF
         private const float HeldSpellFrameTranslate = 0.08f;
         private const float TouchFillNudge = 0.02f;
         private const float HeldSpellScale = 0.76f * 1.09f;
+        public const float IdleBreathCycleSeconds = 2.8f;
+        public const float IdleBreathAmplitudePixels = 3.2f;
+        public const float IdleBreathScaleAmplitude = 0.004f;
 
         [SerializeField] private RectTransform leftHandFrame;
         [SerializeField] private RectTransform rightHandFrame;
@@ -29,6 +32,14 @@ namespace WOF
         private float _lastScaleFactor;
         private bool _leftFiring;
         private bool _rightFiring;
+        private Vector2 _leftHandBasePosition;
+        private Vector2 _rightHandBasePosition;
+        private Vector2 _leftSpellBasePosition;
+        private Vector2 _rightSpellBasePosition;
+        private float _leftHandBaseScale = 1f;
+        private float _rightHandBaseScale = 1f;
+        private float _leftSpellBaseScale = 1f;
+        private float _rightSpellBaseScale = 1f;
 
         public void SetFiringPose(bool leftFiring, bool rightFiring)
         {
@@ -59,6 +70,7 @@ namespace WOF
             {
                 ApplyLayout();
             }
+            ApplyIdleBreathing(Time.unscaledTime, scaleFactor);
         }
 
         private void ApplyLayout()
@@ -137,6 +149,8 @@ namespace WOF
                 _rightFiring ? new Vector2(spellFrameOffset, spellBottom) : new Vector2(spellFrameOffset - spellX, spellBottom - spellY),
                 frameScale * HeldSpellScale);
 
+            CacheBreathingBases();
+
             if (isFirstLayout)
             {
                 var parentRect = transform is RectTransform rectTransform ? rectTransform.rect.size : Vector2.zero;
@@ -152,6 +166,43 @@ namespace WOF
 
             _lastScreenSize = new Vector2Int(Screen.width, Screen.height);
             _lastScaleFactor = scaleFactor;
+        }
+
+        private void CacheBreathingBases()
+        {
+            CacheFrame(leftHandFrame, out _leftHandBasePosition, out _leftHandBaseScale);
+            CacheFrame(rightHandFrame, out _rightHandBasePosition, out _rightHandBaseScale);
+            CacheFrame(leftSpellFrame, out _leftSpellBasePosition, out _leftSpellBaseScale);
+            CacheFrame(rightSpellFrame, out _rightSpellBasePosition, out _rightSpellBaseScale);
+        }
+
+        private void ApplyIdleBreathing(float time, float scaleFactor)
+        {
+            var phase = time * Mathf.PI * 2f / IdleBreathCycleSeconds;
+            ApplyBreathingFrame(leftHandFrame, _leftHandBasePosition, _leftHandBaseScale, Mathf.Sin(phase), scaleFactor);
+            ApplyBreathingFrame(rightHandFrame, _rightHandBasePosition, _rightHandBaseScale, Mathf.Sin(phase + 0.16f), scaleFactor);
+            ApplyBreathingFrame(leftSpellFrame, _leftSpellBasePosition, _leftSpellBaseScale, Mathf.Sin(phase), scaleFactor);
+            ApplyBreathingFrame(rightSpellFrame, _rightSpellBasePosition, _rightSpellBaseScale, Mathf.Sin(phase + 0.16f), scaleFactor);
+        }
+
+        private static void CacheFrame(RectTransform frame, out Vector2 position, out float scale)
+        {
+            position = frame == null ? Vector2.zero : frame.anchoredPosition;
+            scale = frame == null ? 1f : frame.localScale.x;
+        }
+
+        private static void ApplyBreathingFrame(
+            RectTransform frame,
+            Vector2 basePosition,
+            float baseScale,
+            float wave,
+            float canvasScaleFactor)
+        {
+            if (frame == null) return;
+            var offset = IdleBreathAmplitudePixels * wave / Mathf.Max(0.0001f, canvasScaleFactor);
+            frame.anchoredPosition = basePosition + Vector2.up * offset;
+            var scale = baseScale * (1f + IdleBreathScaleAmplitude * wave);
+            frame.localScale = new Vector3(scale, scale, 1f);
         }
 
         private static float ResolveFrameScale(bool mobileLayout, int width, int height)

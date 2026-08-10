@@ -3,6 +3,7 @@
   "rootNamespace": "WOF",
     "references": [
     "Unity.InputSystem",
+    "Unity.Collections",
     "Unity.Netcode.Runtime",
     "Unity.Networking.Transport",
     "UnityEngine.UI"

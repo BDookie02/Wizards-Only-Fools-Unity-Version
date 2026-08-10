@@ -227,8 +227,8 @@ namespace WOF.Editor
         {
             PlayerSettings.companyName = "Wizards Only Fools";
             PlayerSettings.productName = "Wizards Only Fools";
-            PlayerSettings.bundleVersion = "0.4.2";
-            PlayerSettings.Android.bundleVersionCode = 5;
+            PlayerSettings.bundleVersion = "0.4.5";
+            PlayerSettings.Android.bundleVersionCode = 8;
             PlayerSettings.runInBackground = true;
             PlayerSettings.colorSpace = ColorSpace.Linear;
             PlayerSettings.defaultScreenWidth = 1280;
@@ -2133,6 +2133,8 @@ namespace WOF.Editor
             SetObjectReference(hud, "rightManaFill", gameplayHud.RightManaFill);
             SetObjectReference(hud, "leftSpellText", gameplayHud.LeftSpellText);
             SetObjectReference(hud, "rightSpellText", gameplayHud.RightSpellText);
+            SetObjectReference(hud, "leftHotkeysText", gameplayHud.LeftHotkeysText);
+            SetObjectReference(hud, "rightHotkeysText", gameplayHud.RightHotkeysText);
             SetObjectReference(hud, "statusText", statusText);
             SetObjectReference(hud, "roomText", roomText);
             SetObjectReference(hud, "leftHandImage", leftHandImage);
@@ -2178,12 +2180,21 @@ namespace WOF.Editor
                         $"Assets/WOF/Art/Generated/React/HUD/SpellMenu/{WofSpellLoadout.GetReactId(spell)}.png"))
                     .ToArray());
 
+            var spellHotbar = canvasObject.AddComponent<WofSpellHotbarRuntime>();
+            spellHotbar.ConfigureGeneratedView(hud);
+
             var navigationMap = canvasObject.AddComponent<WofNavigationMapRuntime>();
             navigationMap.ConfigureGeneratedView(
                 hud,
                 canvasObject.transform,
                 font,
                 GetOrCreateCircularUiMaskSprite());
+
+            var pauseAndScoreboard = canvasObject.AddComponent<WofPauseAndScoreboardRuntime>();
+            pauseAndScoreboard.ConfigureGeneratedView(hud, canvasObject.transform, font);
+
+            var engineMenu = canvasObject.AddComponent<WofEngineMenuRuntime>();
+            engineMenu.ConfigureGeneratedView(hud, canvasObject.transform, font);
 
             return new WofUiReferences
             {

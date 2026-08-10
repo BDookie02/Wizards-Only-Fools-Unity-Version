@@ -3,9 +3,17 @@ import { createRequire } from "node:module";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import {
+  getUnityMountainHeightDelta,
+  UNITY_MOUNTAIN_BASE_OUTER_RADIUS,
+  UNITY_MOUNTAIN_PROTECTED_RADIUS,
+  UNITY_MOUNTAIN_RIM_OUTER_RADIUS,
+  UNITY_MOUNTAIN_RIM_PEAK_RADIUS,
+} from "./wof-unity-mountain-profile.mts";
 
 const reactRoot = "D:\\CodexProjects\\Wizards-Only-Fools-React-Latest";
 const unityRoot = "D:\\CodexProjects\\Wizards-Only-Fools-Unity";
+const unityMountainProfilePath = path.join(unityRoot, "Tools", "wof-unity-mountain-profile.mts");
 const outputRoot = path.join(unityRoot, "Assets", "WOF", "Art", "Generated", "React");
 const avatarFactoryPath = path.join(
   reactRoot,
@@ -932,9 +940,45 @@ for (const [relativePath, createTexture] of hutTextureEntries) {
 
 await emitCanvas("TreeHouse/bark.png", treeHouseTextures.getTreeHouseBarkTexture().image);
 await emitCanvas("TreeHouse/plank.png", treeHouseTextures.getTreeHousePlankTexture().image);
+
+function createUnityBotwGrassBladeTexture() {
+  const canvas = createCanvas(128, 128);
+  const context = canvas.getContext("2d");
+  const hash01 = (index: number, salt: number) => {
+    const value = Math.sin(index * 91.713 + salt * 37.119) * 43758.5453123;
+    return value - Math.floor(value);
+  };
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  for (let blade = 0; blade < 42; blade += 1) {
+    const baseX = 5 + hash01(blade, 1) * 118;
+    const baseY = 122 + hash01(blade, 2) * 6;
+    const height = 55 + Math.pow(hash01(blade, 3), 0.72) * 62;
+    const tipX = baseX + (hash01(blade, 4) - 0.5) * (16 + height * 0.18);
+    const tipY = Math.max(5, baseY - height);
+    const lean = (hash01(blade, 5) - 0.5) * 22;
+    const controlX = baseX * 0.48 + tipX * 0.52 + lean;
+    const controlY = baseY - height * (0.48 + hash01(blade, 6) * 0.15);
+    const width = 0.9 + hash01(blade, 7) * 1.65;
+    const alpha = 0.58 + hash01(blade, 8) * 0.39;
+    context.strokeStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
+    context.lineWidth = width;
+    context.beginPath();
+    context.moveTo(baseX, baseY);
+    context.quadraticCurveTo(controlX, controlY, tipX, tipY);
+    context.stroke();
+  }
+  return canvas;
+}
+
+// The React mask packs 96 strokes into 128 px and turns into solid cards under
+// Unity's subtle pixel pass. Preserve the authored curved-blade language while
+// leaving enough negative space for individual BOTW-like blades to read.
 await emitCanvas(
   "Vegetation/botw-grass.png",
-  survivalGrassTextures.getSurvivalBotwGrassTexture().image as Canvas,
+  createUnityBotwGrassBladeTexture(),
 );
 
 // Mirrors LaunchMenu.tsx's press-stage CSS radial gradient at the Unity UI's
@@ -1935,61 +1979,18 @@ const mountainLayout = mountainVillageSceneLayout.makeMountainVillageLayout(
 // remains untouched through radius 96 so every cabin, mineshaft component,
 // villager, and summit structure keeps its source position. Outside that
 // protected ring, the terrain is broadened into an irregular caldera shoulder.
-const unityMountainProtectedRadius = 96;
-const unityMountainRimPeakRadius = 116;
-const unityMountainRimOuterRadius = 142;
-const unityMountainCenterX = mountainChunk.x;
-const unityMountainCenterZ = mountainChunk.z;
-const unitySmoothstep = (value: number) => {
-  const clamped = Math.max(0, Math.min(1, value));
-  return clamped * clamped * (3 - 2 * clamped);
-};
-const getUnityMountainTargetLift = (localX: number, localZ: number) => {
-  const radius = Math.hypot(localX, localZ);
-  if (radius <= unityMountainProtectedRadius) {
-    return mountainVillageTerrain.getMountainVillageRadialLift(radius);
-  }
-  const angle = Math.atan2(localX, localZ);
-  if (radius <= unityMountainRimPeakRadius) {
-    const progress = unitySmoothstep(
-      (radius - unityMountainProtectedRadius) /
-      (unityMountainRimPeakRadius - unityMountainProtectedRadius),
-    );
-    const irregularRim = Math.sin(angle * 5 + 0.8) * 3.4 + Math.cos(angle * 9 - 0.35) * 1.8;
-    return 214 + (232 + irregularRim - 214) * progress;
-  }
-  if (radius <= unityMountainRimOuterRadius) {
-    const progress = unitySmoothstep(
-      (radius - unityMountainRimPeakRadius) /
-      (unityMountainRimOuterRadius - unityMountainRimPeakRadius),
-    );
-    const irregularRim = Math.sin(angle * 5 + 0.8) * 3.4 + Math.cos(angle * 9 - 0.35) * 1.8;
-    return (232 + irregularRim) + (196 - (232 + irregularRim)) * progress;
-  }
-
-  const irregularOuterRadius = 500 + Math.sin(angle * 3 + 0.45) * 32 + Math.cos(angle * 7 - 0.2) * 16;
-  if (radius >= irregularOuterRadius) return 0;
-  const progress = (radius - unityMountainRimOuterRadius) /
-    (irregularOuterRadius - unityMountainRimOuterRadius);
-  const shoulder = 196 * Math.pow(Math.max(0, 1 - progress), 1.28);
-  const ridge = (
-    Math.sin(angle * 4 + radius * 0.018) * 3.8 +
-    Math.cos(angle * 8 - radius * 0.011) * 2.2
-  ) * Math.pow(Math.max(0, 1 - progress), 1.6);
-  return Math.max(0, shoulder + ridge);
-};
-const getUnityMountainHeightDelta = (localX: number, localZ: number) => {
-  const radius = Math.hypot(localX, localZ);
-  if (radius <= unityMountainProtectedRadius) return 0;
-  return getUnityMountainTargetLift(localX, localZ) -
-    mountainVillageTerrain.getMountainVillageRadialLift(radius);
-};
+const getMountainHeightDelta = (localX: number, localZ: number) =>
+  getUnityMountainHeightDelta(
+    localX,
+    localZ,
+    mountainVillageTerrain.getMountainVillageRadialLift,
+  );
 const reshapeUnityMountainGeometry = (geometry: THREE.BufferGeometry) => {
   const position = geometry.getAttribute("position") as THREE.BufferAttribute;
   for (let index = 0; index < position.count; index += 1) {
     const localX = position.getX(index);
     const localZ = position.getZ(index);
-    position.setY(index, position.getY(index) + getUnityMountainHeightDelta(localX, localZ));
+    position.setY(index, position.getY(index) + getMountainHeightDelta(localX, localZ));
   }
   position.needsUpdate = true;
   geometry.computeVertexNormals();
@@ -1998,12 +1999,12 @@ const reshapeUnityMountainGeometry = (geometry: THREE.BufferGeometry) => {
 };
 
 for (const point of mountainLayout.trailPoints) {
-  point.y += getUnityMountainHeightDelta(point.localX, point.localZ);
+  point.y += getMountainHeightDelta(point.localX, point.localZ);
 }
 for (const segment of mountainLayout.trailSegments) {
-  segment.y += getUnityMountainHeightDelta(segment.localX, segment.localZ);
+  segment.y += getMountainHeightDelta(segment.localX, segment.localZ);
   for (const support of segment.supports) {
-    support.topY += getUnityMountainHeightDelta(support.localX, support.localZ);
+    support.topY += getMountainHeightDelta(support.localX, support.localZ);
   }
   const start = mountainLayout.trailPoints[segment.index];
   const end = mountainLayout.trailPoints[segment.index + 1];
@@ -2013,13 +2014,13 @@ for (const segment of mountainLayout.trailSegments) {
   }
 }
 for (const patch of mountainLayout.cliffPatches) {
-  patch.y += getUnityMountainHeightDelta(patch.localX, patch.localZ);
+  patch.y += getMountainHeightDelta(patch.localX, patch.localZ);
 }
-mountainLayout.waterfall.topY += getUnityMountainHeightDelta(
+mountainLayout.waterfall.topY += getMountainHeightDelta(
   mountainLayout.waterfall.topX,
   mountainLayout.waterfall.topZ,
 );
-mountainLayout.waterfall.bottomY += getUnityMountainHeightDelta(
+mountainLayout.waterfall.bottomY += getMountainHeightDelta(
   mountainLayout.waterfall.bottomX,
   mountainLayout.waterfall.bottomZ,
 );
@@ -2274,7 +2275,8 @@ for (const [key, actual] of Object.entries(mountainRuntimeActualCounts)) {
 }
 
 const mountainSourceSignature = sha256(Buffer.concat([
-  Buffer.from("react-mountain-village-v1-exact-near-chunk-11-villagers-unity-caldera-v1", "utf8"),
+  Buffer.from("react-mountain-village-v1-exact-near-chunk-11-villagers-unity-caldera-v2", "utf8"),
+  await readFile(unityMountainProfilePath),
   await readFile(avatarFactoryPath),
   await readFile(villagerCharacterRuntimePath),
   await readFile(mountainSlopeGrassRuntimePath),
@@ -2436,12 +2438,12 @@ const mountainLayoutBytes = Buffer.from(`${JSON.stringify({
     mineshaftExitBridgeYOffset: mountainVillageTerrain.MOUNTAIN_VILLAGE_MINESHAFT_EXIT_BRIDGE_Y_OFFSET,
     slopeGrassNearCount: mountainVillageTerrain.MOUNTAIN_VILLAGE_SLOPE_GRASS_NEAR_COUNT,
     unityPerimeterReshape: {
-      protectedRadius: unityMountainProtectedRadius,
-      rimPeakRadius: unityMountainRimPeakRadius,
-      rimOuterRadius: unityMountainRimOuterRadius,
-      shoulderOuterRadius: 500,
-      centerX: unityMountainCenterX,
-      centerZ: unityMountainCenterZ,
+      protectedRadius: UNITY_MOUNTAIN_PROTECTED_RADIUS,
+      rimPeakRadius: UNITY_MOUNTAIN_RIM_PEAK_RADIUS,
+      rimOuterRadius: UNITY_MOUNTAIN_RIM_OUTER_RADIUS,
+      shoulderOuterRadius: UNITY_MOUNTAIN_BASE_OUTER_RADIUS,
+      centerX: mountainChunk.x,
+      centerZ: mountainChunk.z,
     },
   },
   layout: mountainSerializableLayout,

@@ -726,7 +726,7 @@ namespace WOF
         public const int ExactSlopeGrassCount = 1793;
         public const float MineshaftBottomY = ReactBaseHeight + 3.2f;
         public static readonly Vector3 WorldOrigin = new(ChunkX * SurvivalBlockSize, 0f, ChunkZ * SurvivalBlockSize);
-        public static readonly Vector3 ViewProbeSpawn = WorldOrigin + new Vector3(0f, 100f, 600f);
+        public static readonly Vector3 ViewProbeSpawn = WorldOrigin + new Vector3(0f, 110f, 900f);
         public static readonly Vector3 AerialViewProbeSpawn = WorldOrigin + new Vector3(0f, 520f, 0f);
         public static readonly Vector3 SummitViewProbeSpawn = WorldOrigin + new Vector3(0f, ReactSummitY + 8f, 92f);
         public static readonly Vector3 BanquetViewProbeSpawn = WorldOrigin + new Vector3(-12f, MineshaftBottomY + 4f, 20f);

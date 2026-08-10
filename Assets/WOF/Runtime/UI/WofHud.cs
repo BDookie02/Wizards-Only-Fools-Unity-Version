@@ -17,6 +17,8 @@ namespace WOF
         [SerializeField] private Image rightManaFill;
         [SerializeField] private Text leftSpellText;
         [SerializeField] private Text rightSpellText;
+        [SerializeField] private Text leftHotkeysText;
+        [SerializeField] private Text rightHotkeysText;
         [SerializeField] private Text statusText;
         [SerializeField] private Text roomText;
         [SerializeField] private Image leftHandImage;
@@ -39,6 +41,8 @@ namespace WOF
         private bool _forceMobileControls;
         private bool _forceLeftFiring;
         private bool _forceRightFiring;
+        private bool _handIdleProbe;
+        private int _lastProbedHandFrame = -1;
         private bool _magicArmed = true;
         private bool _gameplaySurfaceBlocked;
         private float _leftFiringStartedAt = float.NegativeInfinity;
@@ -67,6 +71,10 @@ namespace WOF
                     argument.Equals("--wof-hand-fire-probe=both", System.StringComparison.OrdinalIgnoreCase))
                 {
                     _forceRightFiring = true;
+                }
+                if (argument.Equals("--wof-hand-idle-probe", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    _handIdleProbe = true;
                 }
             }
             SetGameplayVisible(false);
@@ -106,11 +114,18 @@ namespace WOF
             SyncFrame(
                 leftHandImage,
                 _magicArmed ? leftFiringHandFrames : leftHandFrames,
-                _magicArmed && leftFiring ? leftFlexFrame : (_magicArmed ? 0 : _handFrame));
+                ResolveEquippedHandFrame(_magicArmed, leftFiring, _handFrame, leftFlexFrame));
             SyncFrame(
                 rightHandImage,
                 _magicArmed ? rightFiringHandFrames : rightHandFrames,
-                _magicArmed && rightFiring ? rightFlexFrame : (_magicArmed ? 0 : _handFrame));
+                ResolveEquippedHandFrame(_magicArmed, rightFiring, _handFrame, rightFlexFrame));
+            if (_handIdleProbe && !leftFiring && !rightFiring && _lastProbedHandFrame != _handFrame)
+            {
+                _lastProbedHandFrame = _handFrame;
+                Debug.Log(
+                    $"[WOF-AUTOMATION] HAND_IDLE_FRAME index={_handFrame} " +
+                    $"left={leftHandImage?.sprite?.name ?? "none"} right={rightHandImage?.sprite?.name ?? "none"}");
+            }
             // Equipped magic always uses the outward-pointing React pose. A cast
             // flexes the fingers inside that pose instead of swapping the arms
             // back to the unequipped open-palm layout.
@@ -248,6 +263,35 @@ namespace WOF
             magicHandsLayout?.SetFiringPose(armed, armed);
         }
 
+        public void SetHotbarSelection(int leftSlot, int rightSlot)
+        {
+            if (leftHotkeysText != null)
+            {
+                leftHotkeysText.text = BuildHotbarLabel("L", leftSlot, "#FDE047", "#FACC15");
+            }
+            if (rightHotkeysText != null)
+            {
+                rightHotkeysText.text = BuildHotbarLabel("R", rightSlot, "#F0ABFC", "#E879F9");
+            }
+        }
+
+        private static string BuildHotbarLabel(string hand, int selectedSlot, string handColor, string selectedColor)
+        {
+            selectedSlot = Mathf.Clamp(selectedSlot, 0, WofSpellHotbarRuntime.SlotCount - 1);
+            var builder = new System.Text.StringBuilder(180);
+            builder.Append("<color=").Append(handColor).Append('>').Append(hand).Append("</color>   ");
+            for (var index = 0; index < WofSpellHotbarRuntime.SlotCount; index++)
+            {
+                if (index > 0) builder.Append(' ');
+                builder.Append("<color=")
+                    .Append(index == selectedSlot ? selectedColor : "#555555")
+                    .Append('>')
+                    .Append(index == 9 ? 0 : index + 1)
+                    .Append("</color>");
+            }
+            return builder.ToString();
+        }
+
         public void SetHeldSpellVisibility(bool leftVisible, bool rightVisible)
         {
             if (leftHeldSpellImage != null) leftHeldSpellImage.gameObject.SetActive(leftVisible);
@@ -335,6 +379,18 @@ namespace WOF
         internal static bool ResolveFiringPoseActive(bool forced, float now, float firingUntil)
         {
             return forced || now < firingUntil;
+        }
+
+        internal static int ResolveEquippedHandFrame(
+            bool magicArmed,
+            bool firing,
+            int idleFrame,
+            int firingFlexFrame)
+        {
+            // The player's requested armed idle uses the outward-pointing sheet,
+            // but that sheet still has the same four-frame 280 ms React idle loop.
+            // Casting temporarily replaces the loop index with its 140 ms flex.
+            return magicArmed && firing ? firingFlexFrame : idleFrame;
         }
 
         internal static int ResolveFiringFlexFrame(

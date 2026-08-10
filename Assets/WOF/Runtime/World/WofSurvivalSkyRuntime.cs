@@ -62,9 +62,19 @@ namespace WOF
         private double? _forcedElapsed;
         private float _nextCameraResolveAt;
 
+        public float? ForcedElapsedSeconds => _forcedElapsed.HasValue ? (float)_forcedElapsed.Value : null;
+
         public void Configure(Light light)
         {
             _directionalLight = light;
+        }
+
+        public void SetTimeOverrideSeconds(float? seconds)
+        {
+            _forcedElapsed = seconds.HasValue ? Mathf.Max(0f, seconds.Value) : (double?)null;
+            Debug.Log(seconds.HasValue
+                ? $"[WOF-AUTOMATION] SURVIVAL_SKY_OVERRIDE seconds={_forcedElapsed.Value:F1}"
+                : "[WOF-AUTOMATION] SURVIVAL_SKY_OVERRIDE cleared=true");
         }
 
         private void Awake()

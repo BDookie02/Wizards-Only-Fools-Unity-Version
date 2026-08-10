@@ -16,9 +16,61 @@ namespace WOF.Tests
             Assert.That(WofMovementMath.SlideStartMinSpeedSquared, Is.EqualTo(0.55f));
             Assert.That(WofMovementMath.CrouchHoldSeconds, Is.EqualTo(3f));
             Assert.That(WofMovementMath.CrouchSpeedMultiplier, Is.EqualTo(0.44f));
+            Assert.That(WofMovementMath.VClipVerticalSpeed, Is.EqualTo(10f));
+            Assert.That(WofMovementMath.VClipSprintMultiplier, Is.EqualTo(3.2f));
             Assert.That(
                 WofMovementMath.UnityStandingCameraHeight - WofMovementMath.UnityLowCameraHeight,
                 Is.EqualTo(0.56f).Within(0.0001f));
+        }
+
+        [Test]
+        public void ResolveVClipVelocity_PreservesReactVerticalAndSprintTuning()
+        {
+            var normal = WofMovementMath.ResolveVClipVelocity(
+                Vector2.up,
+                0f,
+                true,
+                false,
+                false,
+                false,
+                false);
+            var sprint = WofMovementMath.ResolveVClipVelocity(
+                Vector2.up,
+                0f,
+                true,
+                false,
+                true,
+                false,
+                false);
+
+            Assert.That(normal.z, Is.EqualTo(8f).Within(0.001f));
+            Assert.That(normal.y, Is.EqualTo(10f).Within(0.001f));
+            Assert.That(sprint.z, Is.EqualTo(25.6f).Within(0.001f));
+            Assert.That(sprint.y, Is.EqualTo(32f).Within(0.001f));
+        }
+
+        [Test]
+        public void ResolveVClipVelocity_UsesSlideAsDescendAndCancelsOpposingVerticalInput()
+        {
+            var descend = WofMovementMath.ResolveVClipVelocity(
+                Vector2.zero,
+                0f,
+                false,
+                true,
+                false,
+                false,
+                false);
+            var cancelled = WofMovementMath.ResolveVClipVelocity(
+                Vector2.zero,
+                0f,
+                true,
+                true,
+                false,
+                false,
+                false);
+
+            Assert.That(descend, Is.EqualTo(Vector3.down * 10f));
+            Assert.That(cancelled, Is.EqualTo(Vector3.zero));
         }
 
         [Test]

@@ -51,6 +51,23 @@ namespace WOF.Tests.EditMode
             Assert.That(WofSurvivalBotwGrassRuntime.BladeCount, Is.EqualTo(56000));
             Assert.That(WofSurvivalBotwGrassRuntime.FlowerCount, Is.EqualTo(760));
             Assert.That(WofSurvivalBotwGrassRuntime.CandidateCount, Is.EqualTo(71680));
+            Assert.That(WofSurvivalBotwGrassRuntime.FlowerStemMinimum, Is.InRange(1f, 1.1f));
+            Assert.That(WofSurvivalBotwGrassRuntime.FlowerStemMaximum,
+                Is.GreaterThan(WofSurvivalBotwGrassRuntime.FlowerStemMinimum));
+            Assert.That(WofSurvivalBotwGrassRuntime.FlowerBloomMinimum, Is.InRange(0.5f, 0.65f));
+            Assert.That(WofSurvivalBotwGrassRuntime.FlowerBloomMaximum,
+                Is.GreaterThan(WofSurvivalBotwGrassRuntime.FlowerBloomMinimum));
+            Assert.That(WofSurvivalBotwGrassRuntime.BladeAlphaCutoff, Is.EqualTo(0.14f).Within(0.001f));
+            Assert.That(WofSurvivalBotwGrassRuntime.MaxCandidatesPerFrameDesktop, Is.LessThanOrEqualTo(384));
+            Assert.That(WofSurvivalBotwGrassRuntime.MaxCandidatesPerFrameMobile, Is.LessThanOrEqualTo(256));
+            Assert.That(WofSurvivalBotwGrassRuntime.DesktopBuildBudgetMilliseconds, Is.LessThanOrEqualTo(4d));
+            Assert.That(WofSurvivalBotwGrassRuntime.MobileBuildBudgetMilliseconds, Is.LessThanOrEqualTo(2d));
+            Assert.That(WofSurvivalBotwGrassRuntime.BuildBudgetCheckInterval, Is.LessThanOrEqualTo(4));
+            Assert.That(WofSurvivalBotwGrassRuntime.CanopyLodNearDistance,
+                Is.LessThan(WofSurvivalBotwGrassRuntime.CanopyLodFarDistance));
+            Assert.That(WofSurvivalBotwGrassRuntime.CanopyFarScale, Is.InRange(3f, 5f));
+            Assert.That(WofSurvivalBotwGrassRuntime.TerrainGrassDetailStrength, Is.InRange(0.2f, 0.35f));
+            Assert.That(WofSurvivalBotwGrassRuntime.TerrainGrassDetailScale, Is.InRange(0.15f, 0.3f));
         }
 
         [Test]
@@ -99,6 +116,41 @@ namespace WOF.Tests.EditMode
         }
 
         [Test]
+        public void GrassClusterRetainsAnUpwardCanopyFromOverheadViews()
+        {
+            var mesh = WofSurvivalBotwGrassRuntime.CreateGrassClusterMesh();
+            try
+            {
+                var texturedVertexCount = WofSurvivalBotwGrassRuntime.GrassClusterCardCount * 4;
+                Assert.That(mesh.vertexCount, Is.EqualTo(
+                    texturedVertexCount + WofSurvivalBotwGrassRuntime.GrassClusterCanopyBladeCount * 3));
+                Assert.That(mesh.uv2, Has.Length.EqualTo(mesh.vertexCount));
+                Assert.That(mesh.triangles, Has.Length.EqualTo(
+                    WofSurvivalBotwGrassRuntime.GrassClusterCardCount * 6 +
+                    WofSurvivalBotwGrassRuntime.GrassClusterCanopyBladeCount * 3));
+
+                var vertices = mesh.vertices;
+                var flags = mesh.uv2;
+                var canopyVertices = 0;
+                var outwardTips = 0;
+                for (var index = texturedVertexCount; index < vertices.Length; index++)
+                {
+                    if (flags[index].x > 0.5f) canopyVertices++;
+                    if (vertices[index].y > 0.7f &&
+                        new Vector2(vertices[index].x, vertices[index].z).magnitude > 0.3f)
+                        outwardTips++;
+                }
+
+                Assert.That(canopyVertices, Is.EqualTo(WofSurvivalBotwGrassRuntime.GrassClusterCanopyBladeCount * 3));
+                Assert.That(outwardTips, Is.EqualTo(WofSurvivalBotwGrassRuntime.GrassClusterCanopyBladeCount));
+            }
+            finally
+            {
+                Object.DestroyImmediate(mesh);
+            }
+        }
+
+        [Test]
         public void TerrainVertexNormalsInterpolateSmoothlyAcrossTriangleInteriors()
         {
             var first = new Vector3(-0.2f, 1f, 0f).normalized;
@@ -117,7 +169,7 @@ namespace WOF.Tests.EditMode
         public void GeneratedOpenWorldContainsEveryExactReactDenseBiomeTree()
         {
             Assert.That(WofSurvivalFoliageRuntime.ExactReactMeshCount, Is.EqualTo(24));
-            Assert.That(WofSurvivalFoliageRuntime.ExactReactDenseTreeCount, Is.EqualTo(2591));
+            Assert.That(WofSurvivalFoliageRuntime.ExactReactDenseTreeCount, Is.EqualTo(2526));
             Assert.That(AssetDatabase.FindAssets(
                     "t:Mesh",
                     new[] { "Assets/WOF/Generated/Geometry/SurvivalTerrain/Foliage" }).Length,
@@ -133,6 +185,10 @@ namespace WOF.Tests.EditMode
                 Is.EqualTo(WofSurvivalFoliageRuntime.ExactReactMeshCount));
             Assert.That(serialized.FindProperty("placements").arraySize,
                 Is.EqualTo(WofSurvivalFoliageRuntime.ExactReactDenseTreeCount));
+            var foliageMaterial = serialized.FindProperty("foliageMaterial").objectReferenceValue as Material;
+            Assert.That(foliageMaterial, Is.Not.Null);
+            Assert.That(foliageMaterial.shader.name, Is.EqualTo("WOF/Instanced Foliage"));
+            Assert.That(foliageMaterial.enableInstancing, Is.True);
             Assert.That(scene.isLoaded, Is.True);
         }
     }

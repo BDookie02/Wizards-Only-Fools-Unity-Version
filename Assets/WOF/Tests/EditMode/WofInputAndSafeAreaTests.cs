@@ -148,6 +148,28 @@ namespace WOF.Tests
         }
 
         [Test]
+        public void EquippedOutwardPointingHandsKeepTheReactFourFrameIdleLoop()
+        {
+            Assert.That(WofHud.ResolveEquippedHandFrame(true, false, 0, 3), Is.EqualTo(0));
+            Assert.That(WofHud.ResolveEquippedHandFrame(true, false, 1, 3), Is.EqualTo(1));
+            Assert.That(WofHud.ResolveEquippedHandFrame(true, false, 2, 3), Is.EqualTo(2));
+            Assert.That(WofHud.ResolveEquippedHandFrame(true, false, 3, 2), Is.EqualTo(3));
+            Assert.That(WofHud.ResolveEquippedHandFrame(true, true, 3, 2), Is.EqualTo(2));
+            Assert.That(WofHud.ResolveEquippedHandFrame(false, false, 2, 3), Is.EqualTo(2));
+        }
+
+        [Test]
+        public void ScoreboardStatusMatchesReactCombinedEffectOrder()
+        {
+            Assert.That(WofPauseAndScoreboardRuntime.BuildScoreboardStatus(0f, true, true, true, true), Is.EqualTo("DOWN"));
+            Assert.That(WofPauseAndScoreboardRuntime.BuildScoreboardStatus(100f, false, false, false, false), Is.EqualTo("READY"));
+            Assert.That(WofPauseAndScoreboardRuntime.BuildScoreboardStatus(100f, true, true, true, true),
+                Is.EqualTo("SLEEP / SLOWED / POISON / ACID"));
+            Assert.That(WofPauseAndScoreboardRuntime.BuildScoreboardStatus(100f, false, true, false, true),
+                Is.EqualTo("SLOWED / ACID"));
+        }
+
+        [Test]
         public void ResolveLookPreservesLegacyMouseScaleWithoutScalingTouchLook()
         {
             var look = WofInputRouter.ResolveLook(new Vector2(20f, -10f), new Vector2(0.5f, 0.25f));

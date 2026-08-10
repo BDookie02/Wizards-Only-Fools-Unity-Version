@@ -24,7 +24,7 @@ namespace WOF
     [DisallowMultipleComponent]
     public sealed class WofSurvivalFoliageRuntime : MonoBehaviour
     {
-        public const int ExactReactDenseTreeCount = 2591;
+        public const int ExactReactDenseTreeCount = 2526;
         public const int ExactReactMeshCount = 24;
         public const float VisibleRadius = 820f;
         private const int InstancesPerBatch = 1023;
@@ -48,6 +48,14 @@ namespace WOF
             placements = exactReactPlacements;
         }
 
+        internal bool TryGetStreamingAssets(out Mesh[] exactReactMeshes, out Material exactReactMaterial)
+        {
+            exactReactMeshes = meshes;
+            exactReactMaterial = foliageMaterial;
+            return exactReactMeshes != null && exactReactMeshes.Length == ExactReactMeshCount &&
+                   exactReactMaterial != null;
+        }
+
         private void Awake()
         {
             if (!SystemInfo.supportsInstancing || foliageMaterial == null || meshes == null ||
@@ -62,6 +70,7 @@ namespace WOF
             }
 
             foliageMaterial.enableInstancing = true;
+            foliageMaterial.SetColor("_Color", Color.white);
             var batchesByKey = new Dictionary<FoliageBatchKey, FoliageBatch>();
             foreach (var placement in placements)
             {
@@ -107,7 +116,7 @@ namespace WOF
                     foliageMaterial,
                     batch.Matrices,
                     batch.Count,
-                    null,
+                    batch.Properties,
                     ShadowCastingMode.Off,
                     false,
                     gameObject.layer,
@@ -144,15 +153,23 @@ namespace WOF
 
         private sealed class FoliageBatch
         {
+            private readonly Vector4[] _instanceColors = new Vector4[InstancesPerBatch];
+
             public FoliageBatch(Mesh mesh, Vector3 center)
             {
                 Mesh = mesh;
                 Center = center;
+                for (var index = 0; index < _instanceColors.Length; index++)
+                {
+                    _instanceColors[index] = Vector4.one;
+                }
+                Properties.SetVectorArray("_InstanceColor", _instanceColors);
             }
 
             public Mesh Mesh { get; }
             public Vector3 Center { get; }
             public Matrix4x4[] Matrices { get; } = new Matrix4x4[InstancesPerBatch];
+            public MaterialPropertyBlock Properties { get; } = new();
             public int Count { get; private set; }
 
             public void Add(Matrix4x4 matrix)

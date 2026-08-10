@@ -1,3 +1,4 @@
+using System;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -34,6 +35,8 @@ namespace WOF
         private WofPlayerController _localPlayer;
         private bool _controllerToggleHeld;
         private bool _controllerBackHeld;
+        private bool _spellMenuProbe;
+        private bool _probeApplied;
 
         public static WofSpellMenuRuntime Instance { get; private set; }
         public static bool IsOpen => Instance != null && Instance._overlay != null && Instance._overlay.activeSelf;
@@ -63,6 +66,11 @@ namespace WOF
         private void Awake()
         {
             Instance = this;
+            foreach (var argument in Environment.GetCommandLineArgs())
+            {
+                if (argument.Equals("--wof-spell-menu-probe", StringComparison.OrdinalIgnoreCase))
+                    _spellMenuProbe = true;
+            }
         }
 
         private void Start()
@@ -81,10 +89,21 @@ namespace WOF
             {
                 return;
             }
+            if (!_overlay.activeSelf && WofPauseAndScoreboardRuntime.IsAnyMenuOpen) return;
+            if (!_overlay.activeSelf && WofInputRouter.GameplaySuppressed) return;
+
+            if (!_probeApplied && _spellMenuProbe && hud.IsGameplayVisible)
+            {
+                _probeApplied = true;
+                SetOpen(true);
+                return;
+            }
 
             var keyboardToggle = Keyboard.current?.eKey.wasPressedThisFrame ?? false;
             var gamepad = Gamepad.current;
-            var controllerToggleHeld = gamepad?.dpad.up.isPressed ?? false;
+            var hotbarModifierHeld = (gamepad?.leftShoulder.isPressed ?? false) ||
+                                     (gamepad?.rightShoulder.isPressed ?? false);
+            var controllerToggleHeld = !hotbarModifierHeld && (gamepad?.dpad.up.isPressed ?? false);
             var controllerToggle = controllerToggleHeld && !_controllerToggleHeld;
             _controllerToggleHeld = controllerToggleHeld;
             if (keyboardToggle && !WofNavigationMapRuntime.IsExpanded)
@@ -104,6 +123,13 @@ namespace WOF
             }
 
             RefreshGridLayout();
+            var keyboardSlot = WofSpellHotbarRuntime.ReadPressedNumberSlot(Keyboard.current);
+            if (keyboardSlot >= 0)
+            {
+                var keyboardHand = Keyboard.current?.qKey.isPressed == true ? WofHandSide.Right : _bindingHand;
+                AssignSelectedSpell(keyboardHand, keyboardSlot);
+                return;
+            }
             if (gamepad == null)
             {
                 return;
@@ -388,10 +414,40 @@ namespace WOF
                 return;
             }
             var spell = WofSpellLoadout.PlayableSpells[_selectedIndex];
-            _localPlayer.EquipSpell(_bindingHand, spell);
+            var hotbar = WofSpellHotbarRuntime.Instance;
+            if (hotbar != null)
+            {
+                hotbar.AssignSpellToSelectedSlot(_bindingHand, spell);
+            }
+            else
+            {
+                _localPlayer.EquipSpell(_bindingHand, spell);
+            }
             if (_bindingStatus != null)
             {
-                _bindingStatus.text = $"{WofSpellLoadout.GetDisplayName(spell).ToUpperInvariant()} EQUIPPED TO {_bindingHand.ToString().ToUpperInvariant()} HAND";
+                var slot = hotbar == null ? 1 : hotbar.GetSelectedSlot(_bindingHand) + 1;
+                _bindingStatus.text = $"{WofSpellLoadout.GetDisplayName(spell).ToUpperInvariant()} EQUIPPED TO {_bindingHand.ToString().ToUpperInvariant()} SLOT {slot}";
+            }
+            RefreshSelectionVisuals();
+        }
+
+        private void AssignSelectedSpell(WofHandSide hand, int slot)
+        {
+            _bindingHand = hand;
+            var spell = WofSpellLoadout.PlayableSpells[_selectedIndex];
+            var hotbar = WofSpellHotbarRuntime.Instance;
+            if (hotbar != null)
+            {
+                hotbar.AssignSpellToSlot(hand, slot, spell);
+            }
+            else
+            {
+                _localPlayer = ResolveLocalPlayer();
+                _localPlayer?.EquipSpell(hand, spell);
+            }
+            if (_bindingStatus != null)
+            {
+                _bindingStatus.text = $"{WofSpellLoadout.GetDisplayName(spell).ToUpperInvariant()} EQUIPPED TO {hand.ToString().ToUpperInvariant()} SLOT {slot + 1}";
             }
             RefreshSelectionVisuals();
         }

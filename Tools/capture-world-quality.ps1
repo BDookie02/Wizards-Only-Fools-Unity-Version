@@ -3,6 +3,8 @@ param(
     [string]$OutputRoot = 'D:\tmp\wof-unity',
     [ValidateSet('day', 'night')]
     [string]$View = 'day',
+    [ValidateSet('ground', 'overhead')]
+    [string]$CameraView = 'ground',
     [ValidateRange(320, 7680)]
     [int]$Width = 1280,
     [ValidateRange(240, 4320)]
@@ -40,10 +42,10 @@ public static class WofWorldQualityCapture {
 
 $executable = Join-Path $resolvedBuildRoot 'WizardsOnlyFools.exe'
 $logRoot = Join-Path $resolvedOutputRoot 'logs'
-$profileRoot = Join-Path $resolvedOutputRoot ("world-quality-$View-profile-" + [Guid]::NewGuid().ToString('N'))
+$profileRoot = Join-Path $resolvedOutputRoot ("world-quality-$View-$CameraView-profile-" + [Guid]::NewGuid().ToString('N'))
 $playerTempRoot = Join-Path $resolvedOutputRoot 'player-temp'
-$logPath = Join-Path $logRoot "world-quality-$View.log"
-$capturePath = Join-Path $resolvedOutputRoot "world-quality-$View-${Width}x${Height}.png"
+$logPath = Join-Path $logRoot "world-quality-$View-$CameraView.log"
+$capturePath = Join-Path $resolvedOutputRoot "world-quality-$View-$CameraView-${Width}x${Height}.png"
 foreach ($requiredRoot in @($logRoot, $profileRoot, $playerTempRoot)) {
     New-Item -ItemType Directory -Force -Path $requiredRoot | Out-Null
 }
@@ -54,9 +56,10 @@ foreach ($target in @($logPath, $capturePath)) {
     if (Test-Path -LiteralPath $target -PathType Leaf) { Remove-Item -LiteralPath $target -Force }
 }
 
+$grassViewArgument = if ($CameraView -eq 'overhead') { '--wof-grass-view-probe=overhead' } else { '--wof-grass-view-probe' }
 $arguments = @(
     '-force-d3d11', '-screen-width', $Width, '-screen-height', $Height, '-screen-fullscreen', '0',
-    '--wof-solo', '--wof-grass-view-probe', "--wof-sky-probe=$View", '--wof-auto-exit=90',
+    '--wof-solo', $grassViewArgument, "--wof-sky-probe=$View", '--wof-auto-exit=90',
     "--wof-profile-root=$profileRoot", '-logFile', $logPath
 )
 $previousTemp = $env:TEMP
@@ -108,7 +111,7 @@ try {
     }
 
     $grassLine = Select-String -LiteralPath $logPath -SimpleMatch 'BOTW_GRASS_BUILD_COMPLETE' | Select-Object -Last 1
-    [PSCustomObject]@{ View=$View; Capture=$capturePath; Log=$logPath; Grass=$grassLine.Line; Width=$capturedWidth; Height=$capturedHeight; Bytes=(Get-Item -LiteralPath $capturePath).Length }
+    [PSCustomObject]@{ View=$View; CameraView=$CameraView; Capture=$capturePath; Log=$logPath; Grass=$grassLine.Line; Width=$capturedWidth; Height=$capturedHeight; Bytes=(Get-Item -LiteralPath $capturePath).Length }
 }
 finally {
     if (-not $process.HasExited) {

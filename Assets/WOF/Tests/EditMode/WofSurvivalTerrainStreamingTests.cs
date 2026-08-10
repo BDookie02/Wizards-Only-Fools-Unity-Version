@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -19,6 +20,7 @@ namespace WOF.Tests
             Assert.That(oracle.nearRadius, Is.EqualTo(WofSurvivalTerrainMath.NearRadius));
             Assert.That(oracle.collisionRadius, Is.EqualTo(WofSurvivalTerrainMath.CollisionRadius));
             Assert.That(oracle.centerHysteresis, Is.EqualTo(WofSurvivalTerrainMath.CenterHysteresis).Within(0.001d));
+            Assert.That(WofSurvivalTerrainStreamingRuntime.MaxConcurrentChunkBuilds, Is.EqualTo(1));
 
             foreach (var fixture in oracle.chunkCoordinates)
                 Assert.That(WofSurvivalTerrainMath.GetChunkCoordinate(fixture.value), Is.EqualTo(fixture.chunk),
@@ -90,6 +92,71 @@ namespace WOF.Tests
         }
 
         [Test]
+        public void StreamedTreesAndWaterMatchReactDecorationOracle()
+        {
+            var oracle = LoadOracle().streamingOracle;
+            Assert.That(oracle.trees.Length, Is.EqualTo(3));
+            Assert.That(oracle.waters.Length, Is.EqualTo(3));
+            foreach (var fixture in oracle.trees)
+            {
+                var actual = WofSurvivalStreamDecorationMath.Generate(
+                    fixture.cx,
+                    fixture.cz,
+                    fixture.distance);
+                Assert.That(actual.Trees.Length, Is.EqualTo(fixture.trees.Length),
+                    $"Tree count mismatch at {fixture.cx}:{fixture.cz} distance {fixture.distance}.");
+                for (var index = 0; index < fixture.trees.Length; index++)
+                {
+                    var expected = fixture.trees[index];
+                    var tree = actual.Trees[index];
+                    Assert.That(tree.MeshIndex, Is.EqualTo(expected.meshIndex), $"Tree mesh mismatch at {index}.");
+                    Assert.That(tree.Position.x, Is.EqualTo(expected.x).Within(0.003f));
+                    Assert.That(tree.Position.y, Is.EqualTo(expected.y).Within(0.003f));
+                    Assert.That(tree.Position.z, Is.EqualTo(expected.z).Within(0.003f));
+                    Assert.That(tree.RotationRadians.x, Is.EqualTo(expected.pitch).Within(0.0001f));
+                    Assert.That(tree.RotationRadians.y, Is.EqualTo(expected.yaw).Within(0.0001f));
+                    Assert.That(tree.RotationRadians.z, Is.EqualTo(expected.roll).Within(0.0001f));
+                    Assert.That(tree.Scale.x, Is.EqualTo(expected.scaleX).Within(0.002f));
+                    Assert.That(tree.Scale.y, Is.EqualTo(expected.scaleY).Within(0.002f));
+                    Assert.That(tree.Scale.z, Is.EqualTo(expected.scaleZ).Within(0.002f));
+                }
+            }
+
+            foreach (var fixture in oracle.waters)
+            {
+                var water = WofSurvivalStreamDecorationMath.Generate(
+                    fixture.cx,
+                    fixture.cz,
+                    fixture.distance).Water;
+                var expectedVertexCount = fixture.riverVertexCount + fixture.ponds.Length * 36 +
+                                          fixture.lilies.Length * 12;
+                var expectedIndexCount = fixture.riverIndexCount + fixture.ponds.Length * 96 +
+                                         fixture.lilies.Length * 30;
+                if (expectedIndexCount == 0)
+                {
+                    Assert.That(water, Is.Null);
+                    continue;
+                }
+                Assert.That(water, Is.Not.Null);
+                Assert.That(water.PondCount, Is.EqualTo(fixture.ponds.Length));
+                Assert.That(water.LilyCount, Is.EqualTo(fixture.lilies.Length));
+                Assert.That(water.RiverTriangleCount * 3, Is.EqualTo(fixture.riverIndexCount));
+                Assert.That(water.Vertices.Length, Is.EqualTo(expectedVertexCount));
+                Assert.That(water.Indices.Length, Is.EqualTo(expectedIndexCount));
+                if (fixture.riverVertexCount <= 0) continue;
+                var sampleIndices = new[] { 0, fixture.riverVertexCount / 2, fixture.riverVertexCount - 1 };
+                for (var index = 0; index < sampleIndices.Length; index++)
+                {
+                    var actual = water.Vertices[sampleIndices[index]];
+                    var expected = fixture.riverPositionSamples[index];
+                    Assert.That(actual.x, Is.EqualTo(expected.x).Within(0.001f));
+                    Assert.That(actual.y, Is.EqualTo(expected.y).Within(0.002f));
+                    Assert.That(actual.z, Is.EqualTo(expected.z).Within(0.001f));
+                }
+            }
+        }
+
+        [Test]
         public void GeneratedBootstrapInstallsOneConfiguredStreamingRuntimeWithoutSceneMutation()
         {
             const string scenePath = "Assets/WOF/Generated/Scenes/WofBootstrap.unity";
@@ -104,6 +171,8 @@ namespace WOF.Tests
                 Assert.That(runtimes.Length, Is.EqualTo(1));
                 var serialized = new UnityEditor.SerializedObject(runtimes[0]);
                 Assert.That(serialized.FindProperty("terrainMaterial").objectReferenceValue, Is.Not.Null);
+                Assert.That(serialized.FindProperty("foliageRuntime").objectReferenceValue, Is.Not.Null);
+                Assert.That(serialized.FindProperty("waterMaterial").objectReferenceValue, Is.Not.Null);
                 UnityEngine.Object.DestroyImmediate(runtime.gameObject);
             }
             finally
@@ -124,6 +193,37 @@ namespace WOF.Tests
             Assert.That(WofSurvivalTerrainMath.IsAuthoredChunk(12, -12), Is.True);
             Assert.That(WofSurvivalTerrainMath.IsLilyRealmCenter(47, -49), Is.True);
             Assert.That(WofSurvivalTerrainMath.IsLilyRealmCenter(46, -48), Is.False);
+        }
+
+        [Test]
+        public void DesertVillageHasFiveDesertNeighborsAndNoRestoredGrassBiome()
+        {
+            foreach (var coordinate in new[]
+                     {
+                         (3, -4), (5, -4), (3, -3), (4, -3), (5, -3)
+                     })
+            {
+                Assert.That(WofSurvivalTerrainMath.IsDesertVillageExpansionChunk(coordinate.Item1, coordinate.Item2),
+                    Is.True, $"Missing requested desert neighbor {coordinate.Item1}:{coordinate.Item2}.");
+                Assert.That(WofSurvivalTerrainMath.GetBiome(coordinate.Item1, coordinate.Item2),
+                    Is.EqualTo(WofSurvivalBiome.Desert));
+            }
+            Assert.That(WofSurvivalTerrainMath.GetBiome(4, -4), Is.EqualTo(WofSurvivalBiome.Desert));
+            Assert.That(WofSurvivalTerrainMath.GetBiome(6, -3), Is.EqualTo(WofSurvivalBiome.Tallgrass));
+        }
+
+        [Test]
+        public void TerrainMathIsDeterministicAcrossStreamingWorkerThreads()
+        {
+            var coordinates = new[] { (7, 4), (-17, 9), (23, 19), (3, -3), (5, -4) };
+            var expected = coordinates.Select(item =>
+                WofSurvivalTerrainMath.GetTerrainHeight(item.Item1, item.Item2, 73.25d, -119.5d)).ToArray();
+            var tasks = Enumerable.Range(0, 4).Select(_ => Task.Run(() => coordinates.Select(item =>
+                WofSurvivalTerrainMath.GetTerrainHeight(item.Item1, item.Item2, 73.25d, -119.5d)).ToArray())).ToArray();
+            Task.WaitAll(tasks);
+            foreach (var task in tasks)
+            for (var index = 0; index < expected.Length; index++)
+                Assert.That(task.Result[index], Is.EqualTo(expected[index]).Within(0.0000001d));
         }
 
         private static void AssertMesh(Mesh mesh, int vertices, int indices, bool hasRenderData)
@@ -163,6 +263,8 @@ namespace WOF.Tests
             public ChunkCoordinate[] chunkCoordinates;
             public WindowChunk[] window;
             public ChunkFixture[] chunks;
+            public StreamingTreeFixture[] trees;
+            public StreamingWaterFixture[] waters;
         }
         [Serializable]
         private sealed class ChunkCoordinate { public double value; public int chunk; }
@@ -195,5 +297,54 @@ namespace WOF.Tests
             public float colorG;
             public float colorB;
         }
+        [Serializable]
+        private sealed class StreamingTreeFixture
+        {
+            public int cx;
+            public int cz;
+            public int distance;
+            public string lod;
+            public TreePlacement[] trees;
+        }
+        [Serializable]
+        private sealed class TreePlacement
+        {
+            public int meshIndex;
+            public float x;
+            public float y;
+            public float z;
+            public float pitch;
+            public float yaw;
+            public float roll;
+            public float scaleX;
+            public float scaleY;
+            public float scaleZ;
+        }
+        [Serializable]
+        private sealed class StreamingWaterFixture
+        {
+            public int cx;
+            public int cz;
+            public int distance;
+            public string lod;
+            public int riverVertexCount;
+            public int riverIndexCount;
+            public WaterPosition[] riverPositionSamples;
+            public PondFixture[] ponds;
+            public LilyFixture[] lilies;
+        }
+        [Serializable]
+        private sealed class WaterPosition { public float x; public float y; public float z; }
+        [Serializable]
+        private sealed class PondFixture
+        {
+            public float localX;
+            public float localZ;
+            public float radiusX;
+            public float radiusZ;
+            public float y;
+        }
+        [Serializable]
+        private sealed class LilyFixture { public float localX; public float localZ; public float scale; }
     }
 }

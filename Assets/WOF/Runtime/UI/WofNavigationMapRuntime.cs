@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using Unity.Netcode;
@@ -67,6 +68,9 @@ namespace WOF
         private Vector2 _mapCursorNormalized = new(0.5f, 0.5f);
         private bool _hasWaypoint;
         private Vector2 _waypointWorldPosition;
+        private bool _mapProbe;
+        private bool _waypointProbe;
+        private bool _probeApplied;
 
         public static WofNavigationMapRuntime Instance { get; private set; }
         public static bool IsExpanded => Instance != null && Instance._expandedRoot != null &&
@@ -89,6 +93,15 @@ namespace WOF
         private void Awake()
         {
             Instance = this;
+            foreach (var argument in Environment.GetCommandLineArgs())
+            {
+                if (argument.Equals("--wof-map-probe", StringComparison.OrdinalIgnoreCase)) _mapProbe = true;
+                if (argument.Equals("--wof-waypoint-probe", StringComparison.OrdinalIgnoreCase))
+                {
+                    _mapProbe = true;
+                    _waypointProbe = true;
+                }
+            }
         }
 
         private void Start()
@@ -121,16 +134,19 @@ namespace WOF
             RefreshResponsiveLayout();
             var gameplayVisible = hud.IsGameplayVisible || IsExpanded;
             var spellMenuOpen = WofSpellMenuRuntime.IsOpen;
-            _compactRoot.SetActive(gameplayVisible && !IsExpanded && !spellMenuOpen);
+            var pauseOrScoreboardOpen = WofPauseAndScoreboardRuntime.IsAnyMenuOpen;
+            _compactRoot.SetActive(gameplayVisible && !IsExpanded && !spellMenuOpen && !pauseOrScoreboardOpen);
 
-            if (!gameplayVisible || spellMenuOpen)
+            if (!gameplayVisible || spellMenuOpen || pauseOrScoreboardOpen)
             {
                 return;
             }
 
             var keyboardToggle = Keyboard.current?.mKey.wasPressedThisFrame ?? false;
             var gamepad = Gamepad.current;
-            var controllerToggleHeld = gamepad?.dpad.left.isPressed ?? false;
+            var hotbarModifierHeld = (gamepad?.leftShoulder.isPressed ?? false) ||
+                                     (gamepad?.rightShoulder.isPressed ?? false);
+            var controllerToggleHeld = !hotbarModifierHeld && (gamepad?.dpad.left.isPressed ?? false);
             var controllerToggle = controllerToggleHeld && !_controllerToggleHeld;
             _controllerToggleHeld = controllerToggleHeld;
             if (keyboardToggle || (controllerToggle && !IsExpanded))
@@ -151,6 +167,13 @@ namespace WOF
             if (_localPlayer == null)
             {
                 return;
+            }
+
+            if (!_probeApplied && _mapProbe && hud.IsGameplayVisible)
+            {
+                _probeApplied = true;
+                SetExpanded(true);
+                if (_waypointProbe) SetWaypoint(new Vector2(0.68f, 0.34f));
             }
 
             if (IsExpanded) UpdateExpandedMapInput(gamepad);
@@ -205,12 +228,11 @@ namespace WOF
             SetRect(_compactMap.rectTransform, Vector2.zero, Vector2.one);
             CreateCompassLabels(_compactRoot.transform, 10);
             _compactArrow = CreateArrow("PlayerArrow", _compactRoot.transform, new Vector2(0.40f, 0.36f), new Vector2(0.60f, 0.64f));
-            _compactWaypointArrow = CreateArrow(
+            _compactWaypointArrow = CreateWaypointHat(
                 "WaypointArrow",
                 _compactRoot.transform,
                 new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f),
-                new Color32(54, 255, 116, 255));
+                new Vector2(0.5f, 0.5f));
             _compactWaypointArrow.gameObject.SetActive(false);
             var coordinateBadge = CreateCirclePanel("CoordinatesBadge", _compactRoot.transform, new Color32(0, 0, 0, 204));
             _compactCoordinatesBadge = coordinateBadge.GetComponent<RectTransform>();
@@ -342,12 +364,11 @@ namespace WOF
             var north = CreateText("North", worldViewport.transform, "N", 15, TextAnchor.UpperCenter, new Color32(251, 191, 36, 255));
             SetRect(north.rectTransform, new Vector2(0.46f, 0.92f), new Vector2(0.54f, 0.995f));
             AddBlackTextOutline(north);
-            _expandedWaypointMarker = CreateArrow(
+            _expandedWaypointMarker = CreateWaypointHat(
                 "WaypointMarker",
                 _expandedMapContent.transform,
                 new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f),
-                new Color32(54, 255, 116, 255));
+                new Vector2(0.5f, 0.5f));
             _expandedWaypointMarker.gameObject.SetActive(false);
             _expandedArrow = CreateArrow("PlayerArrow", _expandedMapContent.transform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             _expandedMapCursor = CreateMapCursor(_expandedMapContent.transform);
@@ -662,8 +683,8 @@ namespace WOF
                     _compactWaypointArrow.anchorMin = anchor;
                     _compactWaypointArrow.anchorMax = anchor;
                     _compactWaypointArrow.anchoredPosition = Vector2.zero;
-                    var angle = Mathf.Atan2(waypointDirection.x, waypointDirection.y) * Mathf.Rad2Deg;
-                    _compactWaypointArrow.localRotation = Quaternion.Euler(0f, 0f, -angle);
+                    // The hat stays upright; its position around the compass is the direction cue.
+                    _compactWaypointArrow.localRotation = Quaternion.identity;
                 }
             }
             if (_expandedArrow != null)
@@ -976,6 +997,21 @@ namespace WOF
             var graphic = item.GetComponent<WofMinimapArrowGraphic>();
             graphic.raycastTarget = false;
             graphic.color = color;
+            var rect = item.GetComponent<RectTransform>();
+            SetRect(rect, min, max);
+            return rect;
+        }
+
+        private static RectTransform CreateWaypointHat(string name, Transform parent, Vector2 min, Vector2 max)
+        {
+            var item = new GameObject(
+                name,
+                typeof(RectTransform),
+                typeof(CanvasRenderer),
+                typeof(WofWizardHatWaypointGraphic));
+            item.transform.SetParent(parent, false);
+            var graphic = item.GetComponent<WofWizardHatWaypointGraphic>();
+            graphic.raycastTarget = false;
             var rect = item.GetComponent<RectTransform>();
             SetRect(rect, min, max);
             return rect;
