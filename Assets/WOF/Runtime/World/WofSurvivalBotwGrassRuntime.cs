@@ -22,7 +22,7 @@ namespace WOF
         public const float FlowerBloomMinimum = 0.64f;
         public const float FlowerBloomMaximum = 0.86f;
         public const float BladeAlphaCutoff = 0.14f;
-        public const int GrassClusterBladeCount = 10;
+        public const int GrassClusterCardCount = 4;
         public const float SlopeUprightBlend = 0.82f;
         public const int BuildBudgetCheckInterval = 4;
         public const float TerrainGrassDetailStrength = 0.14f;
@@ -40,8 +40,6 @@ namespace WOF
         private static readonly Color MeadowGreen = new Color32(0x83, 0xc7, 0x50, 0xff);
         private static readonly Color HillsideDark = new Color32(0x66, 0x7f, 0x43, 0xff);
         private static readonly Color HillsideLight = new Color32(0x89, 0x92, 0x5a, 0xff);
-        private static readonly Color GrassMeshRoot = new Color32(0x6f, 0xac, 0x45, 0xff);
-        private static readonly Color GrassMeshTip = new Color32(0xc5, 0xe0, 0x78, 0xff);
         private static readonly Color FlowerStem = new Color32(0x61, 0xb6, 0x40, 0xff);
         private static readonly Color[] MeadowFlowerPalette =
         {
@@ -228,13 +226,7 @@ namespace WOF
         {
             var seedX = Mathf.FloorToInt(_center.x * 0.25f);
             var seedZ = Mathf.FloorToInt(_center.z * 0.25f);
-            var distribution = GetIrregularDistributionPoint(candidate, seedX, seedZ);
-            if (distribution.sqrMagnitude > 1f)
-            {
-                matrix = default;
-                color = default;
-                return false;
-            }
+            var distribution = GetReactGrassDistributionPoint(candidate, CandidateCount, seedX, seedZ);
             var worldX = _center.x + distribution.x * Radius;
             var worldZ = _center.z + distribution.y * Radius;
             var biomeCoverage = (float)WofSurvivalTerrainMath.GetBiomeGrassCoverageAtWorld(worldX, worldZ);
@@ -250,20 +242,20 @@ namespace WOF
             var meadow = RestoredMeadowMask(worldX, worldZ);
             var slopeCompression = Mathf.Lerp(1f, 0.96f, Smoothstep(0.34f, 0.78f, 1f - surfaceNormal.y));
             var baseHeight =
-                (0.82f + Hash01(seedX + candidate * 31, seedZ, 2500) * 0.32f + meadow * 0.08f) *
-                slopeCompression * Mathf.Lerp(1f, 1.08f, meadow);
+                (1.1f + Hash01(seedX + candidate * 31, seedZ, 2500) * 0.34f + meadow * 0.12f) *
+                slopeCompression * Mathf.Lerp(1f, 1.16f, meadow);
             var baseWidth =
-                (0.82f + Hash01(seedX, seedZ + candidate * 37, 2700) * 0.3f) *
-                Mathf.Lerp(1f, 1.18f, meadow);
+                (1.42f + Hash01(seedX, seedZ + candidate * 37, 2700) * 0.54f) *
+                Mathf.Lerp(1f, 1.42f, meadow);
             var hillside = Smoothstep(18f, 58f, hit.point.y) * Smoothstep(0.01f, 0.22f, 1f - surfaceNormal.y);
             var slopeSurfaceTuck = Smoothstep(0.04f, 0.24f, 1f - surfaceNormal.y);
             var midDistanceFill = meadow * Smoothstep(28f, Radius * 0.82f, distribution.magnitude * Radius);
             var height = baseHeight *
-                         Mathf.Lerp(1f, 1.08f, midDistanceFill) *
+                         Mathf.Lerp(1f, 1.28f, midDistanceFill) *
                          Mathf.Lerp(1f, 0.96f, slopeSurfaceTuck) *
                          Mathf.Lerp(1f, 0.94f, hillside);
             var width = baseWidth *
-                        Mathf.Lerp(1f, 1.12f, midDistanceFill) *
+                        Mathf.Lerp(1f, 1.42f, midDistanceFill) *
                         Mathf.Lerp(1f, 1.04f, hillside);
             var yaw = Hash01(seedX - candidate * 41, seedZ + candidate * 43, 2900) * 360f;
             var rotation = GetSurfaceAlignedRotation(surfaceNormal, yaw);
@@ -495,6 +487,23 @@ namespace WOF
             return new Vector2(Mathf.Cos(angle) * radial, Mathf.Sin(angle) * radial);
         }
 
+        internal static Vector2 GetReactGrassDistributionPoint(
+            int candidate,
+            int candidateCount,
+            int seedX,
+            int seedZ)
+        {
+            candidateCount = Mathf.Max(1, candidateCount);
+            var radialCandidate = (candidate * 8191) % candidateCount;
+            if (radialCandidate < 0) radialCandidate += candidateCount;
+            var radial = Mathf.Sqrt((radialCandidate + 0.5f) / candidateCount);
+            var angleOffset = Hash01(seedX, seedZ, 1850) * Mathf.PI * 2f;
+            var angle = angleOffset + candidate * 2.39996323f;
+            var jitter = (Hash01(seedX + candidate * 17, seedZ - candidate * 11, 1900) - 0.5f) * 0.56f;
+            var normalizedDistance = (Radius * radial + jitter) / Radius;
+            return new Vector2(Mathf.Cos(angle) * normalizedDistance, Mathf.Sin(angle) * normalizedDistance);
+        }
+
         private static float ValueNoise2D(float x, float z, float salt)
         {
             var x0 = Mathf.FloorToInt(x);
@@ -514,40 +523,27 @@ namespace WOF
 
         internal static Mesh CreateGrassClusterMesh()
         {
-            var vertices = new List<Vector3>(GrassClusterBladeCount * 5);
+            var vertices = new List<Vector3>(GrassClusterCardCount * 4);
             var colors = new List<Color>(vertices.Capacity);
             var uvs = new List<Vector2>(vertices.Capacity);
-            var triangles = new List<int>(GrassClusterBladeCount * 9);
-            var root = GrassMeshRoot;
-            var middle = Color.Lerp(GrassMeshRoot, GrassMeshTip, 0.48f);
-            var tip = GrassMeshTip;
-            for (var blade = 0; blade < GrassClusterBladeCount; blade++)
+            var triangles = new List<int>(GrassClusterCardCount * 6);
+            var root = new Color32(0x85, 0xd2, 0x4a, 0xff);
+            var tip = new Color32(0xf0, 0xff, 0x90, 0xff);
+            for (var card = 0; card < GrassClusterCardCount; card++)
             {
-                var radial = Mathf.Sqrt((blade + 0.35f) / GrassClusterBladeCount) * 0.58f;
-                var angle = blade * 2.39996323f + (blade % 3) * 0.21f;
-                var basePoint = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * radial;
-                var yaw = angle + 0.83f + (blade % 4) * 0.37f;
-                var side = new Vector3(Mathf.Cos(yaw), 0f, Mathf.Sin(yaw));
-                var leanDirection = new Vector3(-side.z, 0f, side.x);
-                var halfWidth = 0.055f + (blade % 4) * 0.012f;
-                var height = 0.76f + (blade % 5) * 0.075f;
-                var lean = 0.13f + (blade % 3) * 0.055f;
-                if ((blade & 1) == 1) lean *= -0.72f;
-                var midpoint = basePoint + Vector3.up * (height * 0.54f) + leanDirection * (lean * 0.36f);
-                var tipPoint = basePoint + Vector3.up * height + leanDirection * lean;
+                var angle = card / (float)GrassClusterCardCount * Mathf.PI;
+                var side = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+                var width = card % 2 == 0 ? 0.72f : 0.58f;
                 var vertex = vertices.Count;
-                vertices.Add(basePoint - side * halfWidth);
-                vertices.Add(basePoint + side * halfWidth);
-                vertices.Add(midpoint - side * halfWidth * 0.58f);
-                vertices.Add(midpoint + side * halfWidth * 0.58f);
-                vertices.Add(tipPoint);
-                colors.Add(root); colors.Add(root); colors.Add(middle); colors.Add(middle); colors.Add(tip);
+                vertices.Add(-side * width);
+                vertices.Add(side * width);
+                vertices.Add(-side * (width * 0.78f) + Vector3.up);
+                vertices.Add(side * (width * 0.78f) + Vector3.up);
+                colors.Add(root); colors.Add(root); colors.Add(tip); colors.Add(tip);
                 uvs.Add(new Vector2(0f, 0f)); uvs.Add(new Vector2(1f, 0f));
-                uvs.Add(new Vector2(0f, 0.54f)); uvs.Add(new Vector2(1f, 0.54f));
-                uvs.Add(new Vector2(0.5f, 1f));
+                uvs.Add(new Vector2(0f, 1f)); uvs.Add(new Vector2(1f, 1f));
                 triangles.Add(vertex); triangles.Add(vertex + 2); triangles.Add(vertex + 1);
                 triangles.Add(vertex + 1); triangles.Add(vertex + 2); triangles.Add(vertex + 3);
-                triangles.Add(vertex + 2); triangles.Add(vertex + 4); triangles.Add(vertex + 3);
             }
 
             var mesh = new Mesh

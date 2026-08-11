@@ -18,9 +18,10 @@ Shader "WOF/BOTW Grass"
         {
             Name "BotwGrass"
             Tags { "LightMode"="UniversalForward" }
-            ZWrite On
+            ZWrite Off
             ZTest LEqual
             Cull Off
+            Blend SrcAlpha OneMinusSrcAlpha
 
             HLSLPROGRAM
             #pragma target 3.5
@@ -47,6 +48,8 @@ Shader "WOF/BOTW Grass"
             };
 
             half4 _Color;
+            TEXTURE2D(_MainTex);
+            SAMPLER(sampler_MainTex);
             float4 _ViewerXZ;
             float _Radius;
             float _FadeWidth;
@@ -91,8 +94,10 @@ Shader "WOF/BOTW Grass"
                 UNITY_SETUP_INSTANCE_ID(input);
                 float distanceXZ = distance(input.positionWS.xz, _ViewerXZ.xy);
                 float edgeFade = 1.0 - smoothstep(max(0.0, _Radius - _FadeWidth), _Radius, distanceXZ);
-                clip(edgeFade - 0.04);
-                return half4(input.color.rgb * _Color.rgb, 1.0);
+                half4 blade = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv);
+                half alpha = blade.a * _Color.a * edgeFade;
+                clip(alpha - _Cutoff);
+                return half4(blade.rgb * input.color.rgb * _Color.rgb, alpha);
             }
             ENDHLSL
         }
