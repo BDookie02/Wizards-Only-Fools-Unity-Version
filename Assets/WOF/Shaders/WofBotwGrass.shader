@@ -9,6 +9,7 @@ Shader "WOF/BOTW Grass"
         _FadeWidth ("Fade Width", Float) = 34
         _WindTime ("Wind Time", Float) = 0
         _Cutoff ("Blade Cutoff", Range(0,1)) = 0.14
+        _TextureInfluence ("Blade Texture Influence", Range(0,1)) = 0.08
         _SlopeUprightBlend ("Slope Upright Blend", Range(0,1)) = 0.82
     }
     SubShader
@@ -55,6 +56,7 @@ Shader "WOF/BOTW Grass"
             float _FadeWidth;
             float _WindTime;
             float _Cutoff;
+            float _TextureInfluence;
             float _SlopeUprightBlend;
 
             UNITY_INSTANCING_BUFFER_START(GrassInstances)
@@ -95,9 +97,11 @@ Shader "WOF/BOTW Grass"
                 float distanceXZ = distance(input.positionWS.xz, _ViewerXZ.xy);
                 float edgeFade = 1.0 - smoothstep(max(0.0, _Radius - _FadeWidth), _Radius, distanceXZ);
                 half4 blade = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv);
-                half alpha = blade.a * _Color.a * edgeFade;
+                half textureInfluence = saturate(_TextureInfluence);
+                half alpha = lerp(1.0h, blade.a, textureInfluence) * _Color.a * edgeFade;
                 clip(alpha - _Cutoff);
-                return half4(blade.rgb * input.color.rgb * _Color.rgb, alpha);
+                half3 textureColor = lerp(half3(1.0h, 1.0h, 1.0h), blade.rgb, textureInfluence);
+                return half4(textureColor * input.color.rgb * _Color.rgb, alpha);
             }
             ENDHLSL
         }

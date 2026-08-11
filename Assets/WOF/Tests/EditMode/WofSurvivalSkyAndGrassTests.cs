@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -63,7 +64,8 @@ namespace WOF.Tests.EditMode
             Assert.That(WofSurvivalBotwGrassRuntime.DesktopBuildBudgetMilliseconds, Is.LessThanOrEqualTo(4d));
             Assert.That(WofSurvivalBotwGrassRuntime.MobileBuildBudgetMilliseconds, Is.LessThanOrEqualTo(2d));
             Assert.That(WofSurvivalBotwGrassRuntime.BuildBudgetCheckInterval, Is.LessThanOrEqualTo(4));
-            Assert.That(WofSurvivalBotwGrassRuntime.GrassClusterCardCount, Is.EqualTo(4));
+            Assert.That(WofSurvivalBotwGrassRuntime.GrassCardsPerTuft, Is.EqualTo(3));
+            Assert.That(WofSurvivalBotwGrassRuntime.BladeTextureInfluence, Is.EqualTo(1f));
             Assert.That(WofSurvivalBotwGrassRuntime.SlopeUprightBlend, Is.InRange(0.75f, 0.9f));
             Assert.That(WofSurvivalBotwGrassRuntime.TerrainGrassDetailStrength, Is.InRange(0.1f, 0.18f));
             Assert.That(WofSurvivalBotwGrassRuntime.TerrainGrassDetailScale, Is.InRange(0.15f, 0.3f));
@@ -114,6 +116,20 @@ namespace WOF.Tests.EditMode
             Assert.That(first.y, Is.InRange(-1f, 1f));
             Assert.That(first.magnitude, Is.LessThanOrEqualTo(1.01f));
             Assert.That(Vector2.Distance(first, next), Is.GreaterThan(0.01f));
+
+            var centroid = Vector2.zero;
+            var meanRadiusSquared = 0f;
+            const int sampleCount = 2048;
+            for (var index = 0; index < sampleCount; index++)
+            {
+                var point = WofSurvivalBotwGrassRuntime.GetIrregularDistributionPoint(index, 24, -16);
+                centroid += point;
+                meanRadiusSquared += point.sqrMagnitude;
+            }
+            centroid /= sampleCount;
+            meanRadiusSquared /= sampleCount;
+            Assert.That(centroid.magnitude, Is.LessThan(0.06f));
+            Assert.That(meanRadiusSquared, Is.InRange(0.45f, 0.55f));
         }
 
         [Test]
@@ -126,24 +142,36 @@ namespace WOF.Tests.EditMode
         }
 
         [Test]
-        public void GrassClusterUsesTheExactReactFourCrossedTextureCards()
+        public void GrassTuftUsesThreeSmallOffsetLayersInsteadOfFourOversizedCrossedCards()
         {
             var mesh = WofSurvivalBotwGrassRuntime.CreateGrassClusterMesh();
             try
             {
-                Assert.That(mesh.vertexCount, Is.EqualTo(WofSurvivalBotwGrassRuntime.GrassClusterCardCount * 4));
-                Assert.That(mesh.triangles, Has.Length.EqualTo(WofSurvivalBotwGrassRuntime.GrassClusterCardCount * 6));
+                Assert.That(mesh.name, Is.EqualTo("WofBotwLayeredGrassTuft"));
+                Assert.That(mesh.vertexCount, Is.EqualTo(
+                    WofSurvivalBotwGrassRuntime.GrassCardsPerTuft *
+                    WofSurvivalBotwGrassRuntime.GrassCardVertices));
+                Assert.That(mesh.triangles, Has.Length.EqualTo(
+                    WofSurvivalBotwGrassRuntime.GrassCardsPerTuft *
+                    WofSurvivalBotwGrassRuntime.GrassCardTriangles * 3));
                 var vertices = mesh.vertices;
-                Assert.That(vertices[0].y, Is.EqualTo(0f).Within(0.001f));
-                Assert.That(vertices[1].y, Is.EqualTo(0f).Within(0.001f));
-                Assert.That(vertices[2].y, Is.EqualTo(1f).Within(0.001f));
-                Assert.That(vertices[3].y, Is.EqualTo(1f).Within(0.001f));
-                Assert.That(Vector3.Distance(vertices[0], vertices[1]),
-                    Is.EqualTo(1.44f).Within(0.001f));
-                Assert.That(Vector3.Distance(vertices[2], vertices[3]),
-                    Is.EqualTo(1.1232f).Within(0.001f));
-                Assert.That(mesh.uv[0], Is.EqualTo(new Vector2(0f, 0f)));
-                Assert.That(mesh.uv[2], Is.EqualTo(new Vector2(0f, 1f)));
+                var rootCenters = new List<Vector3>();
+                for (var card = 0; card < WofSurvivalBotwGrassRuntime.GrassCardsPerTuft; card++)
+                {
+                    var offset = card * WofSurvivalBotwGrassRuntime.GrassCardVertices;
+                    Assert.That(vertices[offset].y, Is.EqualTo(0f).Within(0.001f));
+                    Assert.That(vertices[offset + 1].y, Is.EqualTo(0f).Within(0.001f));
+                    Assert.That(vertices[offset + 2].y, Is.InRange(0.85f, 1.1f));
+                    Assert.That(vertices[offset + 3].y, Is.EqualTo(vertices[offset + 2].y).Within(0.001f));
+                    Assert.That(Vector3.Distance(vertices[offset], vertices[offset + 1]),
+                        Is.InRange(0.68f, 0.84f));
+                    Assert.That(Vector3.Distance(vertices[offset + 2], vertices[offset + 3]),
+                        Is.LessThan(Vector3.Distance(vertices[offset], vertices[offset + 1])));
+                    rootCenters.Add((vertices[offset] + vertices[offset + 1]) * 0.5f);
+                }
+                Assert.That(Vector3.Distance(rootCenters[0], rootCenters[1]), Is.GreaterThan(0.01f));
+                Assert.That(mesh.uv[0].y, Is.EqualTo(0f).Within(0.001f));
+                Assert.That(mesh.uv[2].y, Is.EqualTo(1f).Within(0.001f));
             }
             finally
             {
@@ -152,16 +180,22 @@ namespace WOF.Tests.EditMode
         }
 
         [Test]
-        public void GrassDistributionMatchesTheReactGoldenAnglePermutation()
+        public void GrassTuftKeepsAReadableMutedRootToTipColorGradient()
         {
-            var first = WofSurvivalBotwGrassRuntime.GetReactGrassDistributionPoint(0, 71680, 24, -16);
-            var repeated = WofSurvivalBotwGrassRuntime.GetReactGrassDistributionPoint(0, 71680, 24, -16);
-            var far = WofSurvivalBotwGrassRuntime.GetReactGrassDistributionPoint(71679, 71680, 24, -16);
-
-            Assert.That(repeated, Is.EqualTo(first));
-            Assert.That(first.magnitude, Is.LessThan(0.01f));
-            Assert.That(far.magnitude, Is.InRange(0.05f, 1.01f));
-            Assert.That(Vector2.Distance(first, far), Is.GreaterThan(0.05f));
+            var mesh = WofSurvivalBotwGrassRuntime.CreateGrassClusterMesh();
+            try
+            {
+                var colors = mesh.colors;
+                var root = colors[0];
+                var tip = colors[2];
+                Assert.That(root.g, Is.LessThan(tip.g));
+                Assert.That(tip.r, Is.LessThan(0.7f));
+                Assert.That(tip.g - root.g, Is.GreaterThan(0.25f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(mesh);
+            }
         }
 
         [Test]
