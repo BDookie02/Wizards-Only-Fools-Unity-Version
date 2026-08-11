@@ -1,9 +1,12 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.UI;
 
 namespace WOF
@@ -52,6 +55,9 @@ namespace WOF
         private Text _slotHeader;
         private Button _placeButton;
         private Button _snapButton;
+        private Button _rotateMinusButton;
+        private Button _rotatePlusButton;
+        private Button _clearPlacedButton;
         private Button[] _gridButtons;
         private readonly List<Button> _categoryButtons = new();
         private readonly List<Text> _categoryLabels = new();
@@ -80,6 +86,8 @@ namespace WOF
         private bool _developerModeEnabled;
         private int _lastScreenWidth;
         private int _lastScreenHeight;
+        private Gamepad _controllerProbeGamepad;
+        private string _controllerProbeRoot;
 
         public static WofEngineMenuRuntime Instance { get; private set; }
         public static bool IsOpen => Instance != null && Instance._overlay != null && Instance._overlay.activeSelf;
@@ -106,12 +114,16 @@ namespace WOF
         private void Start()
         {
             _worldRoot = new GameObject("ReactEnginePlacedObjects");
+            ParseControllerProbeArgument();
+            if (!string.IsNullOrWhiteSpace(_controllerProbeRoot))
+                StartCoroutine(RunControllerProbe());
         }
 
         private void OnDestroy()
         {
             if (Instance == this) Instance = null;
             if (IsOpen) RestoreGameplay();
+            RemoveControllerProbeGamepad();
             if (_worldRoot != null) Destroy(_worldRoot);
             WofEnginePlaceableVisualFactory.ClearMaterialCache();
         }
@@ -129,11 +141,17 @@ namespace WOF
             var keyboard = Keyboard.current;
             if (IsOpen)
             {
-                if (keyboard?.escapeKey.wasPressedThisFrame ?? false) Close();
+                if ((keyboard?.escapeKey.wasPressedThisFrame ?? false) ||
+                    ControllerBackPressed(Gamepad.current)) Close();
                 return;
             }
 
             if (keyboard != null && keyboard.lKey.wasPressedThisFrame && _developerModeEnabled && CanOpen()) Open(false);
+        }
+
+        internal static bool ControllerBackPressed(Gamepad gamepad)
+        {
+            return WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.MenuBack);
         }
 
         public void Open(bool enableDeveloperMode = true)
@@ -461,7 +479,154 @@ namespace WOF
             _yawRadians = GetPlayerYawRadians();
             RefreshPlacementPanel();
             RebuildCatalogCards();
+            var restoredCard = _cardObjects.FirstOrDefault(card =>
+                card != null && card.name == $"Placeable-{definition.Id}");
+            EventSystem.current?.SetSelectedGameObject(restoredCard);
             PreviewSelected();
+        }
+
+        private void ParseControllerProbeArgument()
+        {
+            const string prefix = "--wof-engine-menu-controller-probe=";
+            foreach (var argument in Environment.GetCommandLineArgs())
+            {
+                if (!argument.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+                var path = argument.Substring(prefix.Length).Trim('"');
+                if (!path.StartsWith("D:\\", StringComparison.OrdinalIgnoreCase))
+                {
+                    Debug.LogError("[WOF-AUTOMATION] ENGINE_MENU_CONTROLLER_PROBE_FAIL screenshot-root-not-on-d");
+                    return;
+                }
+                Directory.CreateDirectory(path);
+                _controllerProbeRoot = path;
+                return;
+            }
+        }
+
+        private IEnumerator RunControllerProbe()
+        {
+            var deadline = Time.realtimeSinceStartup + 25f;
+            while ((hud == null || !hud.IsGameplayVisible || _localPlayer == null) &&
+                   Time.realtimeSinceStartup < deadline)
+            {
+                ResolveLocalPlayer();
+                yield return null;
+            }
+            if (hud == null || !hud.IsGameplayVisible || _localPlayer == null)
+            {
+                FailControllerProbe("gameplay-or-player-not-ready");
+                yield break;
+            }
+
+            _controllerProbeGamepad = InputSystem.AddDevice<Gamepad>("WOF Engine Menu QA Controller");
+            _controllerProbeGamepad.MakeCurrent();
+            InputSystem.QueueStateEvent(_controllerProbeGamepad, new GamepadState());
+            yield return null;
+            yield return null;
+
+            var placedBefore = PlacedObjectCount;
+            Open();
+            yield return new WaitForSecondsRealtime(0.35f);
+            if (!IsOpen || CurrentControllerSelectionName() != WofEnginePlaceableCategory.Huts.ToString())
+            {
+                FailControllerProbe($"open-selection-failed selected={CurrentControllerSelectionName()}");
+                yield break;
+            }
+
+            for (var index = 0; index < 4; index++)
+                yield return TapControllerButton(GamepadButton.DpadDown);
+            if (CurrentControllerSelectionName() != WofEnginePlaceableCategory.Training.ToString())
+            {
+                FailControllerProbe($"category-navigation-failed selected={CurrentControllerSelectionName()}");
+                yield break;
+            }
+
+            yield return TapControllerButton(GamepadButton.A);
+            if (_activeCategory != WofEnginePlaceableCategory.Training)
+            {
+                FailControllerProbe($"category-select-failed active={_activeCategory}");
+                yield break;
+            }
+
+            yield return TapControllerButton(GamepadButton.DpadRight);
+            if (CurrentControllerSelectionName() != "Placeable-training-spell-dummy")
+            {
+                FailControllerProbe($"catalog-navigation-failed selected={CurrentControllerSelectionName()}");
+                yield break;
+            }
+
+            yield return TapControllerButton(GamepadButton.A);
+            if (_selected?.Id != "training-spell-dummy" ||
+                CurrentControllerSelectionName() != "Placeable-training-spell-dummy")
+            {
+                FailControllerProbe($"catalog-select-failed definition={_selected?.Id ?? "none"} selected={CurrentControllerSelectionName()}");
+                yield break;
+            }
+            yield return CaptureControllerProbeScreenshot("engine-menu-controller-selected.png");
+
+            yield return TapControllerButton(GamepadButton.DpadRight);
+            yield return TapControllerButton(GamepadButton.DpadDown);
+            yield return TapControllerButton(GamepadButton.DpadDown);
+            if (CurrentControllerSelectionName() != "PlaceSelected")
+            {
+                FailControllerProbe($"place-button-navigation-failed selected={CurrentControllerSelectionName()}");
+                yield break;
+            }
+
+            yield return TapControllerButton(GamepadButton.A);
+            var placementDeadline = Time.realtimeSinceStartup + 4f;
+            while (PlacedObjectCount <= placedBefore && Time.realtimeSinceStartup < placementDeadline)
+                yield return null;
+            if (PlacedObjectCount <= placedBefore ||
+                !PlacementStatus.StartsWith("Placed: Spell Dummy", StringComparison.Ordinal))
+            {
+                FailControllerProbe($"place-submit-failed before={placedBefore} after={PlacedObjectCount} status={PlacementStatus}");
+                yield break;
+            }
+            yield return CaptureControllerProbeScreenshot("engine-menu-controller-placed.png");
+
+            yield return TapControllerButton(GamepadButton.B);
+            if (IsOpen)
+            {
+                FailControllerProbe("menu-back-did-not-close");
+                yield break;
+            }
+
+            Debug.Log($"[WOF-AUTOMATION] ENGINE_MENU_CONTROLLER_PROBE_COMPLETE navigation=true select=true place=true back=true placed={PlacedObjectCount}");
+            RemoveControllerProbeGamepad();
+        }
+
+        private IEnumerator TapControllerButton(GamepadButton button)
+        {
+            InputSystem.QueueStateEvent(_controllerProbeGamepad, new GamepadState().WithButton(button));
+            yield return null;
+            InputSystem.QueueStateEvent(_controllerProbeGamepad, new GamepadState());
+            yield return null;
+            yield return new WaitForSecondsRealtime(0.18f);
+        }
+
+        private IEnumerator CaptureControllerProbeScreenshot(string fileName)
+        {
+            ScreenCapture.CaptureScreenshot(Path.Combine(_controllerProbeRoot, fileName));
+            yield return new WaitForSecondsRealtime(0.75f);
+        }
+
+        private static string CurrentControllerSelectionName()
+        {
+            return EventSystem.current?.currentSelectedGameObject?.name ?? "none";
+        }
+
+        private void FailControllerProbe(string reason)
+        {
+            Debug.LogError($"[WOF-AUTOMATION] ENGINE_MENU_CONTROLLER_PROBE_FAIL {reason}");
+            RemoveControllerProbeGamepad();
+        }
+
+        private void RemoveControllerProbeGamepad()
+        {
+            if (_controllerProbeGamepad != null && _controllerProbeGamepad.added)
+                InputSystem.RemoveDevice(_controllerProbeGamepad);
+            _controllerProbeGamepad = null;
         }
 
         private float GetPlayerYawRadians()
@@ -643,7 +808,7 @@ namespace WOF
             SetBottomStretch(footer.GetComponent<RectTransform>(), 0f, 30f, 0f, 0f);
             AddTopBorder(footer.transform, CyanDimBorder);
             var footerText = CreateText("Text", footer.transform,
-                "L TOGGLES THIS MENU WHEN DEV MODE IS ON     /ENGINE OPENS IT FROM COMMAND CONSOLE     SELECT AN ITEM TO PREVIEW, THEN PLACE SELECTED",
+                "L OR /ENGINE OPENS DEV MODE     D-PAD + A NAVIGATE     B CLOSES     SELECT AN ITEM TO PREVIEW, THEN PLACE SELECTED",
                 8, TextAnchor.MiddleCenter, new Color32(207, 250, 254, 92));
             SetFullInset(footerText.rectTransform, 8f);
 
@@ -730,21 +895,22 @@ namespace WOF
                 button.onClick.AddListener(() => SelectGridSize(size));
                 _gridButtons[index] = button;
             }
-            var rotateMinus = CreateButton("RotateMinus", panel.transform, "ROTATE -", new Color32(0, 0, 0, 76), CyanDimBorder);
-            SetTopLeft(rotateMinus.GetComponent<RectTransform>(), 10f, 174f, 72f, 28f);
-            rotateMinus.onClick.AddListener(() => RotateSelected(-Mathf.PI / 8f));
+            _rotateMinusButton = CreateButton("RotateMinus", panel.transform, "ROTATE -", new Color32(0, 0, 0, 76), CyanDimBorder);
+            SetTopLeft(_rotateMinusButton.GetComponent<RectTransform>(), 10f, 174f, 72f, 28f);
+            _rotateMinusButton.onClick.AddListener(() => RotateSelected(-Mathf.PI / 8f));
             _snapButton = CreateButton("Snap", panel.transform, "SNAP ON", new Color32(16, 185, 129, 28), CyanDimBorder);
             SetTopLeft(_snapButton.GetComponent<RectTransform>(), 87f, 174f, 72f, 28f);
             _snapButton.onClick.AddListener(ToggleSnap);
-            var rotatePlus = CreateButton("RotatePlus", panel.transform, "ROTATE +", new Color32(0, 0, 0, 76), CyanDimBorder);
-            SetTopLeft(rotatePlus.GetComponent<RectTransform>(), 164f, 174f, 76f, 28f);
-            rotatePlus.onClick.AddListener(() => RotateSelected(Mathf.PI / 8f));
+            _rotatePlusButton = CreateButton("RotatePlus", panel.transform, "ROTATE +", new Color32(0, 0, 0, 76), CyanDimBorder);
+            SetTopLeft(_rotatePlusButton.GetComponent<RectTransform>(), 164f, 174f, 76f, 28f);
+            _rotatePlusButton.onClick.AddListener(() => RotateSelected(Mathf.PI / 8f));
             _placeButton = CreateButton("PlaceSelected", panel.transform, "PLACE SELECTED", YellowFill, Yellow);
             SetTopLeft(_placeButton.GetComponent<RectTransform>(), 10f, 208f, 230f, 32f);
             _placeButton.onClick.AddListener(() => PlaceSelected());
-            var clear = CreateButton("ClearPlaced", panel.transform, "CLEAR PLACED", new Color32(239, 68, 68, 20), new Color32(254, 202, 202, 90));
-            SetTopLeft(clear.GetComponent<RectTransform>(), 10f, 246f, 230f, 27f);
-            clear.onClick.AddListener(ClearPlaced);
+            _clearPlacedButton = CreateButton("ClearPlaced", panel.transform, "CLEAR PLACED", new Color32(239, 68, 68, 20), new Color32(254, 202, 202, 90));
+            SetTopLeft(_clearPlacedButton.GetComponent<RectTransform>(), 10f, 246f, 230f, 27f);
+            _clearPlacedButton.onClick.AddListener(ClearPlaced);
+            RefreshPlacementControllerNavigation();
 
             _placedHeader = CreateText("PlacedHeading", panel.transform, "PLACED OBJECTS", 8,
                 TextAnchor.MiddleLeft, CyanMuted);
@@ -869,6 +1035,104 @@ namespace WOF
                 SetTopLeft(meta.rectTransform, 7f, 184f, 136f, 18f);
                 _cardObjects.Add(card.gameObject);
             }
+            RefreshCatalogControllerNavigation();
+        }
+
+        private void RefreshCatalogControllerNavigation()
+        {
+            if (_cardObjects.Count == 0 || _gridButtons == null || _gridButtons.Length == 0) return;
+            var activeCategoryIndex = -1;
+            for (var index = 0; index < WofEnginePlaceableCatalog.OrderedCategories.Count; index++)
+            {
+                if (WofEnginePlaceableCatalog.OrderedCategories[index] != _activeCategory) continue;
+                activeCategoryIndex = index;
+                break;
+            }
+            var activeCategory = activeCategoryIndex >= 0 && activeCategoryIndex < _categoryButtons.Count
+                ? _categoryButtons[activeCategoryIndex]
+                : _categoryButtons.FirstOrDefault();
+            for (var index = 0; index < _cardObjects.Count; index++)
+            {
+                var card = _cardObjects[index].GetComponent<Button>();
+                var column = index % 4;
+                var row = index / 4;
+                var rowStart = row * 4;
+                var rowEnd = Mathf.Min(rowStart + 3, _cardObjects.Count - 1);
+                card.navigation = new Navigation
+                {
+                    mode = Navigation.Mode.Explicit,
+                    selectOnLeft = column > 0
+                        ? _cardObjects[index - 1].GetComponent<Button>()
+                        : activeCategory,
+                    selectOnRight = index < rowEnd
+                        ? _cardObjects[index + 1].GetComponent<Button>()
+                        : _gridButtons[0],
+                    selectOnUp = row > 0
+                        ? _cardObjects[index - 4].GetComponent<Button>()
+                        : _search,
+                    selectOnDown = index + 4 < _cardObjects.Count
+                        ? _cardObjects[index + 4].GetComponent<Button>()
+                        : _placeButton
+                };
+            }
+            RefreshPlacementControllerNavigation();
+        }
+
+        private void RefreshPlacementControllerNavigation()
+        {
+            if (_gridButtons == null || _gridButtons.Length != 4 || _rotateMinusButton == null ||
+                _snapButton == null || _rotatePlusButton == null || _placeButton == null ||
+                _clearPlacedButton == null) return;
+
+            var selectedCardObject = _selected == null
+                ? _cardObjects.FirstOrDefault()
+                : _cardObjects.FirstOrDefault(card => card != null && card.name == $"Placeable-{_selected.Id}");
+            var selectedCard = selectedCardObject == null ? null : selectedCardObject.GetComponent<Button>();
+            for (var index = 0; index < _gridButtons.Length; index++)
+            {
+                var down = index == 0 ? _rotateMinusButton : index == 3 ? _rotatePlusButton : _snapButton;
+                _gridButtons[index].navigation = new Navigation
+                {
+                    mode = Navigation.Mode.Explicit,
+                    selectOnLeft = index == 0 ? selectedCard : _gridButtons[index - 1],
+                    selectOnRight = index == _gridButtons.Length - 1 ? null : _gridButtons[index + 1],
+                    selectOnUp = _search,
+                    selectOnDown = down
+                };
+            }
+
+            _rotateMinusButton.navigation = new Navigation
+            {
+                mode = Navigation.Mode.Explicit,
+                selectOnLeft = selectedCard,
+                selectOnRight = _snapButton,
+                selectOnUp = _gridButtons[0],
+                selectOnDown = _placeButton
+            };
+            _snapButton.navigation = new Navigation
+            {
+                mode = Navigation.Mode.Explicit,
+                selectOnLeft = _rotateMinusButton,
+                selectOnRight = _rotatePlusButton,
+                selectOnUp = _gridButtons[1],
+                selectOnDown = _placeButton
+            };
+            _rotatePlusButton.navigation = new Navigation
+            {
+                mode = Navigation.Mode.Explicit,
+                selectOnLeft = _snapButton,
+                selectOnRight = null,
+                selectOnUp = _gridButtons[3],
+                selectOnDown = _placeButton
+            };
+            _placeButton.navigation = new Navigation
+            {
+                mode = Navigation.Mode.Explicit,
+                selectOnLeft = selectedCard,
+                selectOnRight = null,
+                selectOnUp = _snapButton,
+                selectOnDown = _clearPlacedButton
+            };
         }
 
         private void RefreshPlacementPanel()

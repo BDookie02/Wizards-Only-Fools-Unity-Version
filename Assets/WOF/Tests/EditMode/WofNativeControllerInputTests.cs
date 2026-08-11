@@ -9,6 +9,7 @@ namespace WOF.Tests
         public override void Setup()
         {
             base.Setup();
+            WofControllerBindings.Configure(WofControllerBindingRules.CreateDefaults());
             WofInputRouter.BeginControllerGameplay();
         }
 
@@ -79,6 +80,20 @@ namespace WOF.Tests
             Assert.That(WofInputRouter.ReadSprint(Vector2.one), Is.False);
             Assert.That(WofInputRouter.ReadSlide(), Is.False);
             Assert.That(WofInputRouter.ConsumeCast(out _), Is.False);
+        }
+
+        [Test]
+        public void EngineMenuUsesTheRemappableNativeMenuBackEdge()
+        {
+            var gamepad = InputSystem.AddDevice<Gamepad>();
+            Set(gamepad.buttonEast, 0f);
+            Assert.That(WofEngineMenuRuntime.ControllerBackPressed(gamepad), Is.False);
+
+            Press(gamepad.buttonEast);
+            Assert.That(WofEngineMenuRuntime.ControllerBackPressed(gamepad), Is.True);
+
+            Release(gamepad.buttonEast);
+            Assert.That(WofEngineMenuRuntime.ControllerBackPressed(gamepad), Is.False);
         }
     }
 }
