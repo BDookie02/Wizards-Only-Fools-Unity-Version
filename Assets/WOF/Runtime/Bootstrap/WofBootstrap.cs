@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Globalization;
+using System.Threading.Tasks;
 using Unity.Netcode;
 using Unity.Netcode.Transports.SinglePlayer;
 using Unity.Netcode.Transports.UTP;
@@ -102,6 +103,7 @@ namespace WOF
         private bool _clientReplicationSawRespawnHealth;
         private bool _clientReplicationSawRespawnAlive;
         private bool _hasEnteredLaunchFlow;
+        private WofPublicSessionService _publicSessionService;
 
         public static WofBootstrap Instance { get; private set; }
         public WofSessionMode Mode { get; private set; }
@@ -133,6 +135,8 @@ namespace WOF
             {
                 hud = FindFirstObjectByType<WofHud>();
             }
+
+            _publicSessionService = new WofPublicSessionService(networkManager, transport, SetLaunchStatus);
 
             if (GetComponent<WofSurvivalAutosaveRuntime>() == null)
             {
@@ -238,6 +242,7 @@ namespace WOF
 
         private void OnDestroy()
         {
+            _publicSessionService?.LeaveOnShutdown();
             WofInputRouter.ResetMobile();
             WofInputRouter.EndControllerGameplay();
             WofInputRouter.SetGameplaySuppressed(false);
@@ -329,6 +334,52 @@ namespace WOF
             }
         }
 
+        public async Task<string> StartPublicHostAsync()
+        {
+            if (_publicSessionService == null)
+            {
+                SetLaunchStatus(WofPublicSessionRules.NetworkConfigurationRequired);
+                return string.Empty;
+            }
+
+            Mode = WofSessionMode.Host;
+            _roomCode = string.Empty;
+            var result = await _publicSessionService.CreateAsync("Wizards Only Fools");
+            if (!result.Succeeded)
+            {
+                Mode = WofSessionMode.None;
+                return string.Empty;
+            }
+
+            _roomCode = result.JoinCode;
+            hud?.SetRoom(ResolveRoomLabel(Mode, string.Empty, _roomCode, WofGameConstants.DefaultPort, true));
+            return _roomCode;
+        }
+
+        public async Task<bool> StartPublicClientAsync(string joinCode)
+        {
+            if (_publicSessionService == null)
+            {
+                SetLaunchStatus(WofPublicSessionRules.NetworkConfigurationRequired);
+                return false;
+            }
+
+            var normalizedCode = WofPublicSessionRules.NormalizeJoinCode(joinCode);
+            Mode = WofSessionMode.Client;
+            _roomCode = normalizedCode;
+            var result = await _publicSessionService.JoinAsync(normalizedCode);
+            if (!result.Succeeded)
+            {
+                Mode = WofSessionMode.None;
+                _roomCode = string.Empty;
+                return false;
+            }
+
+            _roomCode = result.JoinCode;
+            hud?.SetRoom(ResolveRoomLabel(Mode, string.Empty, _roomCode, WofGameConstants.DefaultPort, true));
+            return true;
+        }
+
         private void StartSelectedTransportAsHost(string label)
         {
             _roomCode = CreateRoomCode();
@@ -383,7 +434,8 @@ namespace WOF
                 Mode,
                 addressInput?.text,
                 _roomCode,
-                WofGameConstants.DefaultPort));
+                WofGameConstants.DefaultPort,
+                _publicSessionService?.State == WofPublicSessionState.Connected));
             var viewProbe = WofPerformanceModeRuntime.IsVillagerViewProbe ||
                             WofPerformanceModeRuntime.IsDarrelDialogProbe;
             Cursor.lockState = viewProbe ? CursorLockMode.None : CursorLockMode.Locked;
@@ -409,8 +461,18 @@ namespace WOF
             WofSessionMode mode,
             string address,
             string roomCode,
-            ushort port)
+            ushort port,
+            bool isPublicSession = false)
         {
+            if (isPublicSession)
+            {
+                return mode == WofSessionMode.Client
+                    ? $"PUBLIC  {roomCode}"
+                    : mode == WofSessionMode.Host
+                        ? $"PUBLIC HOST  {roomCode}"
+                        : string.Empty;
+            }
+
             return mode == WofSessionMode.Client
                 ? $"JOINED  {address}:{port}"
                 : mode == WofSessionMode.Host

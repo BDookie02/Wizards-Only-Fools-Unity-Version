@@ -6,6 +6,9 @@
     "Unity.Collections",
     "Unity.Netcode.Runtime",
     "Unity.Networking.Transport",
+    "Unity.Services.Authentication",
+    "Unity.Services.Core",
+    "Unity.Services.Multiplayer",
     "UnityEngine.UI"
   ],
   "includePlatforms": [],
