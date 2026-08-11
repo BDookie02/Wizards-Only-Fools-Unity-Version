@@ -231,6 +231,10 @@ namespace WOF
             }
         }
         internal int ActiveMountainLadderZoneCount => _activeMountainLadderZones.Count;
+        internal bool IsLilyCoilTubeActive => IsLocalLilyCoilActive;
+        internal float LilyCoilTubeProgress => IsServer
+            ? _serverLilyCoilState.T
+            : _predictedLilyCoilState.T;
         public Vector3 DamageProbePosition => transform.position + transform.up *
                                               WofMovementMath.ResolveCameraHeight(_isSliding.Value, _isCrouching.Value);
         private bool IsLocalLilyCoilActive => IsServer

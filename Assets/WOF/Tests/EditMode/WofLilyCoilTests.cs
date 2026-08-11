@@ -72,6 +72,52 @@ namespace WOF.Tests
         }
 
         [Test]
+        public void ForwardSprintSimulationTraversesTheExactTubeFromLowerToUpperCap()
+        {
+            var state = new WofLilyCoilMovementState();
+            var authoredSpawnState = WofLilyCoilLayout.GetNearestState(WofLilyCoilLayout.PlayableSpawnPosition);
+            var lowerCapFrame = WofLilyCoilLayout.GetFrame(0f);
+            var position = lowerCapFrame.Center +
+                           WofLilyCoilLayout.GetRadial(lowerCapFrame, authoredSpawnState.SurfaceAngle) *
+                           WofLilyCoilLayout.TubePlayerRadius;
+            WofLilyCoilMovement.Enter(ref state, position);
+            var startingT = state.T;
+            var startingSurfaceAngle = state.SurfaceAngle;
+            var actualDistance = 0f;
+            var lastFrame = default(WofLilyCoilMovementFrame);
+            const float deltaTime = 1f / 60f;
+
+            for (var frameIndex = 0; frameIndex < 7200 && state.T < 1f; frameIndex++)
+            {
+                lastFrame = WofLilyCoilMovement.Simulate(
+                    ref state,
+                    Vector2.up,
+                    0f,
+                    0f,
+                    true,
+                    false,
+                    false,
+                    frameIndex * deltaTime,
+                    deltaTime);
+                actualDistance += Vector3.Distance(position, lastFrame.Position);
+                position = lastFrame.Position;
+            }
+
+            var endFrame = WofLilyCoilLayout.GetFrame(1f);
+            var expectedEnd = endFrame.Center +
+                              WofLilyCoilLayout.GetRadial(endFrame, startingSurfaceAngle) *
+                              WofLilyCoilLayout.TubePlayerRadius;
+            var expectedSurfaceDistance = GetSurfaceTrackLength(startingT, startingSurfaceAngle);
+            Assert.That(state.T, Is.EqualTo(1f).Within(0.0001f));
+            Assert.That(Vector3.Distance(position, expectedEnd), Is.LessThan(0.02f));
+            Assert.That(actualDistance, Is.EqualTo(expectedSurfaceDistance).Within(0.5f),
+                "The inner tube surface is shorter than the center-line arc; compare the traversed ground track itself.");
+            Assert.That(lastFrame.IsGrounded, Is.True);
+            Assert.That(lastFrame.IsMoving, Is.True);
+            Assert.That(lastFrame.IsSprinting, Is.True);
+        }
+
+        [Test]
         public void GeneratedSceneContainsExactRealmTunnelFloraAndColliders()
         {
             var previous = SceneManager.GetActiveScene();
@@ -116,6 +162,27 @@ namespace WOF.Tests
         {
             var text = File.ReadAllText(LayoutPath);
             return JsonUtility.FromJson<WofLilyCoilDocument>(text);
+        }
+
+        private static float GetSurfaceTrackLength(float startingT, float surfaceAngle)
+        {
+            const int sampleCount = 8192;
+            var previousFrame = WofLilyCoilLayout.GetFrame(startingT);
+            var previous = previousFrame.Center +
+                           WofLilyCoilLayout.GetRadial(previousFrame, surfaceAngle) *
+                           WofLilyCoilLayout.TubePlayerRadius;
+            var distance = 0f;
+            for (var sampleIndex = 1; sampleIndex <= sampleCount; sampleIndex++)
+            {
+                var t = Mathf.Lerp(startingT, 1f, sampleIndex / (float)sampleCount);
+                var frame = WofLilyCoilLayout.GetFrame(t);
+                var current = frame.Center +
+                              WofLilyCoilLayout.GetRadial(frame, surfaceAngle) *
+                              WofLilyCoilLayout.TubePlayerRadius;
+                distance += Vector3.Distance(previous, current);
+                previous = current;
+            }
+            return distance;
         }
     }
 }
