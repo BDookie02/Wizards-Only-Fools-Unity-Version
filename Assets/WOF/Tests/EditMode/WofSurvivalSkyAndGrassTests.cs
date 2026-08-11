@@ -63,7 +63,7 @@ namespace WOF.Tests.EditMode
             Assert.That(WofSurvivalBotwGrassRuntime.DesktopBuildBudgetMilliseconds, Is.LessThanOrEqualTo(4d));
             Assert.That(WofSurvivalBotwGrassRuntime.MobileBuildBudgetMilliseconds, Is.LessThanOrEqualTo(2d));
             Assert.That(WofSurvivalBotwGrassRuntime.BuildBudgetCheckInterval, Is.LessThanOrEqualTo(4));
-            Assert.That(WofSurvivalBotwGrassRuntime.GrassClusterBladeCount, Is.EqualTo(10));
+            Assert.That(WofSurvivalBotwGrassRuntime.GrassClusterCardCount, Is.EqualTo(4));
             Assert.That(WofSurvivalBotwGrassRuntime.SlopeUprightBlend, Is.InRange(0.75f, 0.9f));
             Assert.That(WofSurvivalBotwGrassRuntime.TerrainGrassDetailStrength, Is.InRange(0.1f, 0.18f));
             Assert.That(WofSurvivalBotwGrassRuntime.TerrainGrassDetailScale, Is.InRange(0.15f, 0.3f));
@@ -126,30 +126,42 @@ namespace WOF.Tests.EditMode
         }
 
         [Test]
-        public void GrassClusterUsesIndividuallyTaperedBladesWithOverheadLean()
+        public void GrassClusterUsesTheExactReactFourCrossedTextureCards()
         {
             var mesh = WofSurvivalBotwGrassRuntime.CreateGrassClusterMesh();
             try
             {
-                Assert.That(mesh.vertexCount, Is.EqualTo(WofSurvivalBotwGrassRuntime.GrassClusterBladeCount * 5));
-                Assert.That(mesh.triangles, Has.Length.EqualTo(WofSurvivalBotwGrassRuntime.GrassClusterBladeCount * 9));
+                Assert.That(mesh.vertexCount, Is.EqualTo(WofSurvivalBotwGrassRuntime.GrassClusterCardCount * 4));
+                Assert.That(mesh.triangles, Has.Length.EqualTo(WofSurvivalBotwGrassRuntime.GrassClusterCardCount * 6));
                 var vertices = mesh.vertices;
-                var baseCenter = (vertices[0] + vertices[1]) * 0.5f;
-                var middleCenter = (vertices[2] + vertices[3]) * 0.5f;
-                var tip = vertices[4];
                 Assert.That(vertices[0].y, Is.EqualTo(0f).Within(0.001f));
                 Assert.That(vertices[1].y, Is.EqualTo(0f).Within(0.001f));
-                Assert.That(middleCenter.y, Is.GreaterThan(0.35f));
-                Assert.That(tip.y, Is.GreaterThan(0.7f));
+                Assert.That(vertices[2].y, Is.EqualTo(1f).Within(0.001f));
+                Assert.That(vertices[3].y, Is.EqualTo(1f).Within(0.001f));
                 Assert.That(Vector3.Distance(vertices[0], vertices[1]),
-                    Is.GreaterThan(Vector3.Distance(vertices[2], vertices[3])));
-                Assert.That(new Vector2(tip.x - baseCenter.x, tip.z - baseCenter.z).magnitude,
-                    Is.GreaterThan(0.1f));
+                    Is.EqualTo(1.44f).Within(0.001f));
+                Assert.That(Vector3.Distance(vertices[2], vertices[3]),
+                    Is.EqualTo(1.1232f).Within(0.001f));
+                Assert.That(mesh.uv[0], Is.EqualTo(new Vector2(0f, 0f)));
+                Assert.That(mesh.uv[2], Is.EqualTo(new Vector2(0f, 1f)));
             }
             finally
             {
                 Object.DestroyImmediate(mesh);
             }
+        }
+
+        [Test]
+        public void GrassDistributionMatchesTheReactGoldenAnglePermutation()
+        {
+            var first = WofSurvivalBotwGrassRuntime.GetReactGrassDistributionPoint(0, 71680, 24, -16);
+            var repeated = WofSurvivalBotwGrassRuntime.GetReactGrassDistributionPoint(0, 71680, 24, -16);
+            var far = WofSurvivalBotwGrassRuntime.GetReactGrassDistributionPoint(71679, 71680, 24, -16);
+
+            Assert.That(repeated, Is.EqualTo(first));
+            Assert.That(first.magnitude, Is.LessThan(0.01f));
+            Assert.That(far.magnitude, Is.InRange(0.05f, 1.01f));
+            Assert.That(Vector2.Distance(first, far), Is.GreaterThan(0.05f));
         }
 
         [Test]
