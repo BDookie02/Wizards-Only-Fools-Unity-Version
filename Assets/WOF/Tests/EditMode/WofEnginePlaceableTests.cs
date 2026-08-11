@@ -236,5 +236,49 @@ namespace WOF.Tests
             Assert.That(WofEnginePlaceableStorage.SanitizeSlotId(" Slot 1 !! "), Is.EqualTo("slot-1-"));
             Assert.That(WofEnginePlaceableStorage.GetSlotLabel("slot-3"), Is.EqualTo("Slot 3"));
         }
+
+        [Test]
+        public void Storage_JsonRoundTripPreservesCurrentObjectsAndNamedSlotsForWebGlPersistence()
+        {
+            var current = new[]
+            {
+                new WofEnginePlaceableRecord
+                {
+                    instanceId = "engine-hut-log-cabin-current",
+                    placeableId = "hut-log-cabin",
+                    label = "Current Cabin",
+                    x = 12f,
+                    y = 3f,
+                    z = -8f,
+                    yaw = 1.25f
+                }
+            };
+            var document = new WofEnginePlaceableStorageDocument
+            {
+                current = WofEnginePlaceableStorage.SanitizeObjects(current)
+            };
+            WofEnginePlaceableStorage.SaveSlot(document, "slot-2", "Village Build", current, 123456L);
+
+            var restored = WofEnginePlaceableStorage.Deserialize(WofEnginePlaceableStorage.Serialize(document));
+
+            Assert.That(restored.current, Has.Count.EqualTo(1));
+            Assert.That(restored.current[0].instanceId, Is.EqualTo("engine-hut-log-cabin-current"));
+            var slot = WofEnginePlaceableStorage.FindSlot(restored, "slot-2");
+            Assert.That(slot, Is.Not.Null);
+            Assert.That(slot.label, Is.EqualTo("Village Build"));
+            Assert.That(slot.savedAt, Is.EqualTo(123456L));
+            Assert.That(slot.objects, Has.Count.EqualTo(1));
+            Assert.That(slot.objects[0].placeableId, Is.EqualTo("hut-log-cabin"));
+        }
+
+        [Test]
+        public void Storage_EmptyJsonRestoresAnEmptyDocument()
+        {
+            var restored = WofEnginePlaceableStorage.Deserialize(string.Empty);
+
+            Assert.That(restored, Is.Not.Null);
+            Assert.That(restored.current, Is.Empty);
+            Assert.That(restored.slots, Is.Empty);
+        }
     }
 }
