@@ -254,7 +254,9 @@ namespace WOF
             for (var index = 0; index < records.Count; index++)
             {
                 var record = records[index];
-                parts[index] = $"{record.instanceId}:{record.placeableId}:{record.x:F3}:{record.y:F3}:{record.z:F3}:{record.yaw:F4}";
+                parts[index] = $"{record.instanceId}:{record.placeableId}:{record.x:F3}:{record.y:F3}:{record.z:F3}:{record.yaw:F4}:" +
+                               $"{record.trainingDummyHealth:F2}:{record.trainingDummyRespawnAt:F3}:" +
+                               $"{record.trainingDummyHitSequence}:{record.trainingDummyLastSpell}";
             }
             return string.Join("|", parts);
         }
@@ -282,6 +284,8 @@ namespace WOF
                 }
                 visual.transform.SetPositionAndRotation(record.Position,
                     Quaternion.Euler(0f, record.yaw * Mathf.Rad2Deg, 0f));
+                if (record.placeableId == "training-spell-dummy")
+                    visual.GetComponent<WofTrainingDummyRuntime>()?.ApplyState(record);
             }
             Debug.Log($"[WOF-AUTOMATION] ENGINE_PLACEABLE_SYNC count={_allRecords.Count}");
         }
@@ -329,7 +333,11 @@ namespace WOF
                     x = plan.Position.x,
                     y = plan.Position.y,
                     z = plan.Position.z,
-                    yaw = plan.YawRadians
+                    yaw = plan.YawRadians,
+                    trainingDummyHealth = WofTrainingDummyCombatRules.MaxHealth,
+                    trainingDummyRespawnAt = 0d,
+                    trainingDummyHitSequence = 0,
+                    trainingDummyLastSpell = -1
                 };
                 if (!_localPlayer.RequestEnginePlaceableUpsert(dummy, instanceId))
                     return new WofEngineMenuActionResult(false, "player position unavailable");

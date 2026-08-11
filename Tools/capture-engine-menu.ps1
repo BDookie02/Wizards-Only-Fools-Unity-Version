@@ -101,12 +101,17 @@ $openPath = Join-Path $resolvedOutputRoot 'engine-menu-open.png'
 $selectedPath = Join-Path $resolvedOutputRoot 'engine-menu-campfire-selected.png'
 $placedPath = Join-Path $resolvedOutputRoot 'engine-menu-campfire-placed.png'
 $dummyPath = Join-Path $resolvedOutputRoot 'engine-menu-training-dummy.png'
+$dummyReadyPath = Join-Path $resolvedOutputRoot 'training-dummy-combat-ready.png'
+$dummyDownPath = Join-Path $resolvedOutputRoot 'training-dummy-combat-down.png'
+$dummyRespawnPath = Join-Path $resolvedOutputRoot 'training-dummy-combat-respawn.png'
 $worldPath = Join-Path $resolvedOutputRoot 'engine-menu-world-placeables.png'
 $storageRoot = Join-Path $resolvedBuildRoot 'EnginePlaceables'
 foreach ($requiredRoot in @($logRoot, $profileRoot)) {
     New-Item -ItemType Directory -Force -Path $requiredRoot | Out-Null
 }
-foreach ($target in @($logPath, $openPath, $selectedPath, $placedPath, $dummyPath, $worldPath)) {
+foreach ($target in @(
+    $logPath, $openPath, $selectedPath, $placedPath, $dummyPath,
+    $dummyReadyPath, $dummyDownPath, $dummyRespawnPath, $worldPath)) {
     if (Test-Path -LiteralPath $target -PathType Leaf) { Remove-Item -LiteralPath $target -Force }
 }
 if (Test-Path -LiteralPath $storageRoot -PathType Container) {
@@ -203,6 +208,13 @@ try {
         throw 'Unity player did not become the foreground window.'
     }
 
+    # Step sideways before placement so the combat target remains centered on the
+    # fixed QA aim line without occupying the town villager's world position.
+    [WofEngineMenuCapture]::SetKey(0x44, $true)
+    Start-Sleep -Milliseconds 1800
+    [WofEngineMenuCapture]::SetKey(0x44, $false)
+    Start-Sleep -Milliseconds 250
+
     Submit-WofCommand -Text 'engine' -Action 'OpenEngineMenu'
     if (-not (Wait-WofMarker -Pattern 'ENGINE_MENU open=true' -Seconds 7)) { throw '/engine did not open the menu.' }
     Start-Sleep -Milliseconds 450
@@ -279,6 +291,35 @@ try {
     }
     [WofEngineMenuCapture]::ClickClient($windowHandle, 1100, 60)
     if (-not (Wait-WofMarker -Pattern 'ENGINE_MENU open=false' -Seconds 7)) { throw 'Physical Close did not close the menu.' }
+    Start-Sleep -Milliseconds 450
+    Save-WofEngineImage -WindowHandle $windowHandle -Path $dummyReadyPath
+
+    [WofEngineMenuCapture]::SendKey(0x45)
+    Start-Sleep -Milliseconds 250
+    [WofEngineMenuCapture]::ClickClient($windowHandle, 344, 216)
+    if (-not (Wait-WofMarker -Pattern 'SPELL_EQUIPPED owner=0 hand=Left spell=Fireball' -Seconds 7)) {
+        throw 'Physical spell-menu selection did not equip Fireball for the dummy combat probe.'
+    }
+    [WofEngineMenuCapture]::SendKey(0x45)
+    Start-Sleep -Milliseconds 300
+    for ($castIndex = 0; $castIndex -lt 5; $castIndex++) {
+        $hitCount = @(Select-String -LiteralPath $logPath -Pattern 'TRAINING_DUMMY_HIT' -ErrorAction SilentlyContinue).Count
+        [WofEngineMenuCapture]::ClickClient($windowHandle, 640, 360)
+        if (-not (Wait-WofMarker -Pattern 'TRAINING_DUMMY_HIT' -PreviousCount $hitCount -Seconds 7)) {
+            throw "Physical Fireball cast $($castIndex + 1) did not damage the replicated training dummy."
+        }
+        if ($castIndex -lt 4) { Start-Sleep -Milliseconds 1050 }
+    }
+    if (-not (Wait-WofMarker -Pattern 'TRAINING_DUMMY_HIT.*health=0 down=true' -Seconds 3)) {
+        throw 'The fifth exact-React Fireball hit did not knock down the training dummy.'
+    }
+    Save-WofEngineImage -WindowHandle $windowHandle -Path $dummyDownPath
+    if (-not (Wait-WofMarker -Pattern 'TRAINING_DUMMY_RESPAWN.*health=120' -Seconds 5)) {
+        throw 'The training dummy did not respawn after the exact React delay.'
+    }
+    Start-Sleep -Milliseconds 250
+    Save-WofEngineImage -WindowHandle $windowHandle -Path $dummyRespawnPath
+
     Submit-WofCommand -Text 'place hut-log-cabin' -Action 'PlaceEngineObject'
     if (-not (Wait-WofMarker -Pattern 'ENGINE_PLACEABLE_PLACED id=hut-log-cabin' -Seconds 7)) {
         throw 'Physical /place did not create the requested hut.'
@@ -301,6 +342,9 @@ try {
         SelectedCapture = $selectedPath
         PlacedCapture = $placedPath
         TrainingDummyCapture = $dummyPath
+        TrainingDummyReadyCapture = $dummyReadyPath
+        TrainingDummyDownCapture = $dummyDownPath
+        TrainingDummyRespawnCapture = $dummyRespawnPath
         WorldCapture = $worldPath
         Storage = $storagePath
         Log = $logPath
@@ -310,6 +354,7 @@ try {
         SaveLoadDeleteSlot = $true
         DirectPlaceCommand = $true
         NonpersistentTrainingDummy = $true
+        TrainingDummyPhysicalCombat = $true
     }
 }
 finally {

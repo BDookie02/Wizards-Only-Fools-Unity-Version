@@ -19,6 +19,7 @@ namespace WOF
     {
         public const float HitscanRange = 150f;
         public const float HitscanRadius = 2.5f;
+        public const float LightningRadius = 12f;
         public const float DirectStatusRange = 48f;
         public const float DirectStatusRadius = 1.85f;
         public const float GrabRange = 40f;

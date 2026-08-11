@@ -42,6 +42,10 @@ namespace WOF
         public float y;
         public float z;
         public float yaw;
+        public float trainingDummyHealth;
+        public double trainingDummyRespawnAt;
+        public int trainingDummyHitSequence;
+        public int trainingDummyLastSpell;
 
         public Vector3 Position => new(x, y, z);
     }
@@ -53,6 +57,10 @@ namespace WOF
         public FixedString64Bytes Label;
         public Vector3 Position;
         public float Yaw;
+        public float TrainingDummyHealth;
+        public double TrainingDummyRespawnAt;
+        public int TrainingDummyHitSequence;
+        public int TrainingDummyLastSpell;
 
         public WofNetworkEnginePlaceableRecord(WofEnginePlaceableRecord record)
         {
@@ -61,6 +69,10 @@ namespace WOF
             Label = record.label ?? string.Empty;
             Position = record.Position;
             Yaw = record.yaw;
+            TrainingDummyHealth = record.trainingDummyHealth;
+            TrainingDummyRespawnAt = record.trainingDummyRespawnAt;
+            TrainingDummyHitSequence = record.trainingDummyHitSequence;
+            TrainingDummyLastSpell = record.trainingDummyLastSpell;
         }
 
         public WofEnginePlaceableRecord ToRuntimeRecord()
@@ -73,7 +85,11 @@ namespace WOF
                 x = Position.x,
                 y = Position.y,
                 z = Position.z,
-                yaw = Yaw
+                yaw = Yaw,
+                trainingDummyHealth = TrainingDummyHealth,
+                trainingDummyRespawnAt = TrainingDummyRespawnAt,
+                trainingDummyHitSequence = TrainingDummyHitSequence,
+                trainingDummyLastSpell = TrainingDummyLastSpell
             };
         }
 
@@ -84,12 +100,20 @@ namespace WOF
             serializer.SerializeValue(ref Label);
             serializer.SerializeValue(ref Position);
             serializer.SerializeValue(ref Yaw);
+            serializer.SerializeValue(ref TrainingDummyHealth);
+            serializer.SerializeValue(ref TrainingDummyRespawnAt);
+            serializer.SerializeValue(ref TrainingDummyHitSequence);
+            serializer.SerializeValue(ref TrainingDummyLastSpell);
         }
 
         public bool Equals(WofNetworkEnginePlaceableRecord other)
         {
             return InstanceId.Equals(other.InstanceId) && PlaceableId.Equals(other.PlaceableId) &&
-                   Label.Equals(other.Label) && Position.Equals(other.Position) && Yaw.Equals(other.Yaw);
+                   Label.Equals(other.Label) && Position.Equals(other.Position) && Yaw.Equals(other.Yaw) &&
+                   TrainingDummyHealth.Equals(other.TrainingDummyHealth) &&
+                   TrainingDummyRespawnAt.Equals(other.TrainingDummyRespawnAt) &&
+                   TrainingDummyHitSequence == other.TrainingDummyHitSequence &&
+                   TrainingDummyLastSpell == other.TrainingDummyLastSpell;
         }
     }
 

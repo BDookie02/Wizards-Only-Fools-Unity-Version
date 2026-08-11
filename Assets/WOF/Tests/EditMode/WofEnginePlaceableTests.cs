@@ -95,6 +95,78 @@ namespace WOF.Tests
         }
 
         [Test]
+        public void TrainingDummy_UsesExactReactHealthDamageAndRespawnTiming()
+        {
+            Assert.That(WofTrainingDummyCombatRules.MaxHealth, Is.EqualTo(120f));
+            Assert.That(WofTrainingDummyCombatRules.RespawnSeconds, Is.EqualTo(1.8d));
+            Assert.That(WofSpellRuntimeTuning.LightningRadius, Is.EqualTo(12f));
+            Assert.That(WofTrainingDummyCombatRules.GetDamage(WofSpellId.Fireball), Is.EqualTo(24f));
+            Assert.That(WofTrainingDummyCombatRules.GetDamage(WofSpellId.IceShard), Is.EqualTo(34f));
+            Assert.That(WofTrainingDummyCombatRules.GetDamage(WofSpellId.ArcaneBeam), Is.EqualTo(34f));
+            Assert.That(WofTrainingDummyCombatRules.GetDamage(WofSpellId.RingsOfPower), Is.EqualTo(22f));
+            Assert.That(WofTrainingDummyCombatRules.GetDamage(WofSpellId.Lightning), Is.EqualTo(32f));
+            Assert.That(WofTrainingDummyCombatRules.GetDamage(WofSpellId.Flamethrower), Is.EqualTo(6f));
+            Assert.That(WofTrainingDummyCombatRules.GetDamage(WofSpellId.Kunai), Is.EqualTo(18f));
+            Assert.That(WofTrainingDummyCombatRules.GetDamage(WofSpellId.Tornado), Is.EqualTo(12f));
+            Assert.That(WofTrainingDummyCombatRules.GetDamage(WofSpellId.MeteorShower), Is.EqualTo(30f));
+            Assert.That(WofTrainingDummyCombatRules.GetDamage(WofSpellId.Sleep), Is.EqualTo(5f));
+            Assert.That(WofTrainingDummyCombatRules.GetDamage(WofSpellId.Poison), Is.EqualTo(7f));
+            Assert.That(WofTrainingDummyCombatRules.GetDamage(WofSpellId.Acid), Is.EqualTo(9f));
+            Assert.That(WofTrainingDummyCombatRules.GetDamage(WofSpellId.IceSpell), Is.Zero);
+
+            var health = WofTrainingDummyCombatRules.MaxHealth;
+            var sequence = 0;
+            WofTrainingDummyDamageResult result = default;
+            for (var index = 0; index < 5; index++)
+            {
+                result = WofTrainingDummyCombatRules.Apply(health, sequence, WofSpellId.Fireball, 10d + index);
+                Assert.That(result.Applied, Is.True);
+                health = result.Health;
+                sequence = result.HitSequence;
+            }
+
+            Assert.That(result.Health, Is.Zero);
+            Assert.That(result.RespawnAt, Is.EqualTo(15.8d).Within(0.000001d));
+            Assert.That(result.HitSequence, Is.EqualTo(5));
+            Assert.That(WofTrainingDummyCombatRules.IsRespawnDue(result.Health, result.RespawnAt, 15.799d), Is.False);
+            Assert.That(WofTrainingDummyCombatRules.IsRespawnDue(result.Health, result.RespawnAt, 15.8d), Is.True);
+
+            var ignoredWhileDown = WofTrainingDummyCombatRules.Apply(
+                result.Health,
+                result.HitSequence,
+                WofSpellId.Fireball,
+                15d);
+            Assert.That(ignoredWhileDown.Applied, Is.False);
+        }
+
+        [Test]
+        public void TrainingDummy_CombatStateRoundTripsThroughNetworkRecord()
+        {
+            var source = new WofEnginePlaceableRecord
+            {
+                instanceId = "dummy-7",
+                placeableId = "training-spell-dummy",
+                label = "Spell Dummy",
+                x = 4f,
+                y = 8f,
+                z = -12f,
+                yaw = 0.75f,
+                trainingDummyHealth = 62f,
+                trainingDummyRespawnAt = 45.25d,
+                trainingDummyHitSequence = 9,
+                trainingDummyLastSpell = (int)WofSpellId.Poison
+            };
+
+            var network = new WofNetworkEnginePlaceableRecord(source);
+            var roundTrip = network.ToRuntimeRecord();
+
+            Assert.That(roundTrip.trainingDummyHealth, Is.EqualTo(62f));
+            Assert.That(roundTrip.trainingDummyRespawnAt, Is.EqualTo(45.25d));
+            Assert.That(roundTrip.trainingDummyHitSequence, Is.EqualTo(9));
+            Assert.That(roundTrip.trainingDummyLastSpell, Is.EqualTo((int)WofSpellId.Poison));
+        }
+
+        [Test]
         public void RandomYaw_IsStableAndFixedYawIgnoresPlayer()
         {
             var campfire = WofEnginePlaceableCatalog.Find("campfire-small");
