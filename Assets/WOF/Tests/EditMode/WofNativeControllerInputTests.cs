@@ -83,6 +83,31 @@ namespace WOF.Tests
         }
 
         [Test]
+        public void NativeTriggerExposesReactStartHoldAndReleasePhases()
+        {
+            var gamepad = InputSystem.AddDevice<Gamepad>();
+            Set(gamepad.leftTrigger, 0f);
+            WofInputRouter.ReadMove();
+
+            Set(gamepad.leftTrigger, 1f);
+            var started = WofInputRouter.ReadCastFrame();
+            Assert.That(started.LeftPressed, Is.True);
+            Assert.That(started.LeftHeld, Is.True);
+            Assert.That(started.LeftReleased, Is.False);
+
+            var held = WofInputRouter.ReadCastFrame();
+            Assert.That(held.LeftPressed, Is.False);
+            Assert.That(held.LeftHeld, Is.True);
+            Assert.That(held.LeftReleased, Is.False);
+
+            Set(gamepad.leftTrigger, 0f);
+            var released = WofInputRouter.ReadCastFrame();
+            Assert.That(released.LeftPressed, Is.False);
+            Assert.That(released.LeftHeld, Is.False);
+            Assert.That(released.LeftReleased, Is.True);
+        }
+
+        [Test]
         public void EngineMenuUsesTheRemappableNativeMenuBackEdge()
         {
             var gamepad = InputSystem.AddDevice<Gamepad>();

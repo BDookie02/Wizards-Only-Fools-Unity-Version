@@ -157,7 +157,16 @@ namespace WOF
         private bool _lastLilyCoilGrounded = true;
         private bool _lastLilyCoilMoving;
         private float _lastGroundedAt;
-        private double _nextServerCastAt;
+        private double _nextServerLeftCastAt;
+        private double _nextServerRightCastAt;
+        private bool _serverLeftCastActive;
+        private bool _serverRightCastActive;
+        private float _serverLeftChannelTimer;
+        private float _serverRightChannelTimer;
+        private bool _localLeftCastActive;
+        private bool _localRightCastActive;
+        private double _localNextLeftCastAt;
+        private double _localNextRightCastAt;
         private uint _inputSequence;
         private Vector3 _automationServerCastDirection;
         private int _remainingAutomationServerCasts;
@@ -506,6 +515,7 @@ namespace WOF
             if (IsOwner)
             {
                 WofAstralMeditationRules.SetAuthoritativeActive(ref _localMeditationState, false);
+                ClearOwnerCastPresentation();
                 WofHud.Instance?.SetMagicHandsVisible(true);
             }
         }
@@ -586,22 +596,7 @@ namespace WOF
                 RecordNavigationSample(command);
             }
 
-            if (WofInputRouter.ConsumeCast(out var castingHand))
-            {
-                if (WofDarrelGroveRuntime.TryInteractWithDragon(this))
-                {
-                    return;
-                }
-                WofHud.Instance?.PlayFiringPose(castingHand);
-                if (IsServer)
-                {
-                    TryCastFromAuthoritativePoseServer(castingHand);
-                }
-                else
-                {
-                    RequestCastRpc(castingHand);
-                }
-            }
+            HandleOwnerCastInput(WofInputRouter.ReadCastFrame());
 
             PublishMovementHud();
 
@@ -611,6 +606,87 @@ namespace WOF
                 var livePitch = cameraPivot == null ? float.NaN : cameraPivot.localEulerAngles.x;
                 Debug.Log($"[WOF-AUTOMATION] TREEHOUSE_VIEW_LIVE position={transform.position} internalYaw={_yaw:F1} commandYaw={_latestServerInput.Yaw:F1} yaw={transform.eulerAngles.y:F1} forward={transform.forward} pitch={livePitch:F1}");
             }
+        }
+
+        private void HandleOwnerCastInput(WofCastInputFrame frame)
+        {
+            if (WofInputRouter.GameplaySuppressed)
+            {
+                ReleaseOwnerCast(WofHandSide.Left);
+                ReleaseOwnerCast(WofHandSide.Right);
+                return;
+            }
+
+            if ((frame.LeftPressed || frame.RightPressed) && WofDarrelGroveRuntime.TryInteractWithDragon(this))
+            {
+                return;
+            }
+
+            if (frame.LeftPressed) StartOwnerCast(WofHandSide.Left);
+            if (frame.RightPressed) StartOwnerCast(WofHandSide.Right);
+            if (frame.LeftReleased) ReleaseOwnerCast(WofHandSide.Left);
+            if (frame.RightReleased) ReleaseOwnerCast(WofHandSide.Right);
+        }
+
+        private void StartOwnerCast(WofHandSide hand)
+        {
+            var spell = hand == WofHandSide.Left ? LeftEquippedSpell : RightEquippedSpell;
+            var now = Time.unscaledTimeAsDouble;
+            var nextCastAt = hand == WofHandSide.Left ? _localNextLeftCastAt : _localNextRightCastAt;
+            if (now < nextCastAt) return;
+            if (WofSpellCastingRules.ShouldConsumeCooldownOnStart(spell))
+            {
+                SetLocalNextCastAt(hand, now + WofSpellRuntimeTuning.GetCastCooldownSeconds(spell));
+            }
+            var remainsActive = WofSpellCastingRules.KeepsHandActiveAfterStart(spell);
+            if (hand == WofHandSide.Left) _localLeftCastActive = remainsActive;
+            else _localRightCastActive = remainsActive;
+
+            if (remainsActive)
+            {
+                WofHud.Instance?.SetHandCasting(hand, true);
+            }
+            else
+            {
+                WofHud.Instance?.PlayFiringPose(hand, WofSpellLoadout.SelfBuffHandChargeSeconds);
+            }
+
+            if (IsServer) TryStartCastServer(hand);
+            else RequestCastStartRpc(hand);
+        }
+
+        private void ReleaseOwnerCast(WofHandSide hand)
+        {
+            var active = hand == WofHandSide.Left ? _localLeftCastActive : _localRightCastActive;
+            if (!active) return;
+            if (hand == WofHandSide.Left) _localLeftCastActive = false;
+            else _localRightCastActive = false;
+            WofHud.Instance?.SetHandCasting(hand, false);
+
+            var spell = hand == WofHandSide.Left ? LeftEquippedSpell : RightEquippedSpell;
+            if (WofSpellCastingRules.ShouldConsumeCooldownOnRelease(spell))
+            {
+                SetLocalNextCastAt(
+                    hand,
+                    Time.unscaledTimeAsDouble + WofSpellRuntimeTuning.GetCastCooldownSeconds(spell));
+            }
+
+            if (IsServer) ReleaseCastServer(hand);
+            else RequestCastReleaseRpc(hand);
+        }
+
+        private void SetLocalNextCastAt(WofHandSide hand, double value)
+        {
+            if (hand == WofHandSide.Left) _localNextLeftCastAt = value;
+            else _localNextRightCastAt = value;
+        }
+
+        private void ClearOwnerCastPresentation()
+        {
+            _localLeftCastActive = false;
+            _localRightCastActive = false;
+            WofHud.Instance?.SetHandCasting(WofHandSide.Left, false);
+            WofHud.Instance?.SetHandCasting(WofHandSide.Right, false);
         }
 
         private void UpdateAstralMeditationInput()
@@ -730,9 +806,14 @@ namespace WOF
 
             ApplyToxicStatusDamage(Time.fixedDeltaTime);
             ApplyManaDecay();
-            if (_isDead.Value) return;
+            if (_isDead.Value)
+            {
+                CancelServerCasting();
+                return;
+            }
             if (_isMeditating.Value)
             {
+                CancelServerCasting();
                 _latestServerInput.Move = Vector2.zero;
                 _latestServerInput.Jump = false;
                 _latestServerInput.Sprint = false;
@@ -748,10 +829,15 @@ namespace WOF
             var simulatedInput = _latestServerInput;
             if (IsTimedBuffActive(_sleepUntil.Value))
             {
+                CancelServerCasting();
                 simulatedInput.Move = Vector2.zero;
                 simulatedInput.Jump = false;
                 simulatedInput.Sprint = false;
                 simulatedInput.Slide = false;
+            }
+            else
+            {
+                UpdateServerChannelledCasts(Time.fixedDeltaTime);
             }
             var movementFrame = Simulate(
                 ref _serverVerticalVelocity,
@@ -891,6 +977,7 @@ namespace WOF
 
             if (active)
             {
+                CancelServerCasting();
                 _latestServerInput.Move = Vector2.zero;
                 _latestServerInput.Jump = false;
                 _latestServerInput.Sprint = false;
@@ -929,6 +1016,18 @@ namespace WOF
             }
 
             TryCastFromAuthoritativePoseServer(hand);
+        }
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+        private void RequestCastStartRpc(WofHandSide hand)
+        {
+            TryStartCastServer(hand);
+        }
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+        private void RequestCastReleaseRpc(WofHandSide hand)
+        {
+            ReleaseCastServer(hand);
         }
 
         public void EquipSpell(WofHandSide hand, WofSpellId spell)
@@ -1246,6 +1345,7 @@ namespace WOF
 
             if (result.IsDead)
             {
+                CancelServerCasting();
                 SetMeditatingServer(false);
                 _isDead.Value = true;
                 Debug.Log($"[WOF-AUTOMATION] PLAYER_DIED id={OwnerClientId}");
@@ -1572,7 +1672,9 @@ namespace WOF
             _serverVerticalVelocity = 0f;
             _predictedVerticalVelocity = 0f;
             _latestServerInput = default;
-            _nextServerCastAt = 0d;
+            _nextServerLeftCastAt = 0d;
+            _nextServerRightCastAt = 0d;
+            CancelServerCasting();
             _automationServerCastDirection = Vector3.zero;
             _remainingAutomationServerCasts = 0;
             _health.Value = WofGameConstants.MaxHealth;
@@ -1956,13 +2058,159 @@ namespace WOF
                 $"[WOF-AUTOMATION] CLIENT_TRAINING_DUMMY_REPLICATION_FAILED reason={reason}");
         }
 
+        private bool TryStartCastServer(WofHandSide hand)
+        {
+            if (!IsServer || _isMeditating.Value || _isDead.Value || IsServerCastActive(hand))
+            {
+                return false;
+            }
+
+            var spell = GetServerEquippedSpell(hand);
+            var now = NetworkManager.ServerTime.Time;
+            if (!WofFireballCastMath.IsFinite(now) || now < GetNextServerCastAt(hand))
+            {
+                return false;
+            }
+
+            var startMode = WofSpellCastingRules.GetStartMode(spell);
+            if (startMode == WofSpellCastStartMode.Immediate &&
+                !TryCastFromAuthoritativePoseServer(hand, spell))
+            {
+                return false;
+            }
+
+            if (!WofSpellCastingRules.KeepsHandActiveAfterStart(spell))
+            {
+                return true;
+            }
+
+            SetServerCastActive(hand, true);
+            _castingUntil.Value = double.MaxValue;
+            Debug.Log($"[WOF] SPELL_CAST_STARTED owner={OwnerClientId} hand={hand} spell={spell} mode={startMode}");
+            return true;
+        }
+
+        private bool ReleaseCastServer(WofHandSide hand)
+        {
+            if (!IsServer || !IsServerCastActive(hand)) return false;
+            var spell = GetServerEquippedSpell(hand);
+            SetServerCastActive(hand, false);
+            RefreshServerCastingPose();
+            Debug.Log($"[WOF] SPELL_CAST_RELEASED owner={OwnerClientId} hand={hand} spell={spell}");
+            if (_isMeditating.Value || _isDead.Value || WofSpellCastingRules.SuppressesReleaseEffect(spell))
+            {
+                return true;
+            }
+            return TryCastFromAuthoritativePoseServer(hand, spell);
+        }
+
+        private void UpdateServerChannelledCasts(float deltaSeconds)
+        {
+            UpdateServerChannelledCast(WofHandSide.Left, deltaSeconds);
+            UpdateServerChannelledCast(WofHandSide.Right, deltaSeconds);
+        }
+
+        private void UpdateServerChannelledCast(WofHandSide hand, float deltaSeconds)
+        {
+            if (!IsServerCastActive(hand) || deltaSeconds <= 0f) return;
+            var spell = GetServerEquippedSpell(hand);
+            if (spell == WofSpellId.Heal)
+            {
+                ref var healTimer = ref GetServerChannelTimer(hand);
+                var firstTick = healTimer <= 0f;
+                healTimer += deltaSeconds;
+                ApplyServerHealing(
+                    WofSpellCastingRules.GetHealAmount(
+                        deltaSeconds,
+                        WofSpellRuntimeTuning.HealSpellHealPerSecond),
+                    clearToxicEffects: true);
+                if (firstTick)
+                {
+                    Debug.Log(
+                        $"[WOF] CHANNEL_SPELL_TICK owner={OwnerClientId} hand={hand} spell={WofSpellId.Heal} rate={WofSpellRuntimeTuning.HealSpellHealPerSecond:F1}");
+                }
+                return;
+            }
+            if (spell != WofSpellId.Flamethrower) return;
+
+            ref var timer = ref GetServerChannelTimer(hand);
+            if (!WofSpellCastingRules.AdvanceFlamethrowerTimer(timer, deltaSeconds, out timer)) return;
+            TrySpawnChannelledFlamethrowerServer(hand);
+        }
+
+        private bool TrySpawnChannelledFlamethrowerServer(WofHandSide hand)
+        {
+            if (fireballPrefab == null ||
+                !TryResolveAuthoritativeSpellLaunch(out var origin, out var direction))
+            {
+                return false;
+            }
+            direction += new Vector3(
+                (UnityEngine.Random.value - 0.5f) * 0.15f,
+                (UnityEngine.Random.value - 0.5f) * 0.15f,
+                (UnityEngine.Random.value - 0.5f) * 0.15f);
+            if (!WofFireballCastMath.TryNormalizeFiniteDirection(direction, out var normalized)) return false;
+            SpawnSpellObject(WofSpellId.Flamethrower, origin, normalized);
+            Debug.Log($"[WOF] CHANNEL_SPELL_TICK owner={OwnerClientId} hand={hand} spell={WofSpellId.Flamethrower}");
+            return true;
+        }
+
+        private void CancelServerCasting()
+        {
+            if (!_serverLeftCastActive && !_serverRightCastActive) return;
+            SetServerCastActive(WofHandSide.Left, false);
+            SetServerCastActive(WofHandSide.Right, false);
+            RefreshServerCastingPose();
+        }
+
+        private bool IsServerCastActive(WofHandSide hand)
+        {
+            return hand == WofHandSide.Left ? _serverLeftCastActive : _serverRightCastActive;
+        }
+
+        private void SetServerCastActive(WofHandSide hand, bool active)
+        {
+            if (hand == WofHandSide.Left)
+            {
+                _serverLeftCastActive = active;
+                _serverLeftChannelTimer = 0f;
+            }
+            else
+            {
+                _serverRightCastActive = active;
+                _serverRightChannelTimer = 0f;
+            }
+        }
+
+        private ref float GetServerChannelTimer(WofHandSide hand)
+        {
+            if (hand == WofHandSide.Left) return ref _serverLeftChannelTimer;
+            return ref _serverRightChannelTimer;
+        }
+
+        private WofSpellId GetServerEquippedSpell(WofHandSide hand)
+        {
+            return hand == WofHandSide.Left ? LeftEquippedSpell : RightEquippedSpell;
+        }
+
+        private void RefreshServerCastingPose()
+        {
+            _castingUntil.Value = _serverLeftCastActive || _serverRightCastActive
+                ? double.MaxValue
+                : NetworkManager.ServerTime.Time;
+        }
+
         private bool TryCastFromAuthoritativePoseServer(WofHandSide hand = WofHandSide.Right)
+        {
+            return TryCastFromAuthoritativePoseServer(hand, GetServerEquippedSpell(hand));
+        }
+
+        private bool TryCastFromAuthoritativePoseServer(WofHandSide hand, WofSpellId equippedSpell)
         {
             if (_isMeditating.Value || _isDead.Value)
             {
                 return false;
             }
-            var equippedSpell = hand == WofHandSide.Left ? LeftEquippedSpell : RightEquippedSpell;
             if (_serverLilyCoilState.Active)
             {
                 var frame = WofLilyCoilLayout.GetFrame(_serverLilyCoilState.T);
@@ -2002,6 +2250,38 @@ namespace WOF
             return TryCastResolvedSpellServer(hand, equippedSpell, origin, direction);
         }
 
+        private bool TryResolveAuthoritativeSpellLaunch(out Vector3 origin, out Vector3 direction)
+        {
+            if (_serverLilyCoilState.Active)
+            {
+                var frame = WofLilyCoilLayout.GetFrame(_serverLilyCoilState.T);
+                var radial = WofLilyCoilLayout.GetRadial(frame, _serverLilyCoilState.SurfaceAngle);
+                var playerUp = -radial;
+                var bodyRotation = Quaternion.LookRotation(frame.Tangent, playerUp);
+                var viewRotation = bodyRotation * Quaternion.Euler(
+                    _authoritativePitch.Value,
+                    _authoritativeYaw.Value,
+                    0f);
+                var eyeHeight = _isSliding.Value
+                    ? WofMovementMath.ReactLowCameraHeight
+                    : WofMovementMath.ReactStandingCameraHeight;
+                return WofFireballCastMath.TryResolveOrientedLaunch(
+                    _authoritativePosition.Value,
+                    playerUp,
+                    eyeHeight,
+                    viewRotation * Vector3.forward,
+                    out origin,
+                    out direction);
+            }
+
+            return WofFireballCastMath.TryResolveAuthoritativeLaunch(
+                _authoritativePosition.Value,
+                _authoritativeYaw.Value,
+                _authoritativePitch.Value,
+                out origin,
+                out direction);
+        }
+
         private bool TryCastResolvedSpellServer(
             WofHandSide hand,
             WofSpellId spell,
@@ -2019,7 +2299,7 @@ namespace WOF
 
         private bool TryApplySelfSpellServer(WofHandSide hand, WofSpellId spell)
         {
-            if (!TryBeginSpellCastServer(spell, WofSpellLoadout.SelfBuffHandChargeSeconds, out var now))
+            if (!TryBeginSpellCastServer(hand, spell, WofSpellLoadout.SelfBuffHandChargeSeconds, out var now))
             {
                 return false;
             }
@@ -2061,7 +2341,7 @@ namespace WOF
                     _magicGlassOrbUntil.Value = double.MaxValue;
                     break;
                 default:
-                    _nextServerCastAt = now;
+                    SetNextServerCastAt(hand, now);
                     return false;
             }
             Debug.Log($"[WOF] SELF_SPELL_CAST owner={OwnerClientId} hand={hand} spell={spell}");
@@ -2074,7 +2354,7 @@ namespace WOF
             Vector3 origin,
             Vector3 direction)
         {
-            if (!TryBeginSpellCastServer(spell, 0.36f, out _)) return false;
+            if (!TryBeginSpellCastServer(hand, spell, 0.36f, out _)) return false;
             var normalized = direction.normalized;
             if (spell == WofSpellId.ArcaneBeam)
             {
@@ -2125,7 +2405,7 @@ namespace WOF
             Vector3 origin,
             Vector3 direction)
         {
-            if (!TryBeginSpellCastServer(spell, 0.36f, out var now)) return false;
+            if (!TryBeginSpellCastServer(hand, spell, 0.36f, out var now)) return false;
             var flatDirection = new Vector3(direction.x, 0f, direction.z);
             if (flatDirection.sqrMagnitude < 0.001f) flatDirection = transform.forward;
             flatDirection.Normalize();
@@ -2178,17 +2458,17 @@ namespace WOF
 
             var now = NetworkManager.ServerTime.Time;
             if (!WofFireballCastMath.IsFinite(now) ||
-                !WofFireballCastMath.IsFinite(_nextServerCastAt) ||
+                !WofFireballCastMath.IsFinite(GetNextServerCastAt(hand)) ||
                 !WofFireballCastMath.IsFinite(_authoritativePosition.Value) ||
                 !WofFireballCastMath.IsFinite(origin) ||
                 !WofFireballCastMath.TryNormalizeFiniteDirection(direction, out var normalizedDirection) ||
                 Vector3.Distance(origin, _authoritativePosition.Value) > 3.5f ||
-                now < _nextServerCastAt)
+                now < GetNextServerCastAt(hand))
             {
                 return false;
             }
 
-            _nextServerCastAt = now + WofSpellRuntimeTuning.GetCastCooldownSeconds(spell);
+            SetNextServerCastAt(hand, now + WofSpellRuntimeTuning.GetCastCooldownSeconds(spell));
             _castingUntil.Value = now + 0.36d;
             SpawnSpellObject(spell, origin, normalizedDirection);
             Debug.Log($"[WOF-AUTOMATION] SPELL_CAST owner={OwnerClientId} hand={hand} spell={spell}");
@@ -2205,13 +2485,30 @@ namespace WOF
             return projectileObject;
         }
 
-        private bool TryBeginSpellCastServer(WofSpellId spell, float poseSeconds, out double now)
+        private bool TryBeginSpellCastServer(
+            WofHandSide hand,
+            WofSpellId spell,
+            float poseSeconds,
+            out double now)
         {
             now = NetworkManager.ServerTime.Time;
-            if (!IsServer || _isDead.Value || fireballPrefab == null || now < _nextServerCastAt) return false;
-            _nextServerCastAt = now + WofSpellRuntimeTuning.GetCastCooldownSeconds(spell);
-            _castingUntil.Value = now + poseSeconds;
+            if (!IsServer || _isDead.Value || fireballPrefab == null || now < GetNextServerCastAt(hand)) return false;
+            SetNextServerCastAt(hand, now + WofSpellRuntimeTuning.GetCastCooldownSeconds(spell));
+            _castingUntil.Value = _serverLeftCastActive || _serverRightCastActive
+                ? double.MaxValue
+                : now + poseSeconds;
             return true;
+        }
+
+        private double GetNextServerCastAt(WofHandSide hand)
+        {
+            return hand == WofHandSide.Left ? _nextServerLeftCastAt : _nextServerRightCastAt;
+        }
+
+        private void SetNextServerCastAt(WofHandSide hand, double value)
+        {
+            if (hand == WofHandSide.Left) _nextServerLeftCastAt = value;
+            else _nextServerRightCastAt = value;
         }
 
         private bool IsValidSpellTarget(WofPlayerController player)
@@ -2608,6 +2905,7 @@ namespace WOF
             }
             if (current)
             {
+                ClearOwnerCastPresentation();
                 WofInputRouter.ResetTransientGameplayActions();
                 WofMovementMath.Reset(ref _predictedMovementState);
                 _predictedVerticalVelocity = 0f;
@@ -2631,6 +2929,7 @@ namespace WOF
             {
                 if (current)
                 {
+                    ClearOwnerCastPresentation();
                     WofAstralMeditationRules.SetAuthoritativeActive(ref _localMeditationState, false);
                 }
                 WofMovementMath.Reset(ref _predictedMovementState);

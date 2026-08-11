@@ -42,6 +42,8 @@ namespace WOF
         private bool _forceMobileControls;
         private bool _forceLeftFiring;
         private bool _forceRightFiring;
+        private bool _leftCastHeld;
+        private bool _rightCastHeld;
         private bool _handIdleProbe;
         private int _lastProbedHandFrame = -1;
         private bool _magicArmed = true;
@@ -126,16 +128,18 @@ namespace WOF
             }
 
             AnimateFrameClock(ref _handClock, ref _handFrame, 4, 0.28f);
-            var leftFiring = ResolveFiringPoseActive(_forceLeftFiring, Time.unscaledTime, _leftFiringUntil);
-            var rightFiring = ResolveFiringPoseActive(_forceRightFiring, Time.unscaledTime, _rightFiringUntil);
+            var leftFiringForced = _forceLeftFiring || _leftCastHeld;
+            var rightFiringForced = _forceRightFiring || _rightCastHeld;
+            var leftFiring = ResolveFiringPoseActive(leftFiringForced, Time.unscaledTime, _leftFiringUntil);
+            var rightFiring = ResolveFiringPoseActive(rightFiringForced, Time.unscaledTime, _rightFiringUntil);
             var leftFlexFrame = ResolveFiringFlexFrame(
-                _forceLeftFiring,
+                leftFiringForced,
                 Time.unscaledTime,
                 _leftFiringStartedAt,
                 _leftFiringUntil,
                 leftFiringHandFrames?.Length ?? 0);
             var rightFlexFrame = ResolveFiringFlexFrame(
-                _forceRightFiring,
+                rightFiringForced,
                 Time.unscaledTime,
                 _rightFiringStartedAt,
                 _rightFiringUntil,
@@ -185,6 +189,18 @@ namespace WOF
             }
 
             Debug.Log($"[WOF] FIRING_HAND {hand} hold={Mathf.Max(0.14f, holdSeconds):F2}");
+        }
+
+        public void SetHandCasting(WofHandSide hand, bool active)
+        {
+            if (hand == WofHandSide.Left)
+            {
+                _leftCastHeld = active;
+            }
+            else
+            {
+                _rightCastHeld = active;
+            }
         }
 
         public void SetGameplayVisible(bool visible)
