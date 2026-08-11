@@ -60,7 +60,7 @@ namespace WOF
         public Vector3 VillagerPosition => _baseLocalPosition;
         public Vector3 InteractionCenter => transform.position + Vector3.up *
                                             (WofQuestTargetMath.TargetCenterHeight - WofVillagerMath.AvatarGroundLift);
-        public bool IsDarrel => string.Equals(villagerId, WofQuestDialogRules.DarrelNpcId, StringComparison.Ordinal);
+        public bool IsDarrel => WofQuestDevStore.IsDarrelNpc(villagerId);
 
         private void Awake()
         {

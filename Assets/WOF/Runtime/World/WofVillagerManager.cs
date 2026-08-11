@@ -20,6 +20,7 @@ namespace WOF
         private int _lastFacingTargetCount = -1;
 
         public int VillagerCount => villagers?.Length ?? 0;
+        public WofVillagerBillboard InsideVillager => _insideVillager;
 
         public string GetReactDisplayName(WofVillagerBillboard villager)
         {

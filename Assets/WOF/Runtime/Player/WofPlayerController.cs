@@ -1209,15 +1209,17 @@ namespace WOF
             {
                 return;
             }
+            var spawn = WofDarrelQuestSpawnStore.Load();
+            var position = spawn.Position;
+            var yaw = spawn.YawDegrees;
+            if (!WofQuestDevRules.IsFinite(position) || !float.IsFinite(yaw)) return;
             _hasDarrelReturnPosition = true;
             _darrelReturnPosition = _authoritativePosition.Value;
             _darrelReturnYaw = _authoritativeYaw.Value;
             ResetTeleportMotion();
-            Teleport(WofDarrelGroveLayout.SpawnPosition, WofDarrelGroveLayout.UnitySpawnYawDegrees);
-            ApplyQuestTeleportOwnerRpc(
-                WofDarrelGroveLayout.SpawnPosition,
-                WofDarrelGroveLayout.UnitySpawnYawDegrees);
-            Debug.Log($"[WOF-AUTOMATION] DARREL_GROVE_TELEPORT owner={OwnerClientId} position={WofDarrelGroveLayout.SpawnPosition} yaw={WofDarrelGroveLayout.UnitySpawnYawDegrees:F1}");
+            Teleport(position, yaw);
+            ApplyQuestTeleportOwnerRpc(position, yaw);
+            Debug.Log($"[WOF-AUTOMATION] DARREL_GROVE_TELEPORT owner={OwnerClientId} position={position} yaw={yaw:F1}");
         }
 
         private void TeleportFromDarrelGroveServer()
@@ -1973,7 +1975,9 @@ namespace WOF
             }
 
             var localPosition = cameraPivot.localPosition;
-            localPosition.y = WofMovementMath.ResolveCameraHeight(isSliding, isCrouching);
+            localPosition.y = _grassOverheadViewProbe
+                ? 26f
+                : WofMovementMath.ResolveCameraHeight(isSliding, isCrouching);
             cameraPivot.localPosition = localPosition;
         }
 
