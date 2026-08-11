@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -36,7 +37,6 @@ namespace WOF.Editor
             var pathCollider = colliderOwner.AddComponent<MeshCollider>();
             pathCollider.sharedMesh = colliderMesh;
             root.AddComponent<WofMountainAccessPathRuntime>().Configure(points, pathCollider);
-            CreateMountainAccessRailsAndSupports(root.transform, points, surfaceHeights, materials);
         }
 
         private static Vector3[] BuildMountainAccessPathPoints(
@@ -46,11 +46,29 @@ namespace WOF.Editor
             float[] surfaceHeights)
         {
             Physics.SyncTransforms();
+            var terrainCollider = mountainRoot.GetComponentsInChildren<MeshCollider>(true)
+                .FirstOrDefault(item => string.Equals(
+                    item.gameObject.name,
+                    "ExactMountainTerrainCollider",
+                    StringComparison.Ordinal));
+            if (terrainCollider == null || terrainCollider.sharedMesh == null)
+                throw new InvalidOperationException("The mountain access trail requires the exact terrain collider.");
+            var terrainVertices = terrainCollider.sharedMesh.vertices;
+            var terrainTriangles = terrainCollider.sharedMesh.triangles;
             var points = new Vector3[horizontal.Length];
             for (var index = 0; index < horizontal.Length; index++)
             {
                 var local = horizontal[index];
-                surfaceHeights[index] = SampleMountainSurfaceHeight(mountainRoot, local.x, local.y);
+                if (!WofMountainAccessPathRuntime.TrySampleTerrainSurfaceHeight(
+                        mountainRoot,
+                        terrainCollider.transform,
+                        terrainVertices,
+                        terrainTriangles,
+                        local.x,
+                        local.y,
+                        out surfaceHeights[index]))
+                    throw new InvalidOperationException(
+                        $"Mountain access trail point {index} ({local.x:F2}, {local.y:F2}) is outside the exact terrain surface.");
                 points[index] = new Vector3(
                     local.x,
                     surfaceHeights[index] + WofMountainAccessPathLayout.DeckClearance,
@@ -60,39 +78,28 @@ namespace WOF.Editor
             points[points.Length - 1].y = Mathf.Max(
                 points[points.Length - 1].y,
                 document.summitY + 1.35f);
-            for (var index = 1; index < points.Length; index++)
+            for (var pass = 0; pass < 3; pass++)
             {
-                points[index].y = Mathf.Max(points[index].y, points[index - 1].y + 0.02f);
-            }
-            for (var index = points.Length - 2; index >= 0; index--)
-            {
-                var horizontalDistance = Vector2.Distance(
-                    new Vector2(points[index].x, points[index].z),
-                    new Vector2(points[index + 1].x, points[index + 1].z));
-                var required = points[index + 1].y - horizontalDistance * WofMountainAccessPathLayout.MaximumGrade;
-                points[index].y = Mathf.Max(points[index].y, required);
+                for (var index = 1; index < points.Length; index++)
+                {
+                    var horizontalDistance = Vector2.Distance(
+                        new Vector2(points[index - 1].x, points[index - 1].z),
+                        new Vector2(points[index].x, points[index].z));
+                    var minimum = points[index - 1].y -
+                                  horizontalDistance * WofMountainAccessPathLayout.MaximumGrade;
+                    points[index].y = Mathf.Max(points[index].y, minimum);
+                }
+                for (var index = points.Length - 2; index >= 0; index--)
+                {
+                    var horizontalDistance = Vector2.Distance(
+                        new Vector2(points[index].x, points[index].z),
+                        new Vector2(points[index + 1].x, points[index + 1].z));
+                    var minimum = points[index + 1].y -
+                                  horizontalDistance * WofMountainAccessPathLayout.MaximumGrade;
+                    points[index].y = Mathf.Max(points[index].y, minimum);
+                }
             }
             return points;
-        }
-
-        private static float SampleMountainSurfaceHeight(Transform mountainRoot, float localX, float localZ)
-        {
-            var world = mountainRoot.TransformPoint(new Vector3(localX, 800f, localZ));
-            foreach (var hit in Physics.RaycastAll(world, Vector3.down, 1600f, ~0, QueryTriggerInteraction.Ignore))
-            {
-                if (!string.Equals(hit.collider.gameObject.name, "ExactMountainTerrainCollider", StringComparison.Ordinal))
-                    continue;
-                return mountainRoot.InverseTransformPoint(hit.point).y;
-            }
-            var worldX = mountainRoot.position.x + localX;
-            var worldZ = mountainRoot.position.z + localZ;
-            var chunkX = WofSurvivalTerrainMath.GetChunkCoordinate(worldX);
-            var chunkZ = WofSurvivalTerrainMath.GetChunkCoordinate(worldZ);
-            return (float)WofSurvivalTerrainMath.GetTerrainHeight(
-                chunkX,
-                chunkZ,
-                worldX - chunkX * WofSurvivalTerrainMath.BlockSize,
-                worldZ - chunkZ * WofSurvivalTerrainMath.BlockSize);
         }
 
         private static Mesh CreateMountainAccessTopMesh(IReadOnlyList<Vector3> points, float width)
