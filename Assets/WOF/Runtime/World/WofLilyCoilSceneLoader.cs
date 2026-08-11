@@ -17,7 +17,7 @@ namespace WOF
                 yield return WofAdditiveSceneLoadScheduler.LoadSceneAdditively(
                     SceneName,
                     "LILY_COIL_SCENE_FAILED",
-                    IsViewProbeRequested()
+                    IsViewProbeRequested() || WofLilyCoilTraversalProbe.IsRequested
                         ? WofAdditiveSceneLoadScheduler.ProbePriority
                         : WofAdditiveSceneLoadScheduler.LilyCoilPriority);
             }
@@ -66,6 +66,10 @@ namespace WOF
             }
 
             Debug.Log($"[WOF-AUTOMATION] LILY_COIL_SCENE_READY scene={scene.name} roots={scene.rootCount} origin={WofLilyCoilLayout.WorldOrigin}");
+            if (WofLilyCoilTraversalProbe.IsRequested)
+            {
+                yield return WofLilyCoilTraversalProbe.Run();
+            }
         }
 
         private static bool IsViewProbeRequested()
