@@ -1424,6 +1424,23 @@ namespace WOF
             return true;
         }
 
+        internal bool ApplyAutomationMovementHeading(float yaw, float pitch = 0f)
+        {
+            if (!IsServer || !IsOwner || !IsSpawned || _isDead.Value || !_controller.enabled)
+            {
+                return false;
+            }
+
+            _yaw = Mathf.Repeat(yaw, 360f);
+            _pitch = Mathf.Clamp(pitch, -82f, 82f);
+            _latestServerInput.Yaw = _yaw;
+            _latestServerInput.Pitch = _pitch;
+            _authoritativeYaw.Value = _yaw;
+            _authoritativePitch.Value = _pitch;
+            ApplyCameraRotation();
+            return true;
+        }
+
         internal bool PrepareForAutomationCampfireProbe(Vector3 position, float armor)
         {
             if (!PrepareForAutomationCombatProbe(position, 0f))

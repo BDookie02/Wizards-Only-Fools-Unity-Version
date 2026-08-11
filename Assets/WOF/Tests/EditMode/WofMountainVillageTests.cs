@@ -241,6 +241,16 @@ namespace WOF.Tests
                 Assert.That(access.PointCount, Is.GreaterThanOrEqualTo(36));
                 Assert.That(access.StartLocalPoint.z, Is.GreaterThan(300f));
                 Assert.That(new Vector2(access.EndLocalPoint.x, access.EndLocalPoint.z).magnitude, Is.LessThan(100f));
+                Assert.That(access.TryCopyWorldPoints(out var accessWorldPoints), Is.True);
+                Assert.That(accessWorldPoints, Has.Length.EqualTo(access.PointCount));
+                Assert.That(Vector3.Distance(
+                        accessWorldPoints[0],
+                        access.transform.TransformPoint(access.StartLocalPoint)),
+                    Is.LessThan(0.001f));
+                Assert.That(Vector3.Distance(
+                        accessWorldPoints[accessWorldPoints.Length - 1],
+                        access.transform.TransformPoint(access.EndLocalPoint)),
+                    Is.LessThan(0.001f));
                 var terrainCollider = roots.SelectMany(root => root.GetComponentsInChildren<MeshCollider>(true))
                     .Single(item => item.name == "ExactMountainTerrainCollider");
                 var terrainVertices = terrainCollider.sharedMesh.vertices;

@@ -20,6 +20,20 @@ namespace WOF
         public Vector3 StartLocalPoint => PointCount == 0 ? Vector3.zero : localPoints[0];
         public Vector3 EndLocalPoint => PointCount == 0 ? Vector3.zero : localPoints[PointCount - 1];
 
+        internal bool TryCopyWorldPoints(out Vector3[] worldPoints)
+        {
+            if (PointCount < 2)
+            {
+                worldPoints = Array.Empty<Vector3>();
+                return false;
+            }
+
+            worldPoints = new Vector3[PointCount];
+            for (var index = 0; index < PointCount; index++)
+                worldPoints[index] = transform.TransformPoint(localPoints[index]);
+            return true;
+        }
+
         public void Configure(Vector3[] exactLocalPoints, MeshCollider exactPathCollider)
         {
             localPoints = exactLocalPoints ?? Array.Empty<Vector3>();
