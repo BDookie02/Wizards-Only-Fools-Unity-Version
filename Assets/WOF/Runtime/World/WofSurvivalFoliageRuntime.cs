@@ -76,6 +76,7 @@ namespace WOF
             {
                 if (placement.meshIndex < 0 || placement.meshIndex >= meshes.Length || meshes[placement.meshIndex] == null)
                     continue;
+                if (!ShouldRenderPlacement(placement)) continue;
                 var cellX = Mathf.FloorToInt(placement.x / SpatialCellSize);
                 var cellZ = Mathf.FloorToInt(placement.z / SpatialCellSize);
                 var key = new FoliageBatchKey(placement.meshIndex, cellX, cellZ);
@@ -97,6 +98,13 @@ namespace WOF
             }
             Debug.Log(
                 $"[WOF-AUTOMATION] SURVIVAL_FOLIAGE_READY trees={placements.Length} meshes={meshes.Length} batches={_batches.Count}");
+        }
+
+        internal static bool ShouldRenderPlacement(WofSurvivalFoliagePlacement placement)
+        {
+            var chunkX = WofSurvivalTerrainMath.GetChunkCoordinate(placement.x);
+            var chunkZ = WofSurvivalTerrainMath.GetChunkCoordinate(placement.z);
+            return !WofSurvivalTerrainMath.IsDesertVillageExpansionChunk(chunkX, chunkZ);
         }
 
         private void Update()

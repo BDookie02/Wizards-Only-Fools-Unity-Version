@@ -327,14 +327,26 @@ namespace WOF
                 TextAnchor.MiddleCenter,
                 new Color32(251, 191, 36, 255));
             SetRect(travelTitle.rectTransform, new Vector2(0.06f, 0.86f), new Vector2(0.94f, 0.98f));
-            foreach (var record in WofMapFastTravel.Destinations)
+            foreach (var record in WofMapFastTravel.MenuDestinations)
             {
                 var capturedDestination = record.Destination;
+                var isDimension = capturedDestination == WofMapDestination.LilyCoil;
                 var button = CreateButton(
                     $"Travel{record.Destination}",
                     destinations.transform,
                     record.Label,
-                    new Color32(88, 56, 112, 255));
+                    isDimension
+                        ? new Color32(126, 43, 171, 255)
+                        : new Color32(88, 56, 112, 255));
+                if (isDimension)
+                {
+                    var label = button.GetComponentInChildren<Text>();
+                    if (label != null)
+                    {
+                        label.color = new Color32(255, 226, 117, 255);
+                        AddBlackTextOutline(label);
+                    }
+                }
                 button.onClick.AddListener(() => TravelTo(capturedDestination));
                 _destinationButtons.Add(button);
             }

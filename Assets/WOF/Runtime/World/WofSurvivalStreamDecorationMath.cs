@@ -89,6 +89,9 @@ namespace WOF
             int distance,
             RenderedTerrainSampler sampler)
         {
+            if (WofSurvivalTerrainMath.IsDesertVillageExpansionChunk(cx, cz))
+                return Array.Empty<WofSurvivalStreamTreePlacement>();
+
             var biome = WofSurvivalTerrainMath.GetBiome(cx, cz);
             var mid = distance > 0;
             var density = mid ? 0.055d : 0.92d;

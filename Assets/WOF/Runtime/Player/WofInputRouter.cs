@@ -227,6 +227,11 @@ namespace WOF
                 return;
             }
 
+            ResetTransientGameplayActions();
+        }
+
+        public static void ResetTransientGameplayActions()
+        {
             ResetMobile();
             s_ControllerLeftCastHeld = false;
             s_ControllerRightCastHeld = false;

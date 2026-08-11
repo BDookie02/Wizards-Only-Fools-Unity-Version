@@ -45,6 +45,7 @@ namespace WOF
         private bool _handIdleProbe;
         private int _lastProbedHandFrame = -1;
         private bool _magicArmed = true;
+        private bool _magicHandsVisible = true;
         private bool _gameplaySurfaceBlocked;
         private float _leftFiringStartedAt = float.NegativeInfinity;
         private float _rightFiringStartedAt = float.NegativeInfinity;
@@ -55,6 +56,9 @@ namespace WOF
         public static WofHud Instance { get; private set; }
         public bool IsGameplayVisible => _gameplayVisible && !_gameplaySurfaceBlocked;
         public bool AreMobileControlsVisible => mobileRoot != null && mobileRoot.activeInHierarchy;
+        public bool AreMagicHandsVisible => _magicHandsVisible &&
+                                            leftHandImage != null && leftHandImage.gameObject.activeInHierarchy &&
+                                            rightHandImage != null && rightHandImage.gameObject.activeInHierarchy;
 
         public void SetTextScale(float scale)
         {
@@ -319,8 +323,22 @@ namespace WOF
 
         public void SetHeldSpellVisibility(bool leftVisible, bool rightVisible)
         {
-            if (leftHeldSpellImage != null) leftHeldSpellImage.gameObject.SetActive(leftVisible);
-            if (heldSpellImage != null) heldSpellImage.gameObject.SetActive(rightVisible);
+            if (leftHeldSpellImage != null) leftHeldSpellImage.gameObject.SetActive(_magicHandsVisible && leftVisible);
+            if (heldSpellImage != null) heldSpellImage.gameObject.SetActive(_magicHandsVisible && rightVisible);
+        }
+
+        public void SetMagicHandsVisible(bool visible)
+        {
+            _magicHandsVisible = visible;
+            if (leftHandImage != null) leftHandImage.gameObject.SetActive(visible);
+            if (rightHandImage != null) rightHandImage.gameObject.SetActive(visible);
+            if (!visible)
+            {
+                if (leftHeldSpellImage != null) leftHeldSpellImage.gameObject.SetActive(false);
+                if (heldSpellImage != null) heldSpellImage.gameObject.SetActive(false);
+                _leftFiringUntil = 0f;
+                _rightFiringUntil = 0f;
+            }
         }
 
         public void SetStatus(string message)

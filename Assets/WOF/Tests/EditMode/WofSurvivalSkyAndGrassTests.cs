@@ -43,6 +43,28 @@ namespace WOF.Tests.EditMode
         }
 
         [Test]
+        public void AstralVeilUsesTheExactReactCanvasDimensionsAndVisibleDetail()
+        {
+            var texture = WofSurvivalSkyTextures.CreateAstralVeil();
+            try
+            {
+                Assert.That(texture.width, Is.EqualTo(192));
+                Assert.That(texture.height, Is.EqualTo(128));
+                Assert.That(texture.filterMode, Is.EqualTo(FilterMode.Bilinear));
+                Assert.That(texture.wrapMode, Is.EqualTo(TextureWrapMode.Clamp));
+                Assert.That(texture.GetPixel(96, 64).a, Is.GreaterThan(0.01f));
+                Assert.That(texture.GetPixel(0, 0).a, Is.GreaterThan(0.25f));
+                Assert.That(System.Array.Exists(
+                    texture.GetPixels(),
+                    pixel => pixel.r > 0.8f && pixel.b > 0.8f && pixel.a > 0.08f), Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(texture);
+            }
+        }
+
+        [Test]
         public void BotwGrassDensityAndStreamingConstantsMatchReact()
         {
             Assert.That(WofSurvivalBotwGrassRuntime.Radius, Is.EqualTo(224f));
@@ -64,7 +86,7 @@ namespace WOF.Tests.EditMode
             Assert.That(WofSurvivalBotwGrassRuntime.DesktopBuildBudgetMilliseconds, Is.LessThanOrEqualTo(4d));
             Assert.That(WofSurvivalBotwGrassRuntime.MobileBuildBudgetMilliseconds, Is.LessThanOrEqualTo(2d));
             Assert.That(WofSurvivalBotwGrassRuntime.BuildBudgetCheckInterval, Is.LessThanOrEqualTo(4));
-            Assert.That(WofSurvivalBotwGrassRuntime.GrassCardsPerTuft, Is.EqualTo(3));
+            Assert.That(WofSurvivalBotwGrassRuntime.GrassCardsPerTuft, Is.EqualTo(4));
             Assert.That(WofSurvivalBotwGrassRuntime.BladeTextureInfluence, Is.EqualTo(1f));
             Assert.That(WofSurvivalBotwGrassRuntime.SlopeUprightBlend, Is.InRange(0.75f, 0.9f));
             Assert.That(WofSurvivalBotwGrassRuntime.TerrainGrassDetailStrength, Is.InRange(0.1f, 0.18f));
@@ -142,12 +164,13 @@ namespace WOF.Tests.EditMode
         }
 
         [Test]
-        public void GrassTuftUsesThreeSmallOffsetLayersInsteadOfFourOversizedCrossedCards()
+        public void GrassTuftRestoresTheExactFourCardReactBotwCluster()
         {
             var mesh = WofSurvivalBotwGrassRuntime.CreateGrassClusterMesh();
             try
             {
-                Assert.That(mesh.name, Is.EqualTo("WofBotwLayeredGrassTuft"));
+                Assert.That(mesh.name, Is.EqualTo("ReactBotwGrassCluster"));
+                Assert.That(WofSurvivalBotwGrassRuntime.GrassCardsPerTuft, Is.EqualTo(4));
                 Assert.That(mesh.vertexCount, Is.EqualTo(
                     WofSurvivalBotwGrassRuntime.GrassCardsPerTuft *
                     WofSurvivalBotwGrassRuntime.GrassCardVertices));
@@ -161,15 +184,15 @@ namespace WOF.Tests.EditMode
                     var offset = card * WofSurvivalBotwGrassRuntime.GrassCardVertices;
                     Assert.That(vertices[offset].y, Is.EqualTo(0f).Within(0.001f));
                     Assert.That(vertices[offset + 1].y, Is.EqualTo(0f).Within(0.001f));
-                    Assert.That(vertices[offset + 2].y, Is.InRange(0.85f, 1.1f));
+                    Assert.That(vertices[offset + 2].y, Is.EqualTo(1f).Within(0.001f));
                     Assert.That(vertices[offset + 3].y, Is.EqualTo(vertices[offset + 2].y).Within(0.001f));
                     Assert.That(Vector3.Distance(vertices[offset], vertices[offset + 1]),
-                        Is.InRange(0.68f, 0.84f));
+                        Is.EqualTo(card % 2 == 0 ? 1.44f : 1.16f).Within(0.001f));
                     Assert.That(Vector3.Distance(vertices[offset + 2], vertices[offset + 3]),
                         Is.LessThan(Vector3.Distance(vertices[offset], vertices[offset + 1])));
                     rootCenters.Add((vertices[offset] + vertices[offset + 1]) * 0.5f);
                 }
-                Assert.That(Vector3.Distance(rootCenters[0], rootCenters[1]), Is.GreaterThan(0.01f));
+                Assert.That(rootCenters, Has.All.EqualTo(Vector3.zero));
                 Assert.That(mesh.uv[0].y, Is.EqualTo(0f).Within(0.001f));
                 Assert.That(mesh.uv[2].y, Is.EqualTo(1f).Within(0.001f));
             }
@@ -180,7 +203,7 @@ namespace WOF.Tests.EditMode
         }
 
         [Test]
-        public void GrassTuftKeepsAReadableMutedRootToTipColorGradient()
+        public void GrassTuftKeepsTheExactReactRootToTipColorGradient()
         {
             var mesh = WofSurvivalBotwGrassRuntime.CreateGrassClusterMesh();
             try
@@ -189,8 +212,12 @@ namespace WOF.Tests.EditMode
                 var root = colors[0];
                 var tip = colors[2];
                 Assert.That(root.g, Is.LessThan(tip.g));
-                Assert.That(tip.r, Is.LessThan(0.7f));
-                Assert.That(tip.g - root.g, Is.GreaterThan(0.25f));
+                Assert.That(root.r, Is.EqualTo(0x85 / 255f).Within(0.001f));
+                Assert.That(root.g, Is.EqualTo(0xd2 / 255f).Within(0.001f));
+                Assert.That(root.b, Is.EqualTo(0x4a / 255f).Within(0.001f));
+                Assert.That(tip.r, Is.EqualTo(0xf0 / 255f).Within(0.001f));
+                Assert.That(tip.g, Is.EqualTo(1f).Within(0.001f));
+                Assert.That(tip.b, Is.EqualTo(0x90 / 255f).Within(0.001f));
             }
             finally
             {
@@ -211,6 +238,57 @@ namespace WOF.Tests.EditMode
             Assert.That(actual, Is.Not.EqualTo(first));
             Assert.That(actual, Is.Not.EqualTo(second));
             Assert.That(actual, Is.Not.EqualTo(third));
+        }
+
+        [Test]
+        public void DesertSurroundUsesRecognizableCactiAcrossExactlyFiveNeighborChunks()
+        {
+            var placements = WofSurvivalDesertCactusRuntime.CreatePlacements();
+            Assert.That(placements, Has.Length.EqualTo(WofSurvivalDesertCactusRuntime.TotalCactusCount));
+            var chunks = new HashSet<string>();
+            foreach (var placement in placements)
+            {
+                chunks.Add($"{placement.ChunkX}:{placement.ChunkZ}");
+                Assert.That((placement.ChunkX, placement.ChunkZ), Is.Not.EqualTo((4, -4)));
+                Assert.That(WofSurvivalTerrainMath.IsDesertVillageExpansionChunk(
+                    placement.ChunkX, placement.ChunkZ), Is.True);
+                Assert.That(WofSurvivalTerrainMath.GetDesertVillageExpansionMaskAtWorld(
+                    placement.Position.x, placement.Position.z), Is.EqualTo(1d).Within(0.000001d));
+                Assert.That(placement.Scale, Is.InRange(1.28f, 2.43f));
+            }
+            Assert.That(chunks, Has.Count.EqualTo(WofSurvivalDesertCactusRuntime.SurroundingChunkCount));
+
+            var mesh = WofSurvivalDesertCactusRuntime.CreateCactusMesh();
+            try
+            {
+                Assert.That(mesh.name, Is.EqualTo("ReactDesertSaguaroCactus"));
+                Assert.That(mesh.vertexCount, Is.GreaterThan(140));
+                Assert.That(mesh.triangles.Length, Is.GreaterThan(500));
+                Assert.That(mesh.bounds.max.y, Is.GreaterThan(11.4f));
+                Assert.That(mesh.bounds.size.x, Is.GreaterThan(6.8f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(mesh);
+            }
+        }
+
+        [Test]
+        public void DesertExpansionUsesCactiInsteadOfDenseBiomeTrees()
+        {
+            var placement = new WofSurvivalFoliagePlacement
+            {
+                x = 3f * WofSurvivalTerrainMath.BlockSize,
+                z = -4f * WofSurvivalTerrainMath.BlockSize,
+                meshIndex = 0
+            };
+            Assert.That(WofSurvivalFoliageRuntime.ShouldRenderPlacement(placement), Is.False);
+            placement.meshIndex = 8;
+            Assert.That(WofSurvivalFoliageRuntime.ShouldRenderPlacement(placement), Is.False);
+            placement.x = 0f;
+            placement.z = 0f;
+            placement.meshIndex = 0;
+            Assert.That(WofSurvivalFoliageRuntime.ShouldRenderPlacement(placement), Is.True);
         }
 
         [Test]

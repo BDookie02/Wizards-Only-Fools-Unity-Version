@@ -227,8 +227,8 @@ namespace WOF.Editor
         {
             PlayerSettings.companyName = "Wizards Only Fools";
             PlayerSettings.productName = "Wizards Only Fools";
-            PlayerSettings.bundleVersion = "0.4.13";
-            PlayerSettings.Android.bundleVersionCode = 16;
+            PlayerSettings.bundleVersion = "0.4.14";
+            PlayerSettings.Android.bundleVersionCode = 17;
             PlayerSettings.runInBackground = true;
             PlayerSettings.colorSpace = ColorSpace.Linear;
             PlayerSettings.defaultScreenWidth = 1280;
@@ -877,6 +877,7 @@ namespace WOF.Editor
             var crouchWalkAvatarFrames = LoadAvatarFrames("crouchwalk");
             var jumpAvatarFrames = LoadAvatarFrames("jump");
             var castingAvatarFrames = LoadAvatarFrames("casting");
+            var meditateAvatarFrames = LoadAvatarFrames("meditate");
             var damagedAvatarFrames = LoadAvatarFrames("damaged");
             avatarRenderer.sprite = idleAvatarFrames.FirstOrDefault();
             var avatarAnimator = avatarObject.AddComponent<WofAvatarAnimator>();
@@ -888,6 +889,7 @@ namespace WOF.Editor
             SetObjectReferenceArray(avatarAnimator, "crouchWalkFrames", crouchWalkAvatarFrames);
             SetObjectReferenceArray(avatarAnimator, "jumpFrames", jumpAvatarFrames);
             SetObjectReferenceArray(avatarAnimator, "castingFrames", castingAvatarFrames);
+            SetObjectReferenceArray(avatarAnimator, "meditateFrames", meditateAvatarFrames);
             SetObjectReferenceArray(avatarAnimator, "damagedFrames", damagedAvatarFrames);
 
             var pivot = new GameObject("CameraPivot");
@@ -1017,6 +1019,7 @@ namespace WOF.Editor
 
             world.AddComponent<WofSurvivalBotwGrassRuntime>().Configure(
                 LoadRequiredAsset<Texture2D>("Assets/WOF/Art/Generated/React/Vegetation/botw-grass.png"));
+            world.AddComponent<WofSurvivalDesertCactusRuntime>();
 
             var sunlightObject = new GameObject("Sun");
             sunlightObject.transform.position = WofGameWorldLightingLayout.DirectionalLightPosition;

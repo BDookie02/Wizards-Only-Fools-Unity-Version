@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace WOF
 {
@@ -51,6 +52,10 @@ namespace WOF
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Server);
         private readonly NetworkVariable<bool> _isDead = new(
+            false,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
+        private readonly NetworkVariable<bool> _isMeditating = new(
             false,
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Server);
@@ -140,6 +145,7 @@ namespace WOF
         private WofInputCommand _latestServerInput;
         private WofMovementRuntimeState _serverMovementState;
         private WofMovementRuntimeState _predictedMovementState;
+        private WofAstralMeditationState _localMeditationState;
         private WofLilyCoilMovementState _serverLilyCoilState;
         private WofLilyCoilMovementState _predictedLilyCoilState;
         private float _serverVerticalVelocity;
@@ -176,6 +182,7 @@ namespace WOF
         private float _darrelReturnYaw;
         private bool? _pendingVClipEnabled;
         private bool _vclipMovementLogged;
+        private bool _meditationPresentationLogged;
         private double _nextManaDecayAt;
         private readonly Dictionary<string, double> _manaFlowerCooldowns = new();
 
@@ -186,15 +193,16 @@ namespace WOF
         public bool CanRechargeMana => _leftMana.Value < WofManaRules.MaximumPower ||
                                        _rightMana.Value < WofManaRules.MaximumPower;
         public bool IsDead => _isDead.Value;
+        public bool IsMeditating => IsOwner ? _localMeditationState.IsActive : _isMeditating.Value;
         public bool HasActiveSpellShield => IsTimedBuffActive(_discShieldUntil.Value) ||
                                             IsTimedBuffActive(_orbShieldUntil.Value);
         public bool IsSleepEffectActive => IsTimedBuffActive(_sleepUntil.Value);
         public bool IsSlowEffectActive => IsTimedBuffActive(_slowUntil.Value);
         public bool IsPoisonEffectActive => IsTimedBuffActive(_poisonUntil.Value);
         public bool IsAcidEffectActive => IsTimedBuffActive(_acidUntil.Value);
-        public bool IsGrounded => !IsVClipEnabled && (IsLocalLilyCoilActive
+        public bool IsGrounded => IsMeditating || (!IsVClipEnabled && (IsLocalLilyCoilActive
             ? _lastLilyCoilGrounded
-            : _controller != null && (!_controller.enabled || _controller.isGrounded));
+            : _controller != null && (!_controller.enabled || _controller.isGrounded)));
         public bool IsCasting => IsSpawned && NetworkManager != null &&
                                  NetworkManager.ServerTime.Time < _castingUntil.Value;
         public bool IsSprinting => _isSprinting.Value;
@@ -207,6 +215,10 @@ namespace WOF
         {
             get
             {
+                if (IsMeditating)
+                {
+                    return false;
+                }
                 if (_controller == null)
                 {
                     return false;
@@ -328,6 +340,7 @@ namespace WOF
             _leftMana.OnValueChanged += HandleManaChanged;
             _rightMana.OnValueChanged += HandleManaChanged;
             _isDead.OnValueChanged += HandleDeadChanged;
+            _isMeditating.OnValueChanged += HandleMeditatingChanged;
             _isVClipEnabled.OnValueChanged += HandleVClipEnabledChanged;
             _leftEquippedSpell.OnValueChanged += HandleEquippedSpellChanged;
             _rightEquippedSpell.OnValueChanged += HandleEquippedSpellChanged;
@@ -400,6 +413,7 @@ namespace WOF
                 _nextManaDecayAt = NetworkManager.ServerTime.Time + 1d;
                 _manaFlowerCooldowns.Clear();
                 _isDead.Value = false;
+                _isMeditating.Value = false;
                 _castingUntil.Value = 0d;
                 _leftEquippedSpell.Value = (int)WofSpellLoadout.ReactDefaultLeft;
                 _rightEquippedSpell.Value = (int)WofSpellLoadout.ReactDefaultRight;
@@ -416,6 +430,9 @@ namespace WOF
 
             if (IsOwner)
             {
+                WofAstralMeditationRules.SetAuthoritativeActive(
+                    ref _localMeditationState,
+                    _isMeditating.Value);
                 _yaw = _authoritativeYaw.Value;
                 _pitch = _authoritativePitch.Value;
                 if (_chicagoCityViewProbe)
@@ -482,15 +499,36 @@ namespace WOF
             _leftMana.OnValueChanged -= HandleManaChanged;
             _rightMana.OnValueChanged -= HandleManaChanged;
             _isDead.OnValueChanged -= HandleDeadChanged;
+            _isMeditating.OnValueChanged -= HandleMeditatingChanged;
             _isVClipEnabled.OnValueChanged -= HandleVClipEnabledChanged;
             _leftEquippedSpell.OnValueChanged -= HandleEquippedSpellChanged;
             _rightEquippedSpell.OnValueChanged -= HandleEquippedSpellChanged;
+            if (IsOwner)
+            {
+                WofAstralMeditationRules.SetAuthoritativeActive(ref _localMeditationState, false);
+                WofHud.Instance?.SetMagicHandsVisible(true);
+            }
         }
 
         private void Update()
         {
-            if (!IsSpawned || !IsOwner || _isDead.Value)
+            if (!IsSpawned || !IsOwner)
             {
+                return;
+            }
+
+            UpdateAstralMeditationInput();
+            if (_isDead.Value)
+            {
+                return;
+            }
+
+            if (IsMeditating)
+            {
+                ApplyCameraRotation();
+                ApplyCameraHeight(false, false);
+                TryLogMeditationPresentation();
+                PublishMovementHud();
                 return;
             }
 
@@ -575,6 +613,111 @@ namespace WOF
             }
         }
 
+        private void UpdateAstralMeditationInput()
+        {
+            var keyboard = Keyboard.current;
+            if (keyboard == null)
+            {
+                return;
+            }
+
+            var leftHeld = keyboard.leftCtrlKey.isPressed;
+            var rightHeld = keyboard.rightCtrlKey.isPressed;
+            var pressed = keyboard.leftCtrlKey.wasPressedThisFrame ||
+                          keyboard.rightCtrlKey.wasPressedThisFrame;
+            var released = keyboard.leftCtrlKey.wasReleasedThisFrame ||
+                           keyboard.rightCtrlKey.wasReleasedThisFrame;
+            var now = Time.unscaledTimeAsDouble;
+
+            if (pressed)
+            {
+                var holdWasStarted = _localMeditationState.ExitHoldStartedAt >= 0d;
+                var transition = WofAstralMeditationRules.HandleControlPressed(
+                    ref _localMeditationState,
+                    now,
+                    !_isDead.Value && !WofInputRouter.GameplaySuppressed);
+                ApplyOwnerMeditationTransition(transition);
+                if (transition == WofAstralMeditationTransition.None &&
+                    !holdWasStarted && _localMeditationState.ExitHoldStartedAt >= 0d)
+                {
+                    Debug.Log($"[WOF-AUTOMATION] ASTRAL_MEDITATION_EXIT_HOLD_STARTED owner={OwnerClientId}");
+                }
+            }
+
+            if (released)
+            {
+                var holdStartedAt = _localMeditationState.ExitHoldStartedAt;
+                WofAstralMeditationRules.HandleControlReleased(
+                    ref _localMeditationState,
+                    leftHeld || rightHeld);
+                if (!leftHeld && !rightHeld && _localMeditationState.IsActive)
+                {
+                    if (holdStartedAt >= 0d)
+                    {
+                        Debug.Log(
+                            $"[WOF-AUTOMATION] ASTRAL_MEDITATION_SHORT_HOLD_CANCELLED owner={OwnerClientId} elapsed={Mathf.Max(0f, (float)(now - holdStartedAt)):F2}");
+                    }
+                    else
+                    {
+                        Debug.Log($"[WOF-AUTOMATION] ASTRAL_MEDITATION_EXIT_ARMED owner={OwnerClientId}");
+                    }
+                }
+            }
+
+            ApplyOwnerMeditationTransition(
+                WofAstralMeditationRules.UpdateExitHold(ref _localMeditationState, now));
+        }
+
+        private void ApplyOwnerMeditationTransition(WofAstralMeditationTransition transition)
+        {
+            if (transition == WofAstralMeditationTransition.None)
+            {
+                return;
+            }
+
+            var active = transition == WofAstralMeditationTransition.Entered;
+            _meditationPresentationLogged = false;
+            if (active)
+            {
+                WofInputRouter.ResetTransientGameplayActions();
+                WofMovementMath.Reset(ref _predictedMovementState);
+                _predictedVerticalVelocity = 0f;
+            }
+
+            if (IsServer)
+            {
+                SetMeditatingServer(active);
+            }
+            else
+            {
+                SetMeditatingRpc(active);
+            }
+
+            ApplyCameraHeight(false, false);
+            PublishHud();
+            Debug.Log(
+                $"[WOF-AUTOMATION] ASTRAL_MEDITATION_LOCAL owner={OwnerClientId} " +
+                $"active={active.ToString().ToLowerInvariant()} cameraHeight={(cameraPivot == null ? float.NaN : cameraPivot.localPosition.y):F3} " +
+                $"handsVisible={(WofHud.Instance?.AreMagicHandsVisible ?? false).ToString().ToLowerInvariant()} " +
+                $"position={transform.position.x:F3},{transform.position.y:F3},{transform.position.z:F3}");
+        }
+
+        private void TryLogMeditationPresentation()
+        {
+            if (_meditationPresentationLogged || cameraPivot == null ||
+                Mathf.Abs(cameraPivot.localPosition.y - WofMovementMath.UnityMeditationCameraHeight) > 0.01f)
+            {
+                return;
+            }
+
+            _meditationPresentationLogged = true;
+            Debug.Log(
+                $"[WOF-AUTOMATION] ASTRAL_MEDITATION_PRESENTATION owner={OwnerClientId} active=true " +
+                $"cameraHeight={cameraPivot.localPosition.y:F3} " +
+                $"handsVisible={(WofHud.Instance?.AreMagicHandsVisible ?? false).ToString().ToLowerInvariant()} " +
+                $"position={transform.position.x:F3},{transform.position.y:F3},{transform.position.z:F3}");
+        }
+
         private void FixedUpdate()
         {
             if (!IsSpawned || !IsServer)
@@ -588,6 +731,20 @@ namespace WOF
             ApplyToxicStatusDamage(Time.fixedDeltaTime);
             ApplyManaDecay();
             if (_isDead.Value) return;
+            if (_isMeditating.Value)
+            {
+                _latestServerInput.Move = Vector2.zero;
+                _latestServerInput.Jump = false;
+                _latestServerInput.Sprint = false;
+                _latestServerInput.Slide = false;
+                _authoritativePosition.Value = transform.position;
+                _authoritativeYaw.Value = _latestServerInput.Yaw;
+                _authoritativePitch.Value = _latestServerInput.Pitch;
+                _isSprinting.Value = false;
+                _isSliding.Value = false;
+                _isCrouching.Value = false;
+                return;
+            }
             var simulatedInput = _latestServerInput;
             if (IsTimedBuffActive(_sleepUntil.Value))
             {
@@ -704,12 +861,60 @@ namespace WOF
 
             command.Move = Vector2.ClampMagnitude(command.Move, 1f);
             command.Pitch = Mathf.Clamp(command.Pitch, -82f, 82f);
+            if (_isMeditating.Value)
+            {
+                command.Move = Vector2.zero;
+                command.Jump = false;
+                command.Sprint = false;
+                command.Slide = false;
+            }
             _latestServerInput = command;
+        }
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+        private void SetMeditatingRpc(bool active)
+        {
+            SetMeditatingServer(active);
+        }
+
+        private void SetMeditatingServer(bool active)
+        {
+            if (!IsServer || !IsSpawned || (active && _isDead.Value))
+            {
+                return;
+            }
+
+            if (_isMeditating.Value == active)
+            {
+                return;
+            }
+
+            if (active)
+            {
+                _latestServerInput.Move = Vector2.zero;
+                _latestServerInput.Jump = false;
+                _latestServerInput.Sprint = false;
+                _latestServerInput.Slide = false;
+                _serverVerticalVelocity = 0f;
+                WofMovementMath.Reset(ref _serverMovementState);
+                _isSprinting.Value = false;
+                _isSliding.Value = false;
+                _isCrouching.Value = false;
+                _castingUntil.Value = 0d;
+            }
+
+            _isMeditating.Value = active;
+            Debug.Log(
+                $"[WOF-AUTOMATION] ASTRAL_MEDITATION_CHANGED owner={OwnerClientId} active={active.ToString().ToLowerInvariant()}");
         }
 
         [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
         private void RequestCastRpc(WofHandSide hand = WofHandSide.Right)
         {
+            if (_isMeditating.Value)
+            {
+                return;
+            }
             if (_remainingAutomationServerCasts > 0)
             {
                 if (TryCastFromServerDirection(_automationServerCastDirection))
@@ -1041,6 +1246,7 @@ namespace WOF
 
             if (result.IsDead)
             {
+                SetMeditatingServer(false);
                 _isDead.Value = true;
                 Debug.Log($"[WOF-AUTOMATION] PLAYER_DIED id={OwnerClientId}");
                 StartCoroutine(RespawnAfterDelay());
@@ -1752,6 +1958,10 @@ namespace WOF
 
         private bool TryCastFromAuthoritativePoseServer(WofHandSide hand = WofHandSide.Right)
         {
+            if (_isMeditating.Value || _isDead.Value)
+            {
+                return false;
+            }
             var equippedSpell = hand == WofHandSide.Left ? LeftEquippedSpell : RightEquippedSpell;
             if (_serverLilyCoilState.Active)
             {
@@ -2048,6 +2258,14 @@ namespace WOF
                     movementState.IsCrouching);
             }
 
+            if (IsMeditating)
+            {
+                WofMovementMath.Reset(ref movementState);
+                verticalVelocity = 0f;
+                ApplyCameraHeight(false, false);
+                return new WofMovementFrame(WofGameConstants.WalkSpeed, false, false, false);
+            }
+
             if (IsVClipEnabled)
             {
                 WofMovementMath.ResetForVClip(ref movementState);
@@ -2268,9 +2486,14 @@ namespace WOF
             }
 
             var localPosition = cameraPivot.localPosition;
-            localPosition.y = _grassOverheadViewProbe
+            var targetHeight = _grassOverheadViewProbe
                 ? 26f
-                : WofMovementMath.ResolveCameraHeight(isSliding, isCrouching);
+                : IsMeditating
+                    ? WofMovementMath.UnityMeditationCameraHeight
+                    : WofMovementMath.ResolveCameraHeight(isSliding, isCrouching);
+            localPosition.y = IsMeditating && !_grassOverheadViewProbe
+                ? Mathf.Lerp(localPosition.y, targetHeight, WofAstralMeditationRules.CameraLerpAlpha)
+                : targetHeight;
             cameraPivot.localPosition = localPosition;
         }
 
@@ -2370,6 +2593,29 @@ namespace WOF
             }
         }
 
+        private void HandleMeditatingChanged(bool previous, bool current)
+        {
+            if (!IsOwner)
+            {
+                return;
+            }
+
+            if (_localMeditationState.IsActive != current)
+            {
+                WofAstralMeditationRules.SetAuthoritativeActive(
+                    ref _localMeditationState,
+                    current);
+            }
+            if (current)
+            {
+                WofInputRouter.ResetTransientGameplayActions();
+                WofMovementMath.Reset(ref _predictedMovementState);
+                _predictedVerticalVelocity = 0f;
+            }
+            ApplyCameraHeight(false, false);
+            PublishHud();
+        }
+
         private void HandleDeadChanged(bool previous, bool current)
         {
             WofBootstrap.Instance?.ObserveClientReplicatedDead(OwnerClientId, previous, current);
@@ -2383,6 +2629,10 @@ namespace WOF
 
             if (IsOwner)
             {
+                if (current)
+                {
+                    WofAstralMeditationRules.SetAuthoritativeActive(ref _localMeditationState, false);
+                }
                 WofMovementMath.Reset(ref _predictedMovementState);
                 ApplyCameraHeight(false, false);
                 WofHud.Instance?.SetStatus(current ? "YOU DIED — respawning..." : string.Empty);
@@ -2426,9 +2676,10 @@ namespace WOF
             WofHud.Instance?.SetEquippedSpells(
                 WofSpellLoadout.GetDisplayName(LeftEquippedSpell),
                 WofSpellLoadout.GetDisplayName(RightEquippedSpell));
+            WofHud.Instance?.SetMagicHandsVisible(!IsMeditating);
             WofHud.Instance?.SetHeldSpellVisibility(
-                LeftEquippedSpell == WofSpellId.Fireball,
-                RightEquippedSpell == WofSpellId.Fireball);
+                !IsMeditating && LeftEquippedSpell == WofSpellId.Fireball,
+                !IsMeditating && RightEquippedSpell == WofSpellId.Fireball);
             PublishMovementHud();
         }
 

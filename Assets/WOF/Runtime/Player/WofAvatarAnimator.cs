@@ -18,6 +18,7 @@ namespace WOF
         [SerializeField] private Sprite[] crouchWalkFrames;
         [SerializeField] private Sprite[] jumpFrames;
         [SerializeField] private Sprite[] castingFrames;
+        [SerializeField] private Sprite[] meditateFrames;
         [SerializeField] private Sprite[] damagedFrames;
 
         private SpriteRenderer _renderer;
@@ -69,9 +70,18 @@ namespace WOF
             var nextAnimation = ResolveAnimation(horizontalDelta);
             if (!string.Equals(nextAnimation, _animation, System.StringComparison.Ordinal))
             {
+                var previousAnimation = _animation;
                 _animation = nextAnimation;
                 _frame = 0;
                 _nextFrameAt = 0f;
+                if (!player.IsOwner &&
+                    (string.Equals(nextAnimation, "meditate", System.StringComparison.Ordinal) ||
+                     string.Equals(previousAnimation, "meditate", System.StringComparison.Ordinal)))
+                {
+                    Debug.Log(
+                        $"[WOF-AUTOMATION] REMOTE_AVATAR_ANIMATION owner={player.OwnerClientId} " +
+                        $"animation={nextAnimation} frameDelay={ResolveFrameDelay(nextAnimation):F3}");
+                }
             }
 
             var delay = ResolveFrameDelay(_animation);
@@ -98,6 +108,10 @@ namespace WOF
             if (player.IsDead)
             {
                 return "damaged";
+            }
+            if (player.IsMeditating)
+            {
+                return "meditate";
             }
             if (player.IsSliding)
             {
@@ -147,6 +161,7 @@ namespace WOF
                 "crouchwalk" => crouchWalkFrames,
                 "jump" => jumpFrames,
                 "casting" => castingFrames,
+                "meditate" => meditateFrames,
                 "damaged" => damagedFrames,
                 _ => idleFrames
             };
@@ -163,6 +178,7 @@ namespace WOF
                 "jump" => 0.095f,
                 "walk" => 0.12f,
                 "casting" => 0.12f,
+                "meditate" => WofAstralMeditationRules.AvatarFrameDelaySeconds,
                 "damaged" => 0.36f,
                 _ => 0.21f
             };

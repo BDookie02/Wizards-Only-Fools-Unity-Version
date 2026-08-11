@@ -53,10 +53,24 @@ namespace WOF
             new(WofMapDestination.Desert, "DESERT", new Vector3(2048f, 140f, -1834f)),
             new(WofMapDestination.Mountain, "MOUNTAIN", new Vector3(1536f, 270f, 62f)),
             new(WofMapDestination.Graveyard, "GRAVEYARD", new Vector3(2560f, 92f, 1156f)),
-            new(WofMapDestination.LilyCoil, "LILY COIL", WofLilyCoilLayout.PlayableSpawnPosition, false)
+            new(WofMapDestination.LilyCoil, "LILY COIL DIMENSION", WofLilyCoilLayout.PlayableSpawnPosition, false)
+        };
+
+        // Remote realms are intentionally first in the player-facing menu so they
+        // cannot be mistaken for a seventh, clipped mainland destination.
+        private static readonly WofMapDestinationRecord[] MenuDestinationRecords =
+        {
+            DestinationRecords[6],
+            DestinationRecords[0],
+            DestinationRecords[1],
+            DestinationRecords[2],
+            DestinationRecords[3],
+            DestinationRecords[4],
+            DestinationRecords[5]
         };
 
         public static ReadOnlySpan<WofMapDestinationRecord> Destinations => DestinationRecords;
+        public static ReadOnlySpan<WofMapDestinationRecord> MenuDestinations => MenuDestinationRecords;
 
         public static bool TryGet(WofMapDestination destination, out WofMapDestinationRecord record)
         {

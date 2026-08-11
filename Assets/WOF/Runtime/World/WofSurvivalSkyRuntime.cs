@@ -39,12 +39,16 @@ namespace WOF
         private static readonly Color DaySky = Hex("#bcefff");
         private static readonly Color DuskSky = Hex("#ffc68f");
         private static readonly Color NightSky = Hex("#172342");
+        private static readonly Color AstralSky = Hex("#4a1d78");
         private static readonly Color SunDay = Hex("#fff5a8");
         private static readonly Color SunDusk = Hex("#ff9e4d");
         private static readonly Color MoonDay = Hex("#cbd8ff");
         private static readonly Color MoonNight = Hex("#f1f6ff");
         private static readonly Color CloudDay = Color.white;
         private static readonly Color CloudNight = Hex("#7e8cb1");
+        private static readonly Color CloudAstral = Hex("#e9d5ff");
+        private static readonly Color AstralVeilTint = Hex("#c084fc");
+        private static readonly Color AstralBlinkTint = Hex("#16001f");
         private static readonly Color HemisphereGround = Hex("#8a684b");
         private static readonly Color TerrainDayTint = Color.white;
         private static readonly Color TerrainNightTint = Hex("#3f4f45");
@@ -55,12 +59,19 @@ namespace WOF
         private readonly List<SkyBillboard> _moons = new();
         private Light _directionalLight;
         private SkyBillboard _sun;
+        private SkyBillboard _astralVeil;
+        private SkyBillboard _astralBlink;
         private Transform _starSphere;
         private Material _starMaterial;
         private Texture2D[] _moonTextures;
         private Camera _camera;
+        private WofPlayerController _localPlayer;
         private double? _forcedElapsed;
         private float _nextCameraResolveAt;
+        private float _nextPlayerResolveAt;
+        private float _astralStartedAt;
+        private bool _astralWasActive;
+        private bool _astralPresentationLogged;
 
         public float? ForcedElapsedSeconds => _forcedElapsed.HasValue ? (float)_forcedElapsed.Value : null;
 
@@ -98,8 +109,9 @@ namespace WOF
             ResolveCamera();
             var elapsed = _forcedElapsed ?? ResolveSynchronizedElapsed();
             var cycle = Evaluate((float)elapsed);
-            ApplyLighting(cycle);
-            if (_camera != null) ApplyVisuals(cycle, (float)elapsed);
+            var astral = ResolveAstralPresentation();
+            ApplyLighting(cycle, astral.SkyStrength);
+            if (_camera != null) ApplyVisuals(cycle, (float)elapsed, astral);
         }
 
         private void ResolveCamera()
@@ -130,20 +142,59 @@ namespace WOF
             return manager != null && manager.IsListening ? manager.ServerTime.Time : Time.unscaledTimeAsDouble;
         }
 
-        private void ApplyLighting(WofSurvivalSkyCycle cycle)
+        private WofAstralPresentationFrame ResolveAstralPresentation()
+        {
+            if ((_localPlayer == null || !_localPlayer.IsSpawned || !_localPlayer.IsOwner) &&
+                Time.unscaledTime >= _nextPlayerResolveAt)
+            {
+                _nextPlayerResolveAt = Time.unscaledTime + 0.25f;
+                _localPlayer = null;
+                foreach (var candidate in FindObjectsByType<WofPlayerController>(
+                             FindObjectsInactive.Exclude,
+                             FindObjectsSortMode.None))
+                {
+                    if (!candidate.IsSpawned || !candidate.IsOwner) continue;
+                    _localPlayer = candidate;
+                    break;
+                }
+            }
+
+            var active = _localPlayer != null && _localPlayer.IsSpawned &&
+                         _localPlayer.IsOwner && _localPlayer.IsMeditating;
+            if (active && !_astralWasActive)
+            {
+                _astralStartedAt = Time.unscaledTime;
+                _astralPresentationLogged = false;
+                Debug.Log("[WOF-AUTOMATION] ASTRAL_SKY active=true");
+            }
+            else if (!active && _astralWasActive)
+            {
+                _astralPresentationLogged = false;
+                Debug.Log("[WOF-AUTOMATION] ASTRAL_SKY active=false");
+            }
+            _astralWasActive = active;
+            return WofAstralMeditationRules.EvaluatePresentation(
+                active,
+                Time.unscaledTime - _astralStartedAt,
+                Time.unscaledTime);
+        }
+
+        private void ApplyLighting(WofSurvivalSkyCycle cycle, float astralStrength)
         {
             var duskWarmth = cycle.DuskAmount * (cycle.SunHeight > -0.12f ? 0.42f : 0.2f);
             var sky = Color.Lerp(NightSky, DaySky, cycle.DayAmount);
             sky = Color.Lerp(sky, DuskSky, duskWarmth);
+            sky = Color.Lerp(sky, AstralSky, astralStrength * 0.72f);
             RenderSettings.fogColor = sky;
-            RenderSettings.fogStartDistance = 512f * (3.2f + cycle.DayAmount * 0.8f);
-            RenderSettings.fogEndDistance = 512f * (10.5f + cycle.DayAmount * 4.2f);
+            RenderSettings.fogStartDistance = 512f * (3.2f + cycle.DayAmount * 0.8f - astralStrength * 0.7f);
+            RenderSettings.fogEndDistance = 512f * (10.5f + cycle.DayAmount * 4.2f - astralStrength * 2.2f);
             if (_camera != null) _camera.backgroundColor = sky;
 
             var mobile = WofPerformanceModeRuntime.IsMobilePerformanceMode;
             var ambient = mobile
                 ? 0.86f + cycle.DayAmount * 0.58f + cycle.NightAmount * 0.1f
                 : 0.34f + cycle.DayAmount * 0.44f + cycle.NightAmount * 0.08f;
+            ambient += astralStrength * 0.18f;
             var hemisphere = mobile
                 ? 0.78f + cycle.DayAmount * 0.52f
                 : 0.34f + cycle.DayAmount * 0.28f;
@@ -159,9 +210,13 @@ namespace WOF
                 ? 1.55f + cycle.DayAmount * 1.05f + cycle.DuskAmount * 0.34f
                 : 0.56f + cycle.DayAmount * 1.46f + cycle.DuskAmount * 0.22f;
             _directionalLight.color = Color.Lerp(SunDay, SunDusk, cycle.DuskAmount * 0.55f);
+            _directionalLight.color = Color.Lerp(_directionalLight.color, AstralSky, astralStrength * 0.35f);
         }
 
-        private void ApplyVisuals(WofSurvivalSkyCycle cycle, float elapsed)
+        private void ApplyVisuals(
+            WofSurvivalSkyCycle cycle,
+            float elapsed,
+            WofAstralPresentationFrame astral)
         {
             var cameraPosition = _camera.transform.position;
             var sunVector = new Vector3(Mathf.Cos(cycle.SunAngle) * 0.82f, Mathf.Sin(cycle.SunAngle) * 0.96f, -0.38f).normalized;
@@ -172,7 +227,10 @@ namespace WOF
             FaceCamera(_sun.Transform);
 
             _starSphere.position = cameraPosition;
-            _starMaterial.color = WithAlpha(Color.white, Mathf.Clamp01(cycle.NightAmount * 1.18f + cycle.DuskAmount * 0.2f));
+            _starMaterial.color = WithAlpha(
+                Color.white,
+                Mathf.Clamp01((cycle.NightAmount * 1.18f + cycle.DuskAmount * 0.2f) *
+                              (1f - astral.SkyStrength * 0.18f)));
 
             var moonSpecs = new[]
             {
@@ -202,6 +260,7 @@ namespace WOF
             }
 
             var cloudTint = Color.Lerp(CloudNight, CloudDay, cycle.DayAmount);
+            cloudTint = Color.Lerp(cloudTint, CloudAstral, astral.SkyStrength * 0.55f);
             for (var index = 0; index < _clouds.Count; index++)
             {
                 var hash = WofSurvivalSkyTextures.Hash01(index, _clouds.Count, 240f);
@@ -223,6 +282,47 @@ namespace WOF
                     Mathf.Clamp01((0.18f + cycle.DayAmount * 0.46f + cycle.DuskAmount * 0.08f - cycle.NightAmount * 0.08f) * opacity));
                 FaceCamera(cloud.Transform);
             }
+
+            ApplyAstralVeil(astral);
+        }
+
+        private void ApplyAstralVeil(WofAstralPresentationFrame astral)
+        {
+            _astralVeil.Transform.gameObject.SetActive(astral.Active && astral.VeilAlpha > 0.001f);
+            _astralBlink.Transform.gameObject.SetActive(astral.Active && astral.BlinkAlpha > 0.001f);
+            if (!astral.Active) return;
+
+            var forward = _camera.transform.forward;
+            var overlayPosition = _camera.transform.position + forward * WofAstralMeditationRules.VeilDistance;
+            var vertical = 2f * Mathf.Tan(_camera.fieldOfView * Mathf.Deg2Rad * 0.5f) *
+                           WofAstralMeditationRules.VeilDistance;
+            var horizontal = vertical * _camera.aspect;
+
+            _astralVeil.Transform.position = overlayPosition;
+            _astralVeil.Transform.localScale = new Vector3(horizontal * 1.38f, vertical * 1.42f, 1f);
+            FaceCamera(_astralVeil.Transform);
+            _astralVeil.Transform.Rotate(
+                0f,
+                0f,
+                astral.VeilRotationRadians * Mathf.Rad2Deg,
+                Space.Self);
+            _astralVeil.Material.color = WithAlpha(AstralVeilTint, astral.VeilAlpha);
+
+            _astralBlink.Transform.position = overlayPosition + forward * 0.01f;
+            _astralBlink.Transform.localScale = new Vector3(horizontal * 1.5f, vertical * 1.5f, 1f);
+            FaceCamera(_astralBlink.Transform);
+            _astralBlink.Material.color = WithAlpha(AstralBlinkTint, astral.BlinkAlpha);
+
+            if (!_astralPresentationLogged && astral.SkyStrength >= 0.999f &&
+                astral.VeilStrength >= 0.999f && astral.BlinkStrength <= 0.001f)
+            {
+                _astralPresentationLogged = true;
+                Debug.Log(
+                    $"[WOF-AUTOMATION] ASTRAL_SKY_PRESENTATION sky={astral.SkyStrength:F3} " +
+                    $"veil={astral.VeilStrength:F3} blink={astral.BlinkStrength:F3} " +
+                    $"veilAlpha={astral.VeilAlpha:F3} fogStart={RenderSettings.fogStartDistance:F1} " +
+                    $"fogEnd={RenderSettings.fogEndDistance:F1}");
+            }
         }
 
         private void BuildVisuals()
@@ -238,6 +338,16 @@ namespace WOF
             var root = new GameObject("ReactSurvivalSkyVisuals").transform;
             root.SetParent(transform, false);
             _sun = MakeBillboard(root, "ReactSurvivalSun", shader, WofSurvivalSkyTextures.CreateSun());
+            _astralVeil = MakeBillboard(
+                root,
+                "ReactAstralRealmVeil",
+                shader,
+                WofSurvivalSkyTextures.CreateAstralVeil());
+            _astralVeil.Material.renderQueue = 3998;
+            _astralVeil.Transform.gameObject.SetActive(false);
+            _astralBlink = MakeBillboard(root, "ReactAstralRealmBlink", shader, Texture2D.whiteTexture);
+            _astralBlink.Material.renderQueue = 3999;
+            _astralBlink.Transform.gameObject.SetActive(false);
             _moonTextures = WofSurvivalSkyTextures.CreateMoonPhases();
             for (var index = 0; index < 3; index++)
                 _moons.Add(MakeBillboard(root, $"ReactSurvivalMoon{index}", shader, _moonTextures[0]));

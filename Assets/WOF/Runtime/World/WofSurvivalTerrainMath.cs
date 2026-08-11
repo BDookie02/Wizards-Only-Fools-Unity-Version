@@ -42,6 +42,11 @@ namespace WOF
         private const double BiomeBlendOuterRadius = 1.86d;
         private const double BiomeBlendPower = 2.15d;
         private const double StrictDesertWeight = 0.9d;
+        private const double DesertExpansionMinX = 3d * BlockSize - BlockSize * 0.5d;
+        private const double DesertExpansionMaxX = 5d * BlockSize + BlockSize * 0.5d;
+        private const double DesertExpansionMinZ = -4d * BlockSize - BlockSize * 0.5d;
+        private const double DesertExpansionMaxZ = -3d * BlockSize + BlockSize * 0.5d;
+        private const double DesertExpansionBlendDistance = 192d;
         private const double BaseVillageHalfSize = 256d;
         private const double BaseVillageExitHeight = 2d;
         private const double BaseVillageExitBlendDistance = 220d;
@@ -619,10 +624,22 @@ namespace WOF
             if (totalWeight <= 0.0001d)
             {
                 target[(int)GetBiome(center.Q, center.R)] = 1d;
-                return;
             }
-            var inverse = 1d / totalWeight;
-            for (var index = 0; index < target.Length; index++) target[index] *= inverse;
+            else
+            {
+                var inverse = 1d / totalWeight;
+                for (var index = 0; index < target.Length; index++) target[index] *= inverse;
+            }
+
+            // Chunk identity and the visual biome field use different coordinate
+            // systems. Apply the requested six-chunk desert footprint in world
+            // space, then feather only beyond its perimeter so every point inside
+            // the village chunk and its five neighbors remains true desert.
+            var desertExpansion = GetDesertVillageExpansionMaskAtWorld(worldX, worldZ);
+            if (desertExpansion <= 0d) return;
+            var retained = 1d - desertExpansion;
+            for (var index = 0; index < target.Length; index++) target[index] *= retained;
+            target[(int)WofSurvivalBiome.Desert] += desertExpansion;
         }
 
         private static HexCoord WorldToBiomeHex(double worldX, double worldZ)
@@ -705,6 +722,23 @@ namespace WOF
             GetBiomeWeights(worldX, worldZ, StrictDesertWeights);
             var nonDesert = 1d - StrictDesertWeights[(int)WofSurvivalBiome.Desert];
             return Clamp01(SmoothstepRange(0.035d, 0.34d, nonDesert + restored * 0.92d));
+        }
+
+        internal static double GetDesertVillageExpansionMaskAtWorld(double worldX, double worldZ)
+        {
+            var outsideX = worldX < DesertExpansionMinX
+                ? DesertExpansionMinX - worldX
+                : worldX > DesertExpansionMaxX
+                    ? worldX - DesertExpansionMaxX
+                    : 0d;
+            var outsideZ = worldZ < DesertExpansionMinZ
+                ? DesertExpansionMinZ - worldZ
+                : worldZ > DesertExpansionMaxZ
+                    ? worldZ - DesertExpansionMaxZ
+                    : 0d;
+            if (outsideX <= 0d && outsideZ <= 0d) return 1d;
+            var outsideDistance = Math.Sqrt(outsideX * outsideX + outsideZ * outsideZ);
+            return 1d - SmoothstepRange(0d, DesertExpansionBlendDistance, outsideDistance);
         }
 
         private static bool IsStrictDesert(double worldX, double worldZ)

@@ -369,6 +369,39 @@ MonoBehaviour:
   - {fileID: 21300000, guid: 5fd7cdbf27c332c46a399d148ec9491e, type: 3}
   - {fileID: 21300000, guid: 64c269561afa185499b033607b7d34b7, type: 3}
   - {fileID: 21300000, guid: 00597e82e57ec5e4ea5e42e41d833345, type: 3}
+  meditateFrames:
+  - {fileID: 21300000, guid: bc8eff58b9198f24cbb3be4868176e13, type: 3}
+  - {fileID: 21300000, guid: 371c7985a8b06ab4495fd656bc785ed1, type: 3}
+  - {fileID: 21300000, guid: 09e8e2183f4bcac41a564cc7f59083b9, type: 3}
+  - {fileID: 21300000, guid: 81c1d042c8f6d254eb5a482df0dc1281, type: 3}
+  - {fileID: 21300000, guid: 2bf6675bb0655724eaaf372784a90ecc, type: 3}
+  - {fileID: 21300000, guid: 952e02d3fd9c8da438c43a94de2a17f7, type: 3}
+  - {fileID: 21300000, guid: 1c10da0f8e91ea5409b89826659d88f0, type: 3}
+  - {fileID: 21300000, guid: c8cff55a07f38a14ebbdfb7e9bc9a3b9, type: 3}
+  - {fileID: 21300000, guid: 2852a7de1163e2942bd8ff5a12ba3a75, type: 3}
+  - {fileID: 21300000, guid: 5039f1bbf9be24842b886c64685e9595, type: 3}
+  - {fileID: 21300000, guid: a563a11402f9fbb43818ba71e0278d21, type: 3}
+  - {fileID: 21300000, guid: 3e80326b493e4ab45a4863a40bd6f9b2, type: 3}
+  - {fileID: 21300000, guid: 3fd7a576b2ce8c544a864c327ada7cff, type: 3}
+  - {fileID: 21300000, guid: 9cc16cab8b82d704b9b3617e22babf6d, type: 3}
+  - {fileID: 21300000, guid: 6c7412cd613908e4086853d99fc5caf1, type: 3}
+  - {fileID: 21300000, guid: d725c4dd0a5d034459c48dbd8c6c2d02, type: 3}
+  - {fileID: 21300000, guid: 4e9d2c889e9bfa1439c7fe248620feb7, type: 3}
+  - {fileID: 21300000, guid: cceb0a1af3e6d1540bc6abd8d186d11c, type: 3}
+  - {fileID: 21300000, guid: 0710d36d7ae7c33499dc62897a5c1efb, type: 3}
+  - {fileID: 21300000, guid: 2863502d2b56e3e41999b1c15ae62507, type: 3}
+  - {fileID: 21300000, guid: 8b49fdb763cb432499873603ac39f827, type: 3}
+  - {fileID: 21300000, guid: c9e5175c296fce04da1e7fb3f5e4a6d5, type: 3}
+  - {fileID: 21300000, guid: ccfbf38962bd82c4d88fcff42dcbd6bf, type: 3}
+  - {fileID: 21300000, guid: 08636dc03a9529648a9a663ca31d5211, type: 3}
+  - {fileID: 21300000, guid: f6801ee7b4b584b428ed6f7f5676f47e, type: 3}
+  - {fileID: 21300000, guid: db4c114c167c9fd4a997beb623d62207, type: 3}
+  - {fileID: 21300000, guid: 410f11dff4c392b44948f25b244874c6, type: 3}
+  - {fileID: 21300000, guid: 007221be4a884b147af8438df53bf160, type: 3}
+  - {fileID: 21300000, guid: ac09c15d28b33914384f79485b22b478, type: 3}
+  - {fileID: 21300000, guid: 1f99e9788d9e46445818340fadc5f196, type: 3}
+  - {fileID: 21300000, guid: 54e04f5470060484a95b2bd72f175cea, type: 3}
+  - {fileID: 21300000, guid: 2bcd7b060e6ff45478a81f9c115cf795, type: 3}
   damagedFrames:
   - {fileID: 21300000, guid: 74eca3126b47a24468a86c17aa9cda51, type: 3}
   - {fileID: 21300000, guid: ba4969ff2f5c6ff42b35af56e42fafe3, type: 3}

@@ -220,16 +220,58 @@ namespace WOF.Tests
         }
 
         [Test]
-        public void BiomeGrassCoverageFeathersAcrossDesertEdgesInsteadOfFollowingChunkSquares()
+        public void DesertVillageAndFiveNeighborsUseCactiInsteadOfStreamedTrees()
+        {
+            foreach (var coordinate in new[]
+                     {
+                         (4, -4), (3, -4), (5, -4), (3, -3), (4, -3), (5, -3)
+                     })
+            {
+                var decorations = WofSurvivalStreamDecorationMath.Generate(
+                    coordinate.Item1,
+                    coordinate.Item2,
+                    0);
+                Assert.That(decorations.Trees, Is.Empty,
+                    $"Streamed trees leaked into cactus terrain at {coordinate.Item1}:{coordinate.Item2}.");
+            }
+        }
+
+        [Test]
+        public void DesertVillageAndFiveNeighborsRenderAsBareDesertAcrossTheirFullWorldFootprint()
+        {
+            foreach (var coordinate in new[]
+                     {
+                         (4, -4), (3, -4), (5, -4), (3, -3), (4, -3), (5, -3)
+                     })
+            {
+                foreach (var offset in new[] { -255d, 0d, 255d })
+                {
+                    var worldX = coordinate.Item1 * WofSurvivalTerrainMath.BlockSize + offset;
+                    var worldZ = coordinate.Item2 * WofSurvivalTerrainMath.BlockSize + offset;
+                    Assert.That(WofSurvivalTerrainMath.GetDesertVillageExpansionMaskAtWorld(worldX, worldZ),
+                        Is.EqualTo(1d).Within(0.000001d));
+                    Assert.That(WofSurvivalTerrainMath.GetBiomeGrassCoverageAtWorld(worldX, worldZ),
+                        Is.LessThan(0.01d), $"Grass leaked into desert chunk {coordinate.Item1}:{coordinate.Item2}.");
+                }
+            }
+
+            Assert.That(WofSurvivalTerrainMath.GetDesertVillageExpansionMaskAtWorld(1280d - 96d, -1792d),
+                Is.InRange(0.45d, 0.55d));
+            Assert.That(WofSurvivalTerrainMath.GetDesertVillageExpansionMaskAtWorld(1280d - 193d, -1792d),
+                Is.EqualTo(0d).Within(0.000001d));
+        }
+
+        [Test]
+        public void DesertExpansionMaskFeathersOnlyOutsideTheSixBareDesertChunks()
         {
             var minimum = 1d;
             var maximum = 0d;
             var maximumStep = 0d;
             var mixedSamples = 0;
-            var previous = WofSurvivalTerrainMath.GetBiomeGrassCoverageAtWorld(2d * 512d, -4d * 512d);
-            for (var x = 2d * 512d + 16d; x <= 8d * 512d; x += 16d)
+            var previous = WofSurvivalTerrainMath.GetDesertVillageExpansionMaskAtWorld(1024d, -1792d);
+            for (var x = 1040d; x <= 3072d; x += 16d)
             {
-                var current = WofSurvivalTerrainMath.GetBiomeGrassCoverageAtWorld(x, -4d * 512d);
+                var current = WofSurvivalTerrainMath.GetDesertVillageExpansionMaskAtWorld(x, -1792d);
                 minimum = System.Math.Min(minimum, current);
                 maximum = System.Math.Max(maximum, current);
                 maximumStep = System.Math.Max(maximumStep, System.Math.Abs(current - previous));
@@ -239,7 +281,7 @@ namespace WOF.Tests
             Assert.That(minimum, Is.LessThan(0.08d));
             Assert.That(maximum, Is.GreaterThan(0.92d));
             Assert.That(mixedSamples, Is.GreaterThan(8));
-            Assert.That(maximumStep, Is.LessThan(0.2d));
+            Assert.That(maximumStep, Is.LessThan(0.14d));
         }
 
         [Test]
