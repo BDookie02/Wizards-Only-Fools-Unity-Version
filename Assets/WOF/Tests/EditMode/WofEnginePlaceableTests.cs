@@ -280,5 +280,26 @@ namespace WOF.Tests
             Assert.That(restored.current, Is.Empty);
             Assert.That(restored.slots, Is.Empty);
         }
+
+        [Test]
+        public void ControllerScroll_RevealsASelectedSaveActionAtTheBottom()
+        {
+            var offset = WofEngineMenuRuntime.ResolvePlacementScrollOffset(
+                0f, 570f, 334f, 548f, 568f);
+
+            Assert.That(offset, Is.EqualTo(236f));
+        }
+
+        [Test]
+        public void ControllerScroll_ReturnsTowardASelectedUpperControlAndLeavesVisibleControlsStable()
+        {
+            var moved = WofEngineMenuRuntime.ResolvePlacementScrollOffset(
+                236f, 570f, 334f, 208f, 240f);
+            var stable = WofEngineMenuRuntime.ResolvePlacementScrollOffset(
+                moved, 570f, 334f, 246f, 273f);
+
+            Assert.That(moved, Is.EqualTo(202f));
+            Assert.That(stable, Is.EqualTo(202f));
+        }
     }
 }
