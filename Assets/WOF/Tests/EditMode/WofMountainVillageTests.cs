@@ -91,6 +91,41 @@ namespace WOF.Tests
         }
 
         [Test]
+        public void ReplacementAccessTrailClimbsOneFaceInsteadOfWrappingAroundTheMountain()
+        {
+            var points = WofMountainAccessPathLayout.BuildHorizontalPoints();
+            Assert.That(WofMountainAccessPathLayout.Width, Is.InRange(5f, 6f));
+            Assert.That(points, Has.Length.InRange(80, 120));
+            Assert.That(points[0].y, Is.InRange(300f, 340f));
+            Assert.That(points[^1].magnitude, Is.LessThan(100f));
+
+            var totalLength = 0f;
+            var hasLeftSwitchback = false;
+            var hasRightSwitchback = false;
+            var previousZ = points[0].y;
+            for (var index = 0; index < points.Length; index++)
+            {
+                var point = points[index];
+                Assert.That(point.y, Is.GreaterThanOrEqualTo(88f),
+                    "The access trail must remain on the south face instead of circling behind the summit.");
+                Assert.That(Mathf.Abs(point.x), Is.LessThanOrEqualTo(155f),
+                    "The access trail must remain a compact face switchback instead of forming broad rings.");
+                Assert.That(point.y, Is.LessThanOrEqualTo(previousZ + 0.01f),
+                    "Every trail step must progress up the south face rather than orbiting the mountain.");
+                if (index > 0)
+                    Assert.That(Vector2.Distance(points[index - 1], point),
+                        Is.LessThanOrEqualTo(WofMountainAccessPathLayout.DensifySegmentLength + 0.01f));
+                previousZ = point.y;
+                hasLeftSwitchback |= point.x < -50f;
+                hasRightSwitchback |= point.x > 50f;
+                if (index > 0) totalLength += Vector2.Distance(points[index - 1], point);
+            }
+
+            Assert.That(hasLeftSwitchback && hasRightSwitchback, Is.True);
+            Assert.That(totalLength, Is.InRange(1000f, 1060f));
+        }
+
+        [Test]
         public void OpeningWallBanquetAndLadderContractsRemainExact()
         {
             var document = LoadLayout();
@@ -204,8 +239,25 @@ namespace WOF.Tests
                 var access = roots.SelectMany(root =>
                     root.GetComponentsInChildren<WofMountainAccessPathRuntime>(true)).Single();
                 Assert.That(access.PointCount, Is.GreaterThanOrEqualTo(36));
-                Assert.That(access.StartLocalPoint.z, Is.GreaterThan(620f));
+                Assert.That(access.StartLocalPoint.z, Is.GreaterThan(300f));
                 Assert.That(new Vector2(access.EndLocalPoint.x, access.EndLocalPoint.z).magnitude, Is.LessThan(100f));
+                var terrainCollider = roots.SelectMany(root => root.GetComponentsInChildren<MeshCollider>(true))
+                    .Single(item => item.name == "ExactMountainTerrainCollider");
+                var terrainVertices = terrainCollider.sharedMesh.vertices;
+                var terrainTriangles = terrainCollider.sharedMesh.triangles;
+                foreach (var horizontalPoint in WofMountainAccessPathLayout.BuildHorizontalPoints())
+                {
+                    Assert.That(WofMountainAccessPathRuntime.TrySampleTerrainSurfaceHeight(
+                            access.transform.parent,
+                            terrainCollider.transform,
+                            terrainVertices,
+                            terrainTriangles,
+                            horizontalPoint.x,
+                            horizontalPoint.y,
+                            out _),
+                        Is.True,
+                        $"Replacement trail point {horizontalPoint} must project onto the exact mountain terrain.");
+                }
                 Physics.SyncTransforms();
                 Assert.That(access.TryValidate(out var maximumGrade, out var maximumGap, out var misses), Is.True,
                     $"Path continuity failed: grade={maximumGrade:F3}, gap={maximumGap:F2}, misses={misses}.");

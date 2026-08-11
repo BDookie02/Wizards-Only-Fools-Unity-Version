@@ -45,6 +45,7 @@ $logPath = Join-Path $logRoot ("mountain-$View$captureSuffix-capture.log")
 $capturePath = Join-Path $resolvedOutputRoot ("mountain-$View$captureSuffix-desktop.png")
 $capturePathAfter = Join-Path $resolvedOutputRoot ("mountain-$View$captureSuffix-desktop-after.png")
 $playerTempRoot = Join-Path $resolvedOutputRoot 'player-temp'
+$requiresSnowProbe = $View -notin @('banquet', 'catwalk')
 foreach ($requiredRoot in @($logRoot, $profileRoot, $playerTempRoot)) {
     New-Item -ItemType Directory -Force -Path $requiredRoot | Out-Null
 }
@@ -62,10 +63,12 @@ $viewProbeArgument = if ($View -eq 'exterior') {
 }
 $arguments = @(
     '-force-d3d11', '-screen-width', '1280', '-screen-height', '720', '-screen-fullscreen', '0',
-    '--wof-solo', $viewProbeArgument, '--wof-mountain-snow-probe',
-    '--wof-mountain-access-path-probe', '--wof-auto-exit=90',
+    '--wof-solo', $viewProbeArgument, '--wof-mountain-access-path-probe', '--wof-auto-exit=90',
     "--wof-profile-root=$profileRoot", '-logFile', $logPath
 )
+if ($requiresSnowProbe) {
+    $arguments += '--wof-mountain-snow-probe'
+}
 if ($HandFire -ne 'none') {
     $arguments += "--wof-hand-fire-probe=$HandFire"
 }
@@ -84,7 +87,8 @@ try {
             (Select-String -LiteralPath $logPath -SimpleMatch $positionedMarker -Quiet) -and
             (Select-String -LiteralPath $logPath -SimpleMatch 'MOUNTAIN_VILLAGE_SCENE_READY' -Quiet) -and
             (Select-String -LiteralPath $logPath -SimpleMatch 'MOUNTAIN_ACCESS_PATH_CONTINUITY_PASS' -Quiet) -and
-            (Select-String -LiteralPath $logPath -SimpleMatch 'MOUNTAIN_SNOW_RENDER_READY' -Quiet)
+            (-not $requiresSnowProbe -or
+                (Select-String -LiteralPath $logPath -SimpleMatch 'MOUNTAIN_SNOW_RENDER_READY' -Quiet))
     } while (-not $ready -and -not $process.HasExited -and [DateTime]::UtcNow -lt $deadline)
     if (-not $ready) { throw "Mountain village $View view probe did not become ready." }
 
@@ -131,8 +135,10 @@ try {
     Start-Sleep -Milliseconds 1200
     & $captureWindow $capturePathAfter
 
-    $snowMotionPassed = Select-String -LiteralPath $logPath -SimpleMatch 'MOUNTAIN_SNOW_MOTION_PASS' -Quiet
-    if (-not $snowMotionPassed) { throw 'Mountain snow did not pass its visible motion probe.' }
+    if ($requiresSnowProbe) {
+        $snowMotionPassed = Select-String -LiteralPath $logPath -SimpleMatch 'MOUNTAIN_SNOW_MOTION_PASS' -Quiet
+        if (-not $snowMotionPassed) { throw 'Mountain snow did not pass its visible motion probe.' }
+    }
 
     [PSCustomObject]@{ View=$View; HandFire=$HandFire; Capture=$capturePath; CaptureAfter=$capturePathAfter; Log=$logPath; Width=$width; Height=$height; Bytes=(Get-Item -LiteralPath $capturePath).Length; BytesAfter=(Get-Item -LiteralPath $capturePathAfter).Length }
 }

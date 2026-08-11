@@ -5,22 +5,19 @@ namespace WOF
 {
     internal static class WofMountainAccessPathLayout
     {
-        internal const float Width = 18f;
+        internal const float Width = 5.5f;
         internal const float MaximumGrade = 0.24f;
-        internal const float DeckClearance = 1.1f;
+        internal const float DeckClearance = 0.24f;
+        internal const float DensifySegmentLength = 12f;
         internal const float MaximumSegmentLength = 14f;
 
         private static readonly Vector2[] SwitchbackControls =
         {
-            new(0f, 680f),
-            new(-275f, 565f),
-            new(-335f, 445f),
-            new(305f, 390f),
-            new(342f, 286f),
-            new(-278f, 232f),
-            new(-292f, 158f),
-            new(214f, 118f),
-            new(188f, 76f),
+            new(0f, 320f),
+            new(-220f, 280f),
+            new(220f, 240f),
+            new(-210f, 195f),
+            new(180f, 145f),
             new(0f, 88f)
         };
 
@@ -38,7 +35,7 @@ namespace WOF
             {
                 var current = source[index];
                 var next = source[index + 1];
-                var steps = Mathf.Max(1, Mathf.CeilToInt(Vector2.Distance(current, next) / MaximumSegmentLength));
+                var steps = Mathf.Max(1, Mathf.CeilToInt(Vector2.Distance(current, next) / DensifySegmentLength));
                 for (var step = 1; step <= steps; step++)
                     result.Add(Vector2.Lerp(current, next, step / (float)steps));
             }
