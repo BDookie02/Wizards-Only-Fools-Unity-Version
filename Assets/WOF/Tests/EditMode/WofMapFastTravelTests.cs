@@ -17,10 +17,16 @@ namespace WOF.Tests.EditMode
             Assert.That(destinations[4].Position, Is.EqualTo(new Vector3(1536f, 270f, 62f)));
             Assert.That(destinations[5].Position, Is.EqualTo(new Vector3(2560f, 92f, 1156f)));
             Assert.That(destinations[6].Destination, Is.EqualTo(WofMapDestination.LilyCoil));
-            Assert.That(destinations[6].Label, Is.EqualTo("LILY COIL"));
+            Assert.That(destinations[6].Label, Is.EqualTo("LILY COIL DIMENSION"));
             Assert.That(destinations[6].Position, Is.EqualTo(WofLilyCoilLayout.PlayableSpawnPosition));
             Assert.That(destinations[6].ShowOnWorldMap, Is.False,
                 "The remote Lily Coil realm must not be drawn as a misleading clamped mainland marker.");
+
+            var menuDestinations = WofMapFastTravel.MenuDestinations;
+            Assert.That(menuDestinations.Length, Is.EqualTo(destinations.Length));
+            Assert.That(menuDestinations[0].Destination, Is.EqualTo(WofMapDestination.LilyCoil),
+                "The remote dimension must be the first visible and controller-selected travel option.");
+            Assert.That(menuDestinations[1].Destination, Is.EqualTo(WofMapDestination.Base));
         }
 
         [Test]

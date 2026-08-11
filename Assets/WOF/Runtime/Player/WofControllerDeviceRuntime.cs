@@ -270,6 +270,14 @@ namespace WOF
                 FailProbe("controller-fast-travel-player-not-ready");
                 yield break;
             }
+            yield return TapControllerButton(GamepadButton.DpadDown);
+            yield return new WaitForSecondsRealtime(0.15f);
+            var selectedBaseDestination = UnityEngine.EventSystems.EventSystem.current?.currentSelectedGameObject;
+            if (selectedBaseDestination == null || selectedBaseDestination.name != "TravelBase")
+            {
+                FailProbe($"controller-base-selection-failed selected={selectedBaseDestination?.name ?? "none"}");
+                yield break;
+            }
             yield return TapControllerButtonUntil(GamepadButton.A, () => !WofNavigationMapRuntime.IsExpanded, 5f);
             var travelDeadline = Time.realtimeSinceStartup + 5f;
             var basePosition = new Vector3(0f, 15f, 30f);
@@ -289,11 +297,6 @@ namespace WOF
             yield return CaptureProbeScreenshot("controller-waypoint-compass.png");
 
             yield return TapControllerButtonUntil(GamepadButton.DpadLeft, () => WofNavigationMapRuntime.IsExpanded, 5f);
-            for (var index = 0; index < 3; index++)
-            {
-                yield return TapControllerButton(GamepadButton.DpadDown);
-                yield return new WaitForSecondsRealtime(0.15f);
-            }
             var selectedDestination = UnityEngine.EventSystems.EventSystem.current?.currentSelectedGameObject;
             if (selectedDestination == null || selectedDestination.name != "TravelLilyCoil")
             {

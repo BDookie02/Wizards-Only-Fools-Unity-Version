@@ -44,9 +44,12 @@ namespace WOF
         internal const float VClipSprintMultiplier = 3.2f;
         internal const float ReactStandingCameraHeight = 1.08f;
         internal const float ReactLowCameraHeight = 0.52f;
+        internal const float ReactMeditationCameraHeight = WofAstralMeditationRules.ReactCameraHeight;
         internal const float UnityStandingCameraHeight = 1.65f;
         internal const float UnityLowCameraHeight =
             UnityStandingCameraHeight - (ReactStandingCameraHeight - ReactLowCameraHeight);
+        internal const float UnityMeditationCameraHeight =
+            UnityStandingCameraHeight - (ReactStandingCameraHeight - ReactMeditationCameraHeight);
 
         internal static WofMovementFrame ResolveFrame(
             ref WofMovementRuntimeState state,

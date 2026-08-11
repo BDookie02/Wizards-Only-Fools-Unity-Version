@@ -16,6 +16,7 @@ namespace WOF.Tests
 
             StringAssert.Contains("\"outputCount\": 1266", text);
             StringAssert.Contains("Avatar/Default/launch-preview.png", text);
+            StringAssert.Contains("Avatar/Default/meditate/d0_f0.png", text);
             StringAssert.Contains("HUD/Hands/idle_1.png", text);
             StringAssert.Contains("Huts/mushroom_cap_0.png", text);
             StringAssert.Contains("TreeHouse/bark.png", text);
@@ -66,6 +67,28 @@ namespace WOF.Tests
         }
 
         [Test]
+        public void GeneratedNetworkAvatarWiresEveryMeditationDirectionAndFrame()
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/WOF/Generated/Prefabs/WofNetworkPlayer.prefab");
+            Assert.That(prefab, Is.Not.Null);
+            var animator = prefab.GetComponentInChildren<WofAvatarAnimator>(true);
+            Assert.That(animator, Is.Not.Null);
+            var serializedAnimator = new SerializedObject(animator);
+            var meditateFrames = serializedAnimator.FindProperty("meditateFrames");
+            Assert.That(meditateFrames, Is.Not.Null);
+            Assert.That(meditateFrames.isArray, Is.True);
+            Assert.That(meditateFrames.arraySize, Is.EqualTo(32));
+            for (var index = 0; index < meditateFrames.arraySize; index++)
+            {
+                Assert.That(
+                    meditateFrames.GetArrayElementAtIndex(index).objectReferenceValue,
+                    Is.Not.Null,
+                    $"Meditation avatar frame {index} is not wired.");
+            }
+        }
+
+        [Test]
         public void BakedBushGeometryComesFromTheReactThreeGeometry()
         {
             var path = ResolveProjectPath(
@@ -79,6 +102,7 @@ namespace WOF.Tests
         [TestCase("Avatar/Default/launch-preview.png", 360, 360)]
         [TestCase("Launch/press-background.png", 1920, 1080)]
         [TestCase("Avatar/Default/idle/d0_f0.png", 512, 512)]
+        [TestCase("Avatar/Default/meditate/d0_f0.png", 512, 512)]
         [TestCase("HUD/Hands/idle_1.png", 859, 484)]
         [TestCase("HUD/Hands/Equipped/left_idle_1.png", 859, 484)]
         [TestCase("HUD/Hands/Equipped/right_idle_1.png", 859, 484)]

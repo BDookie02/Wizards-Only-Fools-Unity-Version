@@ -163,6 +163,50 @@ namespace WOF
             return MakeTexture("ReactSurvivalStars", width, height, pixels, TextureWrapMode.Repeat);
         }
 
+        public static Texture2D CreateAstralVeil()
+        {
+            const int width = 192;
+            const int height = 128;
+            var pixels = new Color[width * height];
+            var center = new Vector2(width * 0.5f, height * 0.5f);
+            const float innerRadius = 12f;
+            var outerRadius = Mathf.Max(width, height) * 0.64f;
+            for (var y = 0; y < height; y++)
+            for (var x = 0; x < width; x++)
+            {
+                var distance = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), center);
+                var t = Mathf.Clamp01((distance - innerRadius) / (outerRadius - innerRadius));
+                pixels[y * width + x] = SampleAstralHaze(t);
+            }
+
+            for (var index = 0; index < 95; index++)
+            {
+                var x = Mathf.FloorToInt(Mathf.Repeat(Mathf.Sin(index * 12.9898f) * 43758.5453f, 1f) * width);
+                var y = Mathf.FloorToInt(Mathf.Repeat(Mathf.Sin(index * 78.233f) * 21942.631f, 1f) * height);
+                var alpha = 0.08f + index * 17 % 9 * 0.012f;
+                var star = new Color32(244, 214, 255, (byte)Mathf.RoundToInt(alpha * 255f));
+                var starWidth = index % 5 == 0 ? 2 : 1;
+                for (var offset = 0; offset < starWidth && x + offset < width; offset++)
+                    pixels[y * width + x + offset] = AlphaOver(pixels[y * width + x + offset], star);
+            }
+
+            var ringColor = new Color32(216, 180, 254, 46);
+            for (var ring = 0; ring < 4; ring++)
+            {
+                DrawRotatedEllipseStroke(
+                    pixels,
+                    width,
+                    height,
+                    center.x,
+                    center.y,
+                    34f + ring * 24f,
+                    20f + ring * 15f,
+                    ring * 0.25f,
+                    ringColor);
+            }
+            return MakeTexture("ReactAstralRealmVeil", width, height, pixels, TextureWrapMode.Clamp);
+        }
+
         public static float Hash01(float x, float z, float salt = 0f)
         {
             var value = Mathf.Sin(x * 127.1f + z * 311.7f + salt * 74.7f) * 43758.5453123f;
@@ -175,6 +219,43 @@ namespace WOF
             if (t <= 0.32f) return Color.Lerp(center, middle, t / 0.32f);
             if (t <= 0.62f) return Color.Lerp(middle, outer, (t - 0.32f) / 0.3f);
             return Color.Lerp(outer, new Color(outer.r, outer.g, outer.b, 0f), (t - 0.62f) / 0.38f);
+        }
+
+        private static Color SampleAstralHaze(float t)
+        {
+            var center = new Color(1f, 1f, 1f, 0.02f);
+            var inner = new Color32(168, 85, 247, 31);
+            var outer = new Color32(88, 28, 135, 71);
+            var edge = new Color32(24, 6, 48, 133);
+            if (t <= 0.35f) return Color.Lerp(center, inner, t / 0.35f);
+            if (t <= 0.72f) return Color.Lerp(inner, outer, (t - 0.35f) / 0.37f);
+            return Color.Lerp(outer, edge, (t - 0.72f) / 0.28f);
+        }
+
+        private static void DrawRotatedEllipseStroke(
+            Color[] pixels,
+            int width,
+            int height,
+            float cx,
+            float cy,
+            float rx,
+            float ry,
+            float rotation,
+            Color color)
+        {
+            var cosine = Mathf.Cos(rotation);
+            var sine = Mathf.Sin(rotation);
+            for (var y = 0; y < height; y++)
+            for (var x = 0; x < width; x++)
+            {
+                var dx = x + 0.5f - cx;
+                var dy = y + 0.5f - cy;
+                var localX = dx * cosine + dy * sine;
+                var localY = -dx * sine + dy * cosine;
+                var radius = Mathf.Sqrt(localX * localX / (rx * rx) + localY * localY / (ry * ry));
+                if (Mathf.Abs(radius - 1f) > 1f / Mathf.Min(rx, ry)) continue;
+                pixels[y * width + x] = AlphaOver(pixels[y * width + x], color);
+            }
         }
 
         private static void DrawEllipse(Color[] pixels, int width, int height, float cx, float cy, float rx, float ry, Color color)
