@@ -890,6 +890,148 @@ namespace WOF
                 $"[WOF-AUTOMATION] CLIENT_RPC_SERVER_RESPAWN_CONFIRMED target={clientRpcTarget.OwnerClientId} elapsedSeconds={clientRpcRespawnElapsedSeconds:F2}");
             Debug.Log(
                 $"[WOF-AUTOMATION] CLIENT_RPC_SERVER_PATH_PASSED attacker={clientRpcAttacker.OwnerClientId} target={clientRpcTarget.OwnerClientId} casts={requiredCasts}");
+
+            yield return new WaitForSecondsRealtime(0.5f);
+            const string trainingDummyInstanceId = "automation-client-training-dummy";
+            const float trainingDummyX = 8f;
+            const float trainingDummyZ = 86f;
+            var trainingDummyPosition = new Vector3(
+                trainingDummyX,
+                WofBaseVillageLayout.GetTerrainHeight(trainingDummyX, trainingDummyZ),
+                trainingDummyZ);
+            if (!clientRpcAttacker.BeginAutomationClientTrainingDummyProbe(
+                    trainingDummyInstanceId,
+                    trainingDummyPosition))
+            {
+                FailCombatProbe("client-training-dummy-probe-start-failed");
+                yield break;
+            }
+
+            Debug.Log(
+                $"[WOF-AUTOMATION] TRAINING_DUMMY_TWO_PEER_PROBE_STARTED owner={clientRpcAttacker.OwnerClientId} source={clientRpcTarget.OwnerClientId} instance={trainingDummyInstanceId}");
+
+            const float trainingDummyPlacementTimeoutSeconds = 5f;
+            var trainingDummyPlacementDeadline =
+                Time.realtimeSinceStartup + trainingDummyPlacementTimeoutSeconds;
+            WofEnginePlaceableRecord trainingDummyState = default;
+            while (Time.realtimeSinceStartup < trainingDummyPlacementDeadline &&
+                   (!clientRpcAttacker.TryGetTrainingDummyState(
+                        trainingDummyInstanceId,
+                        out trainingDummyState) ||
+                    !clientRpcAttacker.HasAutomationClientTrainingDummyPlacementAcknowledgement(
+                        trainingDummyInstanceId)))
+            {
+                yield return null;
+            }
+
+            if (!clientRpcAttacker.TryGetTrainingDummyState(
+                    trainingDummyInstanceId,
+                    out trainingDummyState) ||
+                !clientRpcAttacker.HasAutomationClientTrainingDummyPlacementAcknowledgement(
+                    trainingDummyInstanceId) ||
+                trainingDummyState.trainingDummyHealth != WofTrainingDummyCombatRules.MaxHealth ||
+                trainingDummyState.trainingDummyHitSequence != 0 ||
+                trainingDummyState.trainingDummyRespawnAt != 0d)
+            {
+                FailCombatProbe(
+                    $"client-training-dummy-placement-timeout-or-state-mismatch-health-{trainingDummyState.trainingDummyHealth:F0}-sequence-{trainingDummyState.trainingDummyHitSequence}-respawn-{trainingDummyState.trainingDummyRespawnAt:F3}");
+                yield break;
+            }
+
+            Debug.Log(
+                $"[WOF-AUTOMATION] TRAINING_DUMMY_SERVER_PLACEMENT_CONFIRMED owner={clientRpcAttacker.OwnerClientId} instance={trainingDummyInstanceId} health={trainingDummyState.trainingDummyHealth:F0}");
+
+            const int trainingDummyRequiredHits = 5;
+            var trainingDummyDownAt = -1f;
+            for (var hitIndex = 1; hitIndex <= trainingDummyRequiredHits; hitIndex++)
+            {
+                if (!clientRpcAttacker.ApplyServerTrainingDummySpellImpact(
+                        trainingDummyInstanceId,
+                        WofSpellId.Fireball,
+                        clientRpcTarget.OwnerClientId))
+                {
+                    FailCombatProbe($"client-training-dummy-hit-{hitIndex}-not-applied");
+                    yield break;
+                }
+
+                if (!clientRpcAttacker.TryGetTrainingDummyState(
+                        trainingDummyInstanceId,
+                        out trainingDummyState))
+                {
+                    FailCombatProbe($"client-training-dummy-hit-{hitIndex}-state-missing");
+                    yield break;
+                }
+
+                var expectedTrainingDummyHealth = Mathf.Max(
+                    0f,
+                    WofTrainingDummyCombatRules.MaxHealth -
+                    (hitIndex * WofTrainingDummyCombatRules.GetDamage(WofSpellId.Fireball)));
+                if (trainingDummyState.trainingDummyHealth != expectedTrainingDummyHealth ||
+                    trainingDummyState.trainingDummyHitSequence != hitIndex ||
+                    trainingDummyState.trainingDummyLastSpell != (int)WofSpellId.Fireball)
+                {
+                    FailCombatProbe(
+                        $"client-training-dummy-hit-{hitIndex}-state-mismatch-health-{trainingDummyState.trainingDummyHealth:F0}-expected-{expectedTrainingDummyHealth:F0}-sequence-{trainingDummyState.trainingDummyHitSequence}-spell-{trainingDummyState.trainingDummyLastSpell}");
+                    yield break;
+                }
+
+                Debug.Log(
+                    $"[WOF-AUTOMATION] TRAINING_DUMMY_SERVER_DAMAGE_CONFIRMED owner={clientRpcAttacker.OwnerClientId} instance={trainingDummyInstanceId} index={hitIndex} health={trainingDummyState.trainingDummyHealth:F0}");
+                if (trainingDummyState.trainingDummyHealth <= 0f)
+                {
+                    trainingDummyDownAt = Time.realtimeSinceStartup;
+                    Debug.Log(
+                        $"[WOF-AUTOMATION] TRAINING_DUMMY_SERVER_DOWN_CONFIRMED owner={clientRpcAttacker.OwnerClientId} instance={trainingDummyInstanceId} sequence={trainingDummyState.trainingDummyHitSequence}");
+                }
+
+                yield return new WaitForSecondsRealtime(0.35f);
+            }
+
+            if (trainingDummyDownAt < 0f || trainingDummyState.trainingDummyRespawnAt <= 0d)
+            {
+                FailCombatProbe("client-training-dummy-down-state-missing");
+                yield break;
+            }
+
+            var trainingDummyRespawnDeadline =
+                Time.realtimeSinceStartup + WofTrainingDummyCombatRules.RespawnSeconds + 3f;
+            while (Time.realtimeSinceStartup < trainingDummyRespawnDeadline)
+            {
+                if (clientRpcAttacker.TryGetTrainingDummyState(
+                        trainingDummyInstanceId,
+                        out trainingDummyState) &&
+                    trainingDummyState.trainingDummyHealth == WofTrainingDummyCombatRules.MaxHealth &&
+                    trainingDummyState.trainingDummyRespawnAt == 0d)
+                {
+                    break;
+                }
+
+                yield return null;
+            }
+
+            if (trainingDummyState.trainingDummyHealth != WofTrainingDummyCombatRules.MaxHealth ||
+                trainingDummyState.trainingDummyRespawnAt != 0d ||
+                trainingDummyState.trainingDummyHitSequence != trainingDummyRequiredHits)
+            {
+                FailCombatProbe(
+                    $"client-training-dummy-respawn-timeout-health-{trainingDummyState.trainingDummyHealth:F0}-sequence-{trainingDummyState.trainingDummyHitSequence}-respawn-{trainingDummyState.trainingDummyRespawnAt:F3}");
+                yield break;
+            }
+
+            var trainingDummyRespawnElapsedSeconds = Time.realtimeSinceStartup - trainingDummyDownAt;
+            if (Mathf.Abs(trainingDummyRespawnElapsedSeconds -
+                          (float)WofTrainingDummyCombatRules.RespawnSeconds) >
+                respawnTimingToleranceSeconds)
+            {
+                FailCombatProbe(
+                    $"client-training-dummy-respawn-timing-out-of-range-elapsed-{trainingDummyRespawnElapsedSeconds:F2}");
+                yield break;
+            }
+
+            Debug.Log(
+                $"[WOF-AUTOMATION] TRAINING_DUMMY_SERVER_RESPAWN_CONFIRMED owner={clientRpcAttacker.OwnerClientId} instance={trainingDummyInstanceId} elapsedSeconds={trainingDummyRespawnElapsedSeconds:F2}");
+            Debug.Log(
+                $"[WOF-AUTOMATION] TRAINING_DUMMY_TWO_PEER_SERVER_PATH_PASSED owner={clientRpcAttacker.OwnerClientId} source={clientRpcTarget.OwnerClientId} instance={trainingDummyInstanceId} hits={trainingDummyRequiredHits}");
         }
 
         private void FailCombatProbe(string reason)
