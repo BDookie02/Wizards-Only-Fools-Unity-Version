@@ -23,7 +23,13 @@ namespace WOF
             else if (definition.Category == WofEnginePlaceableCategory.Nature) CreateNature(definition, root.transform, opacity);
             else if (definition.Category == WofEnginePlaceableCategory.Magic) CreateMagic(definition, root.transform, opacity);
             else CreateBuilding(definition, root.transform, opacity);
-            if (addCollider) AddCollider(definition, root.transform);
+            Collider placementCollider = null;
+            if (addCollider) placementCollider = AddCollider(definition, root.transform);
+            if (definition.Id == "training-spell-dummy" && addCollider)
+            {
+                var runtime = root.AddComponent<WofTrainingDummyRuntime>();
+                runtime.Initialize(name, root.transform.Find("Model"), placementCollider);
+            }
             return root;
         }
 
@@ -38,17 +44,19 @@ namespace WOF
 
         private static void CreateTrainingDummy(WofEnginePlaceableDefinition definition, Transform parent, float opacity)
         {
-            CreatePrimitive("Base", PrimitiveType.Cylinder, parent, new Vector3(0f, -1.58f, 0f),
+            var model = new GameObject("Model").transform;
+            model.SetParent(parent, false);
+            CreatePrimitive("Base", PrimitiveType.Cylinder, model, new Vector3(0f, -1.58f, 0f),
                 new Vector3(2.75f, 0.18f, 2.75f), Vector3.zero, new Color32(51, 65, 85, 255), opacity);
-            CreatePrimitive("Body", PrimitiveType.Cube, parent, new Vector3(0f, -0.25f, 0f),
+            CreatePrimitive("Body", PrimitiveType.Cube, model, new Vector3(0f, -0.25f, 0f),
                 new Vector3(1.72f, 2.72f, 1.08f), Vector3.zero, definition.AccentColor, opacity);
-            CreatePrimitive("Head", PrimitiveType.Cube, parent, new Vector3(0f, 1.15f, 0f),
+            CreatePrimitive("Head", PrimitiveType.Cube, model, new Vector3(0f, 1.15f, 0f),
                 new Vector3(1.22f, 0.86f, 0.86f), Vector3.zero, new Color32(253, 230, 138, 255), opacity);
-            CreatePrimitive("Target", PrimitiveType.Cube, parent, new Vector3(0f, -0.25f, -0.55f),
+            CreatePrimitive("Target", PrimitiveType.Cube, model, new Vector3(0f, -0.25f, -0.55f),
                 new Vector3(1.32f, 1.86f, 0.05f), Vector3.zero, new Color32(17, 24, 39, 255), opacity * 0.86f);
-            CreatePrimitive("CrossX", PrimitiveType.Cube, parent, new Vector3(0f, 1.78f, 0f),
+            CreatePrimitive("CrossX", PrimitiveType.Cube, model, new Vector3(0f, 1.78f, 0f),
                 new Vector3(2.45f, 0.18f, 0.18f), Vector3.zero, definition.AccentColor, opacity);
-            CreatePrimitive("CrossZ", PrimitiveType.Cube, parent, new Vector3(0f, 1.78f, 0f),
+            CreatePrimitive("CrossZ", PrimitiveType.Cube, model, new Vector3(0f, 1.78f, 0f),
                 new Vector3(0.18f, 0.18f, 2.45f), Vector3.zero, definition.AccentColor, opacity);
         }
 
@@ -119,36 +127,34 @@ namespace WOF
                 new Vector3(1.8f, 3.2f, 0.18f), Vector3.zero, new Color32(29, 18, 11, 255), opacity);
         }
 
-        private static void AddCollider(WofEnginePlaceableDefinition definition, Transform root)
+        private static Collider AddCollider(WofEnginePlaceableDefinition definition, Transform root)
         {
             if (definition.Id == "campfire-small")
             {
-                AddCylinderCollider(root, 1.8f, 0.9f, new Vector3(0f, 0.35f, 0f));
-                return;
+                return AddCylinderCollider(root, 1.8f, 0.9f, new Vector3(0f, 0.35f, 0f));
             }
             if (definition.Id == "training-spell-dummy")
             {
                 var collider = root.gameObject.AddComponent<BoxCollider>();
                 collider.size = new Vector3(2.16f, 3.44f, 2.16f);
-                return;
+                return collider;
             }
             if (definition.Category == WofEnginePlaceableCategory.Nature)
             {
-                AddCylinderCollider(root, definition.FootprintRadius * 0.75f, 1.6f, new Vector3(0f, 0.8f, 0f));
-                return;
+                return AddCylinderCollider(root, definition.FootprintRadius * 0.75f, 1.6f, new Vector3(0f, 0.8f, 0f));
             }
             if (definition.Category == WofEnginePlaceableCategory.Magic)
             {
-                AddCylinderCollider(root, definition.FootprintRadius * 0.62f, 2.4f, new Vector3(0f, 0.65f, 0f));
-                return;
+                return AddCylinderCollider(root, definition.FootprintRadius * 0.62f, 2.4f, new Vector3(0f, 0.65f, 0f));
             }
             WofEnginePlaceableCatalog.GetBuildingMetrics(definition, out var width, out var depth, out var height, out _, out _);
             var box = root.gameObject.AddComponent<BoxCollider>();
             box.center = new Vector3(0f, height * 0.5f, 0f);
             box.size = new Vector3(width, height, depth);
+            return box;
         }
 
-        private static void AddCylinderCollider(Transform root, float radius, float height, Vector3 position)
+        private static Collider AddCylinderCollider(Transform root, float radius, float height, Vector3 position)
         {
             var colliderRoot = new GameObject("PlacementCollider");
             colliderRoot.transform.SetParent(root, false);
@@ -157,6 +163,7 @@ namespace WOF
             filter.sharedMesh = CreateCylinderMesh(radius, height, 18);
             var collider = colliderRoot.AddComponent<MeshCollider>();
             collider.sharedMesh = filter.sharedMesh;
+            return collider;
         }
 
         private static GameObject CreatePrimitive(

@@ -138,6 +138,14 @@ namespace WOF
                     return;
                 }
 
+                var trainingDummy = hit.collider.GetComponentInParent<WofTrainingDummyRuntime>();
+                if (trainingDummy != null)
+                {
+                    trainingDummy.ApplyServerSpellImpact(_spell, _sourceClientId.Value);
+                    NetworkObject.Despawn(true);
+                    return;
+                }
+
                 if (_spell == WofSpellId.Portal)
                 {
                     AnchorPortal(hit.point - direction * 1.5f + Vector3.up);
@@ -190,16 +198,35 @@ namespace WOF
             if (_spell == WofSpellId.Lightning && !_areaImpactApplied)
             {
                 _areaImpactApplied = true;
+                WofTrainingDummyRuntime.ApplyServerAreaSpellImpact(
+                    transform.position,
+                    WofSpellRuntimeTuning.LightningRadius,
+                    _spell,
+                    _sourceClientId.Value);
                 return;
             }
             if (_spell == WofSpellId.MeteorShower && !_areaImpactApplied && now >= _impactAt)
             {
                 _areaImpactApplied = true;
                 ApplyAreaDamage(WofSpellRuntimeTuning.MeteorRadius, 18f, false);
+                WofTrainingDummyRuntime.ApplyServerAreaSpellImpact(
+                    transform.position,
+                    WofSpellRuntimeTuning.MeteorRadius,
+                    _spell,
+                    _sourceClientId.Value);
                 return;
             }
             if (_spell == WofSpellId.Tornado)
             {
+                if (!_areaImpactApplied)
+                {
+                    _areaImpactApplied = true;
+                    WofTrainingDummyRuntime.ApplyServerAreaSpellImpact(
+                        transform.position,
+                        WofSpellRuntimeTuning.TornadoRadius,
+                        _spell,
+                        _sourceClientId.Value);
+                }
                 _areaTickClock += Time.deltaTime;
                 if (_areaTickClock < 0.2f) return;
                 _areaTickClock = 0f;

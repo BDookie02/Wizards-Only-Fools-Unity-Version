@@ -571,10 +571,13 @@ namespace WOF
 
         private void FixedUpdate()
         {
-            if (!IsSpawned || !IsServer || _isDead.Value || !_controller.enabled)
+            if (!IsSpawned || !IsServer)
             {
                 return;
             }
+
+            RespawnExpiredTrainingDummies();
+            if (_isDead.Value || !_controller.enabled) return;
 
             ApplyToxicStatusDamage(Time.fixedDeltaTime);
             ApplyManaDecay();
@@ -847,6 +850,18 @@ namespace WOF
                 !float.IsFinite(runtime.x) || !float.IsFinite(runtime.y) ||
                 !float.IsFinite(runtime.z) || !float.IsFinite(runtime.yaw)) return;
 
+            if (runtime.placeableId == "training-spell-dummy" &&
+                (runtime.trainingDummyHealth <= 0f ||
+                 !float.IsFinite(runtime.trainingDummyHealth)) &&
+                runtime.trainingDummyRespawnAt <= 0d)
+            {
+                runtime.trainingDummyHealth = WofTrainingDummyCombatRules.MaxHealth;
+                runtime.trainingDummyRespawnAt = 0d;
+                runtime.trainingDummyHitSequence = 0;
+                runtime.trainingDummyLastSpell = -1;
+                record = new WofNetworkEnginePlaceableRecord(runtime);
+            }
+
             var replace = replaceInstanceId.ToString();
             if (!string.IsNullOrEmpty(replace))
             {
@@ -897,6 +912,61 @@ namespace WOF
         private static bool IsTrainingDummy(WofNetworkEnginePlaceableRecord record)
         {
             return record.PlaceableId.ToString() == "training-spell-dummy";
+        }
+
+        public bool ApplyServerTrainingDummySpellImpact(
+            string instanceId,
+            WofSpellId spell,
+            ulong sourceClientId)
+        {
+            if (!IsServer || string.IsNullOrEmpty(instanceId)) return false;
+            var now = NetworkManager.ServerTime.Time;
+            for (var index = 0; index < _enginePlaceables.Count; index++)
+            {
+                var networkRecord = _enginePlaceables[index];
+                if (!IsTrainingDummy(networkRecord) || networkRecord.InstanceId.ToString() != instanceId) continue;
+                var runtime = networkRecord.ToRuntimeRecord();
+                var result = WofTrainingDummyCombatRules.Apply(
+                    runtime.trainingDummyHealth,
+                    runtime.trainingDummyHitSequence,
+                    spell,
+                    now);
+                if (!result.Applied) return false;
+
+                runtime.trainingDummyHealth = result.Health;
+                runtime.trainingDummyRespawnAt = result.RespawnAt;
+                runtime.trainingDummyHitSequence = result.HitSequence;
+                runtime.trainingDummyLastSpell = (int)spell;
+                _enginePlaceables[index] = new WofNetworkEnginePlaceableRecord(runtime);
+                Debug.Log(
+                    $"[WOF-AUTOMATION] TRAINING_DUMMY_HIT owner={OwnerClientId} instance={instanceId} " +
+                    $"source={sourceClientId} spell={spell} damage={WofTrainingDummyCombatRules.GetDamage(spell):F0} " +
+                    $"health={result.Health:F0} down={result.IsDown.ToString().ToLowerInvariant()}");
+                return true;
+            }
+            return false;
+        }
+
+        private void RespawnExpiredTrainingDummies()
+        {
+            var now = NetworkManager.ServerTime.Time;
+            for (var index = 0; index < _enginePlaceables.Count; index++)
+            {
+                var networkRecord = _enginePlaceables[index];
+                if (!IsTrainingDummy(networkRecord) ||
+                    !WofTrainingDummyCombatRules.IsRespawnDue(
+                        networkRecord.TrainingDummyHealth,
+                        networkRecord.TrainingDummyRespawnAt,
+                        now)) continue;
+
+                var runtime = networkRecord.ToRuntimeRecord();
+                runtime.trainingDummyHealth = WofTrainingDummyCombatRules.MaxHealth;
+                runtime.trainingDummyRespawnAt = 0d;
+                _enginePlaceables[index] = new WofNetworkEnginePlaceableRecord(runtime);
+                Debug.Log(
+                    $"[WOF-AUTOMATION] TRAINING_DUMMY_RESPAWN owner={OwnerClientId} " +
+                    $"instance={runtime.instanceId} health={runtime.trainingDummyHealth:F0}");
+            }
         }
 
         [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
@@ -1594,6 +1664,13 @@ namespace WOF
                         !player.HasActiveSpellShield)
                         player.ApplyServerDamage(35f, OwnerClientId);
                 }
+                WofTrainingDummyRuntime.ApplyServerHitscanSpellImpact(
+                    origin,
+                    normalized,
+                    WofSpellRuntimeTuning.HitscanRange,
+                    WofSpellRuntimeTuning.HitscanRadius,
+                    spell,
+                    OwnerClientId);
                 SpawnSpellObject(spell, origin + normalized * 8f, normalized);
             }
             else
