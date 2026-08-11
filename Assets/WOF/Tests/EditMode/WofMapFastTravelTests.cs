@@ -125,6 +125,15 @@ namespace WOF.Tests.EditMode
         }
 
         [Test]
+        public void MapToggleCannotOpenThroughAnotherModalInputOwner()
+        {
+            Assert.That(WofNavigationMapRuntime.CanToggleExpandedForModalState(false, true), Is.False);
+            Assert.That(WofNavigationMapRuntime.CanToggleExpandedForModalState(false, false), Is.True);
+            Assert.That(WofNavigationMapRuntime.CanToggleExpandedForModalState(true, true), Is.True,
+                "An expanded map must still be able to close while it owns gameplay suppression.");
+        }
+
+        [Test]
         public void ExplorationRevealRoundTripsOnlyValidVisitedRegions()
         {
             var gameObject = new GameObject("WorldMapExplorationTest");

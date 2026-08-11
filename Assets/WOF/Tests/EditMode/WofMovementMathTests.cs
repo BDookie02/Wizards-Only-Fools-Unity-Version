@@ -122,6 +122,52 @@ namespace WOF.Tests
         }
 
         [Test]
+        public void GroundedStickVelocityDoesNotPreventCrouchHold()
+        {
+            var state = default(WofMovementRuntimeState);
+            WofMovementMath.ResolveFrame(
+                ref state,
+                Vector2.zero,
+                false,
+                true,
+                false,
+                true,
+                -2f,
+                0f,
+                20f,
+                0.02f);
+            var activated = WofMovementMath.ResolveFrame(
+                ref state,
+                Vector2.zero,
+                false,
+                true,
+                false,
+                true,
+                -2f,
+                0f,
+                23f,
+                0.02f);
+
+            Assert.That(activated.IsCrouching, Is.True);
+        }
+
+        [Test]
+        public void MovementOnCrouchThresholdFrameCannotStartSlide()
+        {
+            var state = default(WofMovementRuntimeState);
+            Resolve(ref state, Vector2.zero, sprint: false, slide: true, now: 30f);
+
+            var boundary = Resolve(ref state, Vector2.up, sprint: false, slide: true, now: 33f);
+            var moving = Resolve(ref state, Vector2.up, sprint: false, slide: true, now: 33.02f);
+
+            Assert.That(boundary.IsCrouching, Is.True);
+            Assert.That(boundary.IsSliding, Is.False);
+            Assert.That(moving.IsCrouching, Is.True);
+            Assert.That(moving.IsSliding, Is.False);
+            Assert.That(moving.Speed, Is.EqualTo(3.52f).Within(0.0001f));
+        }
+
+        [Test]
         public void JumpThrusterMatchesReactFuelImpulseAndReleaseLockRules()
         {
             var state = default(WofMovementRuntimeState);

@@ -94,11 +94,10 @@ namespace WOF
                                 effectiveGrounded &&
                                 !jumpHeld &&
                                 !hadSlidingState &&
-                                !isSprinting &&
-                                Mathf.Abs(verticalVelocity) < 0.35f;
+                                !isSprinting;
             UpdateCrouch(ref state, crouchAllowed, now);
 
-            if (effectiveGrounded && slideHeld && !hadSlidingState &&
+            if (effectiveGrounded && slideHeld && !hadSlidingState && !state.IsCrouching &&
                 (hasPlanarMovementInput || planarVelocitySquared > SlideStartMinSpeedSquared) &&
                 now - state.LastSlideAt >= SlideRestartCooldownSeconds)
             {

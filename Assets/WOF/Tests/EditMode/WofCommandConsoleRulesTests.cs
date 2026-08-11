@@ -126,5 +126,19 @@ namespace WOF.Tests
             Assert.That(WofCommandConsoleRules.MaximumVisibleSuggestions, Is.EqualTo(6));
             Assert.That(WofCommandConsoleRules.Suggestions.Count, Is.EqualTo(11));
         }
+
+        [TestCase(false, false, false)]
+        [TestCase(false, true, false)]
+        [TestCase(true, true, false)]
+        [TestCase(true, false, true)]
+        public void CloseFocusGate_WaitsForNextFrameAndKeyboardRelease(
+            bool closingFrameElapsed,
+            bool keyboardInputActive,
+            bool expected)
+        {
+            Assert.That(
+                WofCommandConsoleRules.CanRestoreGameplayAfterClose(closingFrameElapsed, keyboardInputActive),
+                Is.EqualTo(expected));
+        }
     }
 }

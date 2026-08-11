@@ -88,6 +88,11 @@ namespace WOF
 
         public static IReadOnlyList<WofCommandSuggestion> Suggestions => s_Suggestions;
 
+        public static bool CanRestoreGameplayAfterClose(bool closingFrameElapsed, bool keyboardInputActive)
+        {
+            return closingFrameElapsed && !keyboardInputActive;
+        }
+
         public static WofCommandSuggestion[] GetSuggestions(string value, int maximumCount = MaximumVisibleSuggestions)
         {
             var normalized = (value ?? string.Empty).TrimStart('/').Trim().ToLowerInvariant();

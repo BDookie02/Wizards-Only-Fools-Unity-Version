@@ -776,7 +776,6 @@ namespace WOF
             var hasPlanarInput = command.Move.sqrMagnitude > 0f;
             var moving = hasPlanarInput || (vclip && (command.Jump || command.Slide));
             var sprinting = moving && command.Sprint && !IsSliding && !IsCrouching;
-            var slideHeld = !vclip && command.Slide && (IsSliding || sprinting || hasPlanarInput);
             var velocity = vclip
                 ? WofMovementMath.ResolveVClipVelocity(
                     command.Move,
@@ -803,11 +802,12 @@ namespace WOF
                 command.Move,
                 sprinting,
                 command.Jump,
-                slideHeld,
+                command.Slide,
                 vclip,
                 IsGrounded,
                 moving,
                 IsSliding,
+                IsCrouching,
                 WofSpellMenuRuntime.IsOpen);
         }
 
@@ -2353,19 +2353,19 @@ namespace WOF
             }
 
             var controllerVelocity = _controller.velocity;
+            var effectiveGrounded = (Time.time - _lastGroundedAt) <= WofGameConstants.GroundCoyoteSeconds;
             var movementFrame = WofMovementMath.ResolveFrame(
                 ref movementState,
                 command.Move,
                 command.Sprint,
                 command.Slide,
                 command.Jump,
-                _controller.isGrounded,
+                effectiveGrounded,
                 verticalVelocity,
                 controllerVelocity.x * controllerVelocity.x + controllerVelocity.z * controllerVelocity.z,
                 Time.time,
                 deltaTime);
 
-            var effectiveGrounded = (Time.time - _lastGroundedAt) <= WofGameConstants.GroundCoyoteSeconds;
             if (WofMovementMath.ApplyJumpThruster(
                     ref movementState,
                     command.Jump,

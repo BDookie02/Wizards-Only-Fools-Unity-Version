@@ -144,8 +144,18 @@ namespace WOF
                 return;
             }
 
-            var keyboardToggle = Keyboard.current?.mKey.wasPressedThisFrame ?? false;
             var gamepad = Gamepad.current;
+            if (!CanToggleExpandedForModalState(IsExpanded, WofInputRouter.GameplaySuppressed))
+            {
+                var suppressedHotbarModifierHeld =
+                    WofControllerBindings.IsPressed(gamepad, WofControllerActions.LeftHotbar) ||
+                    WofControllerBindings.IsPressed(gamepad, WofControllerActions.RightHotbar);
+                _controllerToggleHeld = !suppressedHotbarModifierHeld &&
+                                        WofControllerBindings.IsPressed(gamepad, WofControllerActions.Map);
+                return;
+            }
+
+            var keyboardToggle = Keyboard.current?.mKey.wasPressedThisFrame ?? false;
             var hotbarModifierHeld = WofControllerBindings.IsPressed(gamepad, WofControllerActions.LeftHotbar) ||
                                      WofControllerBindings.IsPressed(gamepad, WofControllerActions.RightHotbar);
             var controllerToggleHeld = !hotbarModifierHeld && WofControllerBindings.IsPressed(gamepad, WofControllerActions.Map);
@@ -203,10 +213,16 @@ namespace WOF
 
         public void ToggleExpanded()
         {
-            if (hud != null && hud.IsGameplayVisible && !WofSpellMenuRuntime.IsOpen)
+            if (hud != null && hud.IsGameplayVisible && !WofSpellMenuRuntime.IsOpen &&
+                CanToggleExpandedForModalState(IsExpanded, WofInputRouter.GameplaySuppressed))
             {
                 SetExpanded(!IsExpanded);
             }
+        }
+
+        internal static bool CanToggleExpandedForModalState(bool expanded, bool gameplaySuppressed)
+        {
+            return expanded || !gameplaySuppressed;
         }
 
         private void BuildView()
