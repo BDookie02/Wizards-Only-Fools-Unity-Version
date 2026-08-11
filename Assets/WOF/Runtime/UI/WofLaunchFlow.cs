@@ -91,6 +91,7 @@ namespace WOF
         private string _hatStyle = "floppy-wizard";
         private string _hairStyle = "none";
         private bool _initialized;
+        private Button _lanHostButton;
 
         public WofLaunchStage Stage => _stage;
 
@@ -111,8 +112,9 @@ namespace WOF
             survivalMultiplayerButton?.onClick.AddListener(ShowSurvivalLobby);
             multiplayerBackButton?.onClick.AddListener(ShowSave);
             createLobbyButton?.onClick.AddListener(CreateLobby);
-            copyMobileLinkButton?.onClick.AddListener(CopyMobileLink);
+            copyMobileLinkButton?.onClick.AddListener(JoinLobby);
             lobbyBackButton?.onClick.AddListener(ShowMultiplayer);
+            CreateLanHostControl();
 
             _profile = WofSurvivalProfileStore.Load();
             if (_profile != null)
@@ -125,9 +127,9 @@ namespace WOF
                 playerNameInput.text = _profile?.playerName ?? WofLaunchRules.MakeWizardName();
             }
 
-            if (inviteCodeInput != null && string.IsNullOrWhiteSpace(inviteCodeInput.text))
+            if (inviteCodeInput != null)
             {
-                inviteCodeInput.text = WofLaunchRules.MakeRoomCode();
+                inviteCodeInput.text = string.Empty;
             }
 
             RefreshOptionLabels();
@@ -226,7 +228,7 @@ namespace WOF
 
             if (createLobbyButtonLabel != null)
             {
-                createLobbyButtonLabel.text = _survivalLobby ? "CREATE SURVIVAL LOBBY" : "CREATE CUSTOM LOBBY";
+                createLobbyButtonLabel.text = "PUBLIC HOST";
             }
 
             RefreshLobbyLink();
@@ -352,7 +354,44 @@ namespace WOF
             return saved;
         }
 
-        private void CreateLobby()
+        private async void CreateLobby()
+        {
+            if (_survivalLobby && _profile != null)
+            {
+                _profile.lastMode = "multiplayer-survival";
+                WofSurvivalProfileStore.Save(_profile);
+            }
+
+            bootstrap?.SetSurvivalSession(_survivalLobby);
+            if (bootstrap == null)
+            {
+                SetStatus(WofPublicSessionRules.NetworkConfigurationRequired);
+                return;
+            }
+
+            var joinCode = await bootstrap.StartPublicHostAsync();
+            if (string.IsNullOrEmpty(joinCode))
+            {
+                return;
+            }
+
+            if (inviteCodeInput != null)
+            {
+                inviteCodeInput.text = joinCode;
+            }
+
+            if (mobileLinkInput != null)
+            {
+                mobileLinkInput.text = $"PUBLIC INVITE CODE: {joinCode}";
+            }
+
+            if (copyMobileLinkButtonLabel != null)
+            {
+                copyMobileLinkButtonLabel.text = "COPY INVITE CODE";
+            }
+        }
+
+        private void CreateLanLobby()
         {
             if (_survivalLobby && _profile != null)
             {
@@ -364,41 +403,93 @@ namespace WOF
             bootstrap?.StartHost();
         }
 
-        private void CopyMobileLink()
+        private async void JoinLobby()
         {
-            RefreshLobbyLink();
-            if (mobileLinkInput == null || string.IsNullOrWhiteSpace(mobileLinkInput.text))
+            var joinCode = WofPublicSessionRules.NormalizeJoinCode(inviteCodeInput?.text);
+            if (bootstrap != null && bootstrap.Mode != WofSessionMode.None)
             {
+                if (string.IsNullOrEmpty(joinCode))
+                {
+                    return;
+                }
+
+                GUIUtility.systemCopyBuffer = joinCode;
+                if (copyMobileLinkButtonLabel != null)
+                {
+                    copyMobileLinkButtonLabel.text = "INVITE CODE COPIED";
+                }
                 return;
             }
 
-            GUIUtility.systemCopyBuffer = mobileLinkInput.text;
-            if (copyMobileLinkButtonLabel != null)
+            if (string.IsNullOrEmpty(joinCode))
             {
-                copyMobileLinkButtonLabel.text = "MOBILE LINK COPIED";
+                SetStatus(WofPublicSessionRules.JoinCodeRequired);
+                return;
+            }
+
+            bootstrap?.SetSurvivalSession(_survivalLobby);
+            if (bootstrap != null)
+            {
+                await bootstrap.StartPublicClientAsync(joinCode);
             }
         }
 
         private void RefreshLobbyLink()
         {
-            var room = inviteCodeInput?.text?.Trim();
-            if (string.IsNullOrWhiteSpace(room))
+            if (createLobbyButtonLabel != null)
             {
-                room = WofLaunchRules.MakeRoomCode();
-                if (inviteCodeInput != null)
-                {
-                    inviteCodeInput.text = room;
-                }
+                createLobbyButtonLabel.text = "PUBLIC HOST";
+            }
+
+            var inviteLabel = inviteCodeInput?.transform.parent.Find("InviteCodeLabel")?.GetComponent<Text>();
+            if (inviteLabel != null)
+            {
+                inviteLabel.text = "PUBLIC INVITE CODE";
+            }
+
+            var sessionLabel = mobileLinkInput?.transform.parent.Find("MobileLinkLabel")?.GetComponent<Text>();
+            if (sessionLabel != null)
+            {
+                sessionLabel.text = "PUBLIC SESSION";
             }
 
             if (mobileLinkInput != null)
             {
-                mobileLinkInput.text = $"http://127.0.0.1:18765/?room={room}";
+                mobileLinkInput.text = "PUBLIC RELAY: CREATE OR JOIN";
             }
 
             if (copyMobileLinkButtonLabel != null)
             {
-                copyMobileLinkButtonLabel.text = "COPY MOBILE LINK";
+                copyMobileLinkButtonLabel.text = "JOIN INVITE CODE";
+            }
+        }
+
+        private void CreateLanHostControl()
+        {
+            if (createLobbyButton == null || _lanHostButton != null)
+            {
+                return;
+            }
+
+            var createRect = createLobbyButton.GetComponent<RectTransform>();
+            createRect.anchorMin = new Vector2(0.08f, 0.30f);
+            createRect.anchorMax = new Vector2(0.60f, 0.41f);
+            createRect.offsetMin = Vector2.zero;
+            createRect.offsetMax = Vector2.zero;
+
+            _lanHostButton = Instantiate(createLobbyButton, createLobbyButton.transform.parent);
+            _lanHostButton.gameObject.name = "LanHostButton";
+            _lanHostButton.onClick.RemoveAllListeners();
+            _lanHostButton.onClick.AddListener(CreateLanLobby);
+            var lanRect = _lanHostButton.GetComponent<RectTransform>();
+            lanRect.anchorMin = new Vector2(0.63f, 0.30f);
+            lanRect.anchorMax = new Vector2(0.92f, 0.41f);
+            lanRect.offsetMin = Vector2.zero;
+            lanRect.offsetMax = Vector2.zero;
+            var label = _lanHostButton.transform.Find("Label")?.GetComponent<Text>();
+            if (label != null)
+            {
+                label.text = "LAN HOST";
             }
         }
 
