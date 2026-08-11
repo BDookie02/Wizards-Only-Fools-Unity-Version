@@ -98,6 +98,12 @@ namespace WOF.Tests
                 Assert.That(root.GetComponentsInChildren<WofLilyCoilEyeAnimator>(true), Has.Length.EqualTo(2));
                 Assert.That(root.GetComponentsInChildren<BoxCollider>(true), Has.Length.EqualTo(39));
                 Assert.That(root.GetComponentsInChildren<MeshCollider>(true), Has.Length.EqualTo(1));
+                Assert.That(root.GetComponentsInChildren<WofVillagerManager>(true), Is.Empty,
+                    "React's Lily Coil has no village or quest-giver population.");
+                Assert.That(root.GetComponentsInChildren<WofVillagerBillboard>(true), Is.Empty,
+                    "Do not invent Lily Coil NPCs that are absent from the React source.");
+                Assert.That(root.GetComponentsInChildren<WofStaticAvatarBillboard>(true), Is.Empty,
+                    "React's Lily Coil is a realm destination, not an NPC location.");
             }
             finally
             {

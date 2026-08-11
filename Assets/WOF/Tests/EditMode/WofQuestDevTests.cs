@@ -225,6 +225,10 @@ namespace WOF.Tests
         }
 
         [TestCase("", WofQuestScriptTeleport.LilyCoil, "Transported to Lily Coil")]
+        [TestCase("lilycoil", WofQuestScriptTeleport.LilyCoil, "Transported to Lily Coil")]
+        [TestCase("coil", WofQuestScriptTeleport.LilyCoil, "Transported to Lily Coil")]
+        [TestCase("springcoil", WofQuestScriptTeleport.LilyCoil, "Transported to Lily Coil")]
+        [TestCase("purplecoil", WofQuestScriptTeleport.LilyCoil, "Transported to Lily Coil")]
         [TestCase("purple-coil", WofQuestScriptTeleport.LilyCoil, "Transported to Lily Coil")]
         [TestCase("darrel-grove", WofQuestScriptTeleport.DarrelGrove, "Transported to Darrel's Grove")]
         public void QuestScript_ResolvesReactQuestRealmAliases(string value, WofQuestScriptTeleport expected, string message)
