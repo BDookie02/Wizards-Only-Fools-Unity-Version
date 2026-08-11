@@ -35,6 +35,7 @@ namespace WOF
         private WofQuestDialogRuntime _questDialog;
         private WofSurvivalSkyRuntime _sky;
         private WofEngineMenuRuntime _engineMenu;
+        private WofQuestDevRuntime _questDev;
         private Canvas _canvas;
         private int _lastScreenWidth;
         private int _lastScreenHeight;
@@ -59,6 +60,12 @@ namespace WOF
             _sky = FindFirstObjectByType<WofSurvivalSkyRuntime>();
             _engineMenu = FindFirstObjectByType<WofEngineMenuRuntime>();
             _canvas = GetComponent<Canvas>() ?? GetComponentInParent<Canvas>();
+            _questDev = GetComponent<WofQuestDevRuntime>();
+            if (_questDev == null)
+            {
+                _questDev = gameObject.AddComponent<WofQuestDevRuntime>();
+            }
+            _questDev.ConfigureGeneratedView(hud, commandFont);
             BuildRuntimeView();
         }
 
@@ -133,7 +140,8 @@ namespace WOF
             var localPlayer = ResolveLivingLocalPlayer();
             var submission = WofCommandConsoleRules.Evaluate(
                 rawValue,
-                localPlayer != null && localPlayer.IsVClipEnabled);
+                localPlayer != null && localPlayer.IsVClipEnabled,
+                _questDev != null && _questDev.IsModeEnabled);
             Debug.Log($"[WOF-AUTOMATION] COMMAND_CONSOLE_SUBMIT value=\"{rawValue.Replace("\"", "'")}\" action={submission.Action}");
             switch (submission.Action)
             {
@@ -205,6 +213,7 @@ namespace WOF
                     Close();
                     break;
                 case WofCommandConsoleAction.OpenEngineMenu:
+                    _questDev?.SetModeEnabled(true);
                     Close(false);
                     StartCoroutine(OpenEngineMenuAfterSubmit());
                     break;
@@ -214,6 +223,39 @@ namespace WOF
                         ? new WofEngineMenuActionResult(false, "PLACE BLOCKED: engine menu unavailable")
                         : _engineMenu.RequestDirectPlacement(submission.Value);
                     ShowMessages(new[] { placeResult.Message });
+                    Close();
+                    break;
+                case WofCommandConsoleAction.SetQuestDevEnabled:
+                    _questDev?.SetModeEnabled(submission.Enabled);
+                    ShowMessages(new[] { submission.Message });
+                    Close();
+                    break;
+                case WofCommandConsoleAction.OpenQuestNpcEditor:
+                    _questDev?.SetModeEnabled(true);
+                    ShowMessages(new[] { $"Editing {submission.Value}" });
+                    Close(false);
+                    StartCoroutine(OpenQuestEditorAfterSubmit(submission.Value));
+                    break;
+                case WofCommandConsoleAction.ClaimDarrelHere:
+                    ShowMessages(new[]
+                    {
+                        submission.Message,
+                        _questDev?.ClaimDarrelHere() ?? "No villager or occupied hut found for Darrel."
+                    });
+                    Close();
+                    break;
+                case WofCommandConsoleAction.SetDarrelQuestSpawn:
+                    ShowMessages(new[]
+                    {
+                        _questDev?.SetDarrelSpawnHere() ?? "Could not read current player position for Darrel spawn."
+                    });
+                    Close();
+                    break;
+                case WofCommandConsoleAction.ResetDarrelQuestSpawn:
+                    ShowMessages(new[]
+                    {
+                        _questDev?.ResetDarrelSpawn() ?? submission.Message
+                    });
                     Close();
                     break;
                 default:
@@ -424,6 +466,19 @@ namespace WOF
             yield return null;
             _engineMenu ??= FindFirstObjectByType<WofEngineMenuRuntime>();
             _engineMenu?.Open();
+        }
+
+        private IEnumerator OpenQuestEditorAfterSubmit(string npcId)
+        {
+            var keyboard = Keyboard.current;
+            while (keyboard != null && (keyboard.enterKey.isPressed || keyboard.numpadEnterKey.isPressed))
+            {
+                yield return null;
+                keyboard = Keyboard.current;
+            }
+            yield return null;
+            _questDev ??= GetComponent<WofQuestDevRuntime>();
+            _questDev?.OpenManualEditor(npcId);
         }
 
         private void OnInputValueChanged(string value)

@@ -51,10 +51,10 @@ namespace WOF.Tests.EditMode
             Assert.That(WofSurvivalBotwGrassRuntime.BladeCount, Is.EqualTo(56000));
             Assert.That(WofSurvivalBotwGrassRuntime.FlowerCount, Is.EqualTo(760));
             Assert.That(WofSurvivalBotwGrassRuntime.CandidateCount, Is.EqualTo(71680));
-            Assert.That(WofSurvivalBotwGrassRuntime.FlowerStemMinimum, Is.InRange(1f, 1.1f));
+            Assert.That(WofSurvivalBotwGrassRuntime.FlowerStemMinimum, Is.InRange(1.3f, 1.5f));
             Assert.That(WofSurvivalBotwGrassRuntime.FlowerStemMaximum,
                 Is.GreaterThan(WofSurvivalBotwGrassRuntime.FlowerStemMinimum));
-            Assert.That(WofSurvivalBotwGrassRuntime.FlowerBloomMinimum, Is.InRange(0.5f, 0.65f));
+            Assert.That(WofSurvivalBotwGrassRuntime.FlowerBloomMinimum, Is.InRange(0.6f, 0.7f));
             Assert.That(WofSurvivalBotwGrassRuntime.FlowerBloomMaximum,
                 Is.GreaterThan(WofSurvivalBotwGrassRuntime.FlowerBloomMinimum));
             Assert.That(WofSurvivalBotwGrassRuntime.BladeAlphaCutoff, Is.EqualTo(0.14f).Within(0.001f));
@@ -63,10 +63,9 @@ namespace WOF.Tests.EditMode
             Assert.That(WofSurvivalBotwGrassRuntime.DesktopBuildBudgetMilliseconds, Is.LessThanOrEqualTo(4d));
             Assert.That(WofSurvivalBotwGrassRuntime.MobileBuildBudgetMilliseconds, Is.LessThanOrEqualTo(2d));
             Assert.That(WofSurvivalBotwGrassRuntime.BuildBudgetCheckInterval, Is.LessThanOrEqualTo(4));
-            Assert.That(WofSurvivalBotwGrassRuntime.CanopyLodNearDistance,
-                Is.LessThan(WofSurvivalBotwGrassRuntime.CanopyLodFarDistance));
-            Assert.That(WofSurvivalBotwGrassRuntime.CanopyFarScale, Is.InRange(3f, 5f));
-            Assert.That(WofSurvivalBotwGrassRuntime.TerrainGrassDetailStrength, Is.InRange(0.2f, 0.35f));
+            Assert.That(WofSurvivalBotwGrassRuntime.GrassClusterBladeCount, Is.EqualTo(10));
+            Assert.That(WofSurvivalBotwGrassRuntime.SlopeUprightBlend, Is.InRange(0.75f, 0.9f));
+            Assert.That(WofSurvivalBotwGrassRuntime.TerrainGrassDetailStrength, Is.InRange(0.1f, 0.18f));
             Assert.That(WofSurvivalBotwGrassRuntime.TerrainGrassDetailScale, Is.InRange(0.15f, 0.3f));
             Assert.That(WofSurvivalBotwGrassRuntime.IsAuthoredSurfaceBlocked(
                 WofMountainVillageLayout.WorldOrigin.x,
@@ -104,7 +103,7 @@ namespace WOF.Tests.EditMode
         }
 
         [Test]
-        public void GrassDistributionUsesIndependentIrregularAxesInsteadOfVisibleSpiralRows()
+        public void GrassDistributionUsesDeterministicHashScatterWithoutSpiralRows()
         {
             var first = WofSurvivalBotwGrassRuntime.GetIrregularDistributionPoint(100, 24, -16);
             var repeated = WofSurvivalBotwGrassRuntime.GetIrregularDistributionPoint(100, 24, -16);
@@ -113,50 +112,39 @@ namespace WOF.Tests.EditMode
             Assert.That(repeated, Is.EqualTo(first));
             Assert.That(first.x, Is.InRange(-1f, 1f));
             Assert.That(first.y, Is.InRange(-1f, 1f));
+            Assert.That(first.magnitude, Is.LessThanOrEqualTo(1.01f));
             Assert.That(Vector2.Distance(first, next), Is.GreaterThan(0.01f));
         }
 
         [Test]
-        public void GrassRotationRootsToTheSlopeButRetainsNaturalVerticalGrowth()
+        public void GrassRotationRootsFlushToTheSlopeLikeTheReactField()
         {
             var surfaceNormal = new Vector3(0.42f, 0.82f, -0.39f).normalized;
             var rotation = WofSurvivalBotwGrassRuntime.GetSurfaceAlignedRotation(surfaceNormal, 137f);
             var growth = rotation * Vector3.up;
-            Assert.That(Vector3.Angle(growth, Vector3.up), Is.GreaterThan(0.1f));
-            Assert.That(Vector3.Angle(growth, Vector3.up),
-                Is.LessThan(Vector3.Angle(surfaceNormal, Vector3.up)));
-            Assert.That(Vector3.Angle(growth, surfaceNormal),
-                Is.LessThan(Vector3.Angle(Vector3.up, surfaceNormal)));
+            Assert.That(Vector3.Angle(growth, surfaceNormal), Is.LessThan(0.001f));
         }
 
         [Test]
-        public void GrassClusterRetainsAnUpwardCanopyFromOverheadViews()
+        public void GrassClusterUsesIndividuallyTaperedBladesWithOverheadLean()
         {
             var mesh = WofSurvivalBotwGrassRuntime.CreateGrassClusterMesh();
             try
             {
-                var texturedVertexCount = WofSurvivalBotwGrassRuntime.GrassClusterCardCount * 4;
-                Assert.That(mesh.vertexCount, Is.EqualTo(
-                    texturedVertexCount + WofSurvivalBotwGrassRuntime.GrassClusterCanopyBladeCount * 3));
-                Assert.That(mesh.uv2, Has.Length.EqualTo(mesh.vertexCount));
-                Assert.That(mesh.triangles, Has.Length.EqualTo(
-                    WofSurvivalBotwGrassRuntime.GrassClusterCardCount * 6 +
-                    WofSurvivalBotwGrassRuntime.GrassClusterCanopyBladeCount * 3));
-
+                Assert.That(mesh.vertexCount, Is.EqualTo(WofSurvivalBotwGrassRuntime.GrassClusterBladeCount * 5));
+                Assert.That(mesh.triangles, Has.Length.EqualTo(WofSurvivalBotwGrassRuntime.GrassClusterBladeCount * 9));
                 var vertices = mesh.vertices;
-                var flags = mesh.uv2;
-                var canopyVertices = 0;
-                var outwardTips = 0;
-                for (var index = texturedVertexCount; index < vertices.Length; index++)
-                {
-                    if (flags[index].x > 0.5f) canopyVertices++;
-                    if (vertices[index].y > 0.7f &&
-                        new Vector2(vertices[index].x, vertices[index].z).magnitude > 0.3f)
-                        outwardTips++;
-                }
-
-                Assert.That(canopyVertices, Is.EqualTo(WofSurvivalBotwGrassRuntime.GrassClusterCanopyBladeCount * 3));
-                Assert.That(outwardTips, Is.EqualTo(WofSurvivalBotwGrassRuntime.GrassClusterCanopyBladeCount));
+                var baseCenter = (vertices[0] + vertices[1]) * 0.5f;
+                var middleCenter = (vertices[2] + vertices[3]) * 0.5f;
+                var tip = vertices[4];
+                Assert.That(vertices[0].y, Is.EqualTo(0f).Within(0.001f));
+                Assert.That(vertices[1].y, Is.EqualTo(0f).Within(0.001f));
+                Assert.That(middleCenter.y, Is.GreaterThan(0.35f));
+                Assert.That(tip.y, Is.GreaterThan(0.7f));
+                Assert.That(Vector3.Distance(vertices[0], vertices[1]),
+                    Is.GreaterThan(Vector3.Distance(vertices[2], vertices[3])));
+                Assert.That(new Vector2(tip.x - baseCenter.x, tip.z - baseCenter.z).magnitude,
+                    Is.GreaterThan(0.1f));
             }
             finally
             {

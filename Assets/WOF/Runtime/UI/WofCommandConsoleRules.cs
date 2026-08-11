@@ -22,7 +22,12 @@ namespace WOF
         ClearNavigationRecordings,
         ShowNavigationRecordingStatus,
         OpenEngineMenu,
-        PlaceEngineObject
+        PlaceEngineObject,
+        SetQuestDevEnabled,
+        OpenQuestNpcEditor,
+        ClaimDarrelHere,
+        SetDarrelQuestSpawn,
+        ResetDarrelQuestSpawn
     }
 
     public readonly struct WofCommandSuggestion
@@ -112,7 +117,10 @@ namespace WOF
             return suggestions.ToArray();
         }
 
-        public static WofCommandConsoleSubmission Evaluate(string commandValue, bool isVClipEnabled = false)
+        public static WofCommandConsoleSubmission Evaluate(
+            string commandValue,
+            bool isVClipEnabled = false,
+            bool isQuestDevEnabled = false)
         {
             var rawCommand = (commandValue ?? string.Empty).Trim();
             var commandParts = ParseParts(rawCommand);
@@ -140,6 +148,46 @@ namespace WOF
                 return placeableId.Length == 0
                     ? new WofCommandConsoleSubmission(WofCommandConsoleAction.None, "Usage: /place hut-log-cabin")
                     : new WofCommandConsoleSubmission(WofCommandConsoleAction.PlaceEngineObject, string.Empty, placeableId);
+            }
+            if (normalizedCommand == "questdev" || normalizedCommand == "npcdev" || normalizedCommand == "devquests")
+            {
+                var action = commandParts.Length > 1 ? commandParts[1].ToLowerInvariant() : string.Empty;
+                if (action == "open" || action == "editor")
+                {
+                    var requestedNpcId = commandParts.Length > 2
+                        ? SanitizeNpcId(string.Join("-", commandParts, 2, commandParts.Length - 2))
+                        : string.Empty;
+                    return new WofCommandConsoleSubmission(
+                        WofCommandConsoleAction.OpenQuestNpcEditor,
+                        string.Empty,
+                        string.IsNullOrEmpty(requestedNpcId) ? "manual-dev-npc" : requestedNpcId);
+                }
+                var nextEnabled = ParseToggleValue(normalizedValue, isQuestDevEnabled, true);
+                return nextEnabled.HasValue
+                    ? new WofCommandConsoleSubmission(
+                        WofCommandConsoleAction.SetQuestDevEnabled,
+                        $"QUEST DEV {(nextEnabled.Value ? "ENABLED" : "DISABLED")}",
+                        enabled: nextEnabled.Value)
+                    : new WofCommandConsoleSubmission(
+                        WofCommandConsoleAction.None,
+                        "Usage: /questdev on or /questdev off");
+            }
+            if (normalizedCommand == "darrelhere" || normalizedCommand == "claimdarrel" || normalizedCommand == "setdarrel")
+            {
+                return new WofCommandConsoleSubmission(
+                    WofCommandConsoleAction.ClaimDarrelHere,
+                    "Claiming Darrel at your current hut or target.");
+            }
+            if (normalizedCommand == "darrelspawnhere" || normalizedCommand == "darrelquestspawnhere" ||
+                normalizedCommand == "setdarrelquestspawn")
+            {
+                return new WofCommandConsoleSubmission(WofCommandConsoleAction.SetDarrelQuestSpawn, string.Empty);
+            }
+            if (normalizedCommand == "resetdarrelspawn" || normalizedCommand == "cleardarrelspawn")
+            {
+                return new WofCommandConsoleSubmission(
+                    WofCommandConsoleAction.ResetDarrelQuestSpawn,
+                    "Darrel realm spawn reset to authored default.");
             }
             if (normalizedCommand == "forage")
             {
@@ -264,6 +312,19 @@ namespace WOF
                 }
             }
             return false;
+        }
+
+        private static string SanitizeNpcId(string value)
+        {
+            var characters = new char[Math.Min(64, value?.Length ?? 0)];
+            var count = 0;
+            foreach (var character in value ?? string.Empty)
+            {
+                if (!char.IsLetterOrDigit(character) && character != '_' && character != '-') continue;
+                if (count >= characters.Length) break;
+                characters[count++] = character;
+            }
+            return count == 0 ? string.Empty : new string(characters, 0, count);
         }
 
         private static bool? ParseToggleValue(string value, bool currentValue, bool allowEmpty)
