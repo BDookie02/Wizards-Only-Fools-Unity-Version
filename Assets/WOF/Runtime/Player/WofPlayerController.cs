@@ -155,6 +155,8 @@ namespace WOF
         private uint _inputSequence;
         private Vector3 _automationServerCastDirection;
         private int _remainingAutomationServerCasts;
+        private Unity.Collections.FixedString64Bytes _automationTrainingDummyInstanceId;
+        private bool _automationTrainingDummyClientPlacementObserved;
         private bool _treeHouseViewProbe;
         private bool _treeHouseViewProbeLogged;
         private float _treeHouseViewProbeYaw = WofTreeHouseVillageLayout.DefaultPlayerYawDegrees;
@@ -764,6 +766,24 @@ namespace WOF
             if (destination == null) return;
             for (var index = 0; index < _enginePlaceables.Count; index++)
                 destination.Add(_enginePlaceables[index].ToRuntimeRecord());
+        }
+
+        internal bool TryGetTrainingDummyState(string instanceId, out WofEnginePlaceableRecord record)
+        {
+            if (!string.IsNullOrEmpty(instanceId))
+            {
+                for (var index = 0; index < _enginePlaceables.Count; index++)
+                {
+                    var networkRecord = _enginePlaceables[index];
+                    if (!IsTrainingDummy(networkRecord) ||
+                        networkRecord.InstanceId.ToString() != instanceId) continue;
+                    record = networkRecord.ToRuntimeRecord();
+                    return true;
+                }
+            }
+
+            record = default;
+            return false;
         }
 
         public void CopyPersistentEnginePlaceables(List<WofEnginePlaceableRecord> destination)
@@ -1469,6 +1489,26 @@ namespace WOF
             return true;
         }
 
+        internal bool BeginAutomationClientTrainingDummyProbe(string instanceId, Vector3 position)
+        {
+            if (!IsServer || !IsSpawned || OwnerClientId == NetworkManager.LocalClientId ||
+                string.IsNullOrEmpty(instanceId) || !WofFireballCastMath.IsFinite(position))
+            {
+                return false;
+            }
+
+            _automationTrainingDummyInstanceId = instanceId;
+            _automationTrainingDummyClientPlacementObserved = false;
+            BeginAutomationClientTrainingDummyProbeRpc(_automationTrainingDummyInstanceId, position);
+            return true;
+        }
+
+        internal bool HasAutomationClientTrainingDummyPlacementAcknowledgement(string instanceId)
+        {
+            return IsServer && _automationTrainingDummyClientPlacementObserved &&
+                   _automationTrainingDummyInstanceId.ToString() == instanceId;
+        }
+
         [Rpc(SendTo.Owner)]
         private void BeginAutomationClientCombatProbeRpc(
             Vector3 origin,
@@ -1532,6 +1572,161 @@ namespace WOF
                     yield return new WaitForSecondsRealtime(WofGameConstants.GeneralCastCooldownSeconds + 0.25f);
                 }
             }
+        }
+
+        [Rpc(SendTo.Owner)]
+        private void BeginAutomationClientTrainingDummyProbeRpc(
+            Unity.Collections.FixedString64Bytes instanceId,
+            Vector3 position)
+        {
+            if (!IsOwner || IsServer)
+            {
+                FailAutomationClientTrainingDummyProbe(
+                    "placement-directive-received-without-remote-ownership");
+                return;
+            }
+
+            if (instanceId.Length == 0 || !WofFireballCastMath.IsFinite(position))
+            {
+                FailAutomationClientTrainingDummyProbe("invalid-placement-directive");
+                return;
+            }
+
+            StartCoroutine(RunAutomationClientTrainingDummyProbe(instanceId, position));
+        }
+
+        private IEnumerator RunAutomationClientTrainingDummyProbe(
+            Unity.Collections.FixedString64Bytes instanceId,
+            Vector3 position)
+        {
+            var instance = instanceId.ToString();
+            var placement = new WofEnginePlaceableRecord
+            {
+                instanceId = instance,
+                placeableId = "training-spell-dummy",
+                label = "Spell Dummy",
+                x = position.x,
+                y = position.y,
+                z = position.z,
+                yaw = 0f,
+                trainingDummyHealth = WofTrainingDummyCombatRules.MaxHealth,
+                trainingDummyRespawnAt = 0d,
+                trainingDummyHitSequence = 0,
+                trainingDummyLastSpell = -1
+            };
+            if (!RequestEnginePlaceableUpsert(placement))
+            {
+                FailAutomationClientTrainingDummyProbe("owner-upsert-request-rejected");
+                yield break;
+            }
+
+            Debug.Log(
+                $"[WOF-AUTOMATION] CLIENT_TRAINING_DUMMY_UPSERT_SENT owner={OwnerClientId} instance={instance}");
+
+            const float replicationTimeoutSeconds = 20f;
+            var deadline = Time.realtimeSinceStartup + replicationTimeoutSeconds;
+            var sawPlacement = false;
+            var sawDown = false;
+            var observedHitSequence = 0;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                if (!IsSpawned || !IsOwner || IsServer)
+                {
+                    FailAutomationClientTrainingDummyProbe("client-lost-remote-ownership");
+                    yield break;
+                }
+
+                if (!TryGetTrainingDummyState(instance, out var state))
+                {
+                    yield return null;
+                    continue;
+                }
+
+                if (!sawPlacement)
+                {
+                    if (state.trainingDummyHealth != WofTrainingDummyCombatRules.MaxHealth ||
+                        state.trainingDummyHitSequence != 0 || state.trainingDummyRespawnAt != 0d)
+                    {
+                        FailAutomationClientTrainingDummyProbe(
+                            $"invalid-initial-state-health-{state.trainingDummyHealth:F0}-sequence-{state.trainingDummyHitSequence}-respawn-{state.trainingDummyRespawnAt:F3}");
+                        yield break;
+                    }
+
+                    sawPlacement = true;
+                    AcknowledgeAutomationClientTrainingDummyPlacementRpc(instanceId);
+                    Debug.Log(
+                        $"[WOF-AUTOMATION] CLIENT_TRAINING_DUMMY_PLACEMENT_REPLICATED observer={NetworkManager.LocalClientId} owner={OwnerClientId} instance={instance} health={state.trainingDummyHealth:F0}");
+                }
+
+                if (state.trainingDummyHitSequence > observedHitSequence)
+                {
+                    var expectedSequence = observedHitSequence + 1;
+                    var expectedHealth = Mathf.Max(
+                        0f,
+                        WofTrainingDummyCombatRules.MaxHealth -
+                        (expectedSequence * WofTrainingDummyCombatRules.GetDamage(WofSpellId.Fireball)));
+                    if (state.trainingDummyHitSequence != expectedSequence ||
+                        state.trainingDummyHealth != expectedHealth ||
+                        state.trainingDummyLastSpell != (int)WofSpellId.Fireball)
+                    {
+                        FailAutomationClientTrainingDummyProbe(
+                            $"unexpected-hit-state-sequence-{state.trainingDummyHitSequence}-expected-{expectedSequence}-health-{state.trainingDummyHealth:F0}-expected-health-{expectedHealth:F0}-spell-{state.trainingDummyLastSpell}");
+                        yield break;
+                    }
+
+                    observedHitSequence = state.trainingDummyHitSequence;
+                    Debug.Log(
+                        $"[WOF-AUTOMATION] CLIENT_TRAINING_DUMMY_DAMAGE_REPLICATED observer={NetworkManager.LocalClientId} owner={OwnerClientId} instance={instance} index={observedHitSequence} health={state.trainingDummyHealth:F0}");
+                    if (state.trainingDummyHealth <= 0f)
+                    {
+                        sawDown = true;
+                        Debug.Log(
+                            $"[WOF-AUTOMATION] CLIENT_TRAINING_DUMMY_DOWN_REPLICATED observer={NetworkManager.LocalClientId} owner={OwnerClientId} instance={instance} sequence={observedHitSequence}");
+                    }
+                }
+
+                if (sawDown && observedHitSequence == 5 &&
+                    state.trainingDummyHealth == WofTrainingDummyCombatRules.MaxHealth &&
+                    state.trainingDummyRespawnAt == 0d)
+                {
+                    Debug.Log(
+                        $"[WOF-AUTOMATION] CLIENT_TRAINING_DUMMY_RESPAWN_REPLICATED observer={NetworkManager.LocalClientId} owner={OwnerClientId} instance={instance} health={state.trainingDummyHealth:F0}");
+                    Debug.Log(
+                        $"[WOF-AUTOMATION] CLIENT_TRAINING_DUMMY_REPLICATION_PASSED observer={NetworkManager.LocalClientId} owner={OwnerClientId} instance={instance} hits={observedHitSequence}");
+                    yield break;
+                }
+
+                yield return null;
+            }
+
+            FailAutomationClientTrainingDummyProbe(
+                $"replication-timeout-placement-{sawPlacement}-hits-{observedHitSequence}-down-{sawDown}");
+        }
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+        private void AcknowledgeAutomationClientTrainingDummyPlacementRpc(
+            Unity.Collections.FixedString64Bytes instanceId)
+        {
+            if (!IsServer || instanceId.Length == 0 ||
+                !_automationTrainingDummyInstanceId.Equals(instanceId) ||
+                !TryGetTrainingDummyState(instanceId.ToString(), out var state) ||
+                state.trainingDummyHealth != WofTrainingDummyCombatRules.MaxHealth ||
+                state.trainingDummyHitSequence != 0)
+            {
+                Debug.LogError(
+                    "[WOF-AUTOMATION] COMBAT_PROBE_FAILED reason=invalid-client-training-dummy-placement-acknowledgement");
+                return;
+            }
+
+            _automationTrainingDummyClientPlacementObserved = true;
+            Debug.Log(
+                $"[WOF-AUTOMATION] CLIENT_TRAINING_DUMMY_PLACEMENT_ACKNOWLEDGED owner={OwnerClientId} instance={instanceId}");
+        }
+
+        private static void FailAutomationClientTrainingDummyProbe(string reason)
+        {
+            Debug.LogError(
+                $"[WOF-AUTOMATION] CLIENT_TRAINING_DUMMY_REPLICATION_FAILED reason={reason}");
         }
 
         private bool TryCastFromAuthoritativePoseServer(WofHandSide hand = WofHandSide.Right)
