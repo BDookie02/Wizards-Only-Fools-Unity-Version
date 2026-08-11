@@ -2,6 +2,13 @@
 
 This matrix is the acceptance ledger for the recreation. A row is complete only when its Unity implementation, automated evidence, and required physical interaction all pass against the hash-verified playable oracle. "Implemented, unverified" is not completion.
 
+## Latest verified delta (2026-08-11)
+
+- The playable React oracle was re-recorded and immediately re-verified after confirmed August 10 edits to only `survivalBiome.ts` and `survivalTerrainSurface.ts`. It remains 1,497 files and 539 source modules; the current source-tree SHA-256 is `a3cd3d5ef5e4048fbb381e91ef0ee4bfd500be0fbb056d591a6c25da79e1a86f`.
+- Quest navigation now matches React's multi-target selection for custom/non-Darrel quest NPCs as well as Darrel. Active assignments remain ordered by `assignedAt`, missing NPC positions are omitted, ready quests switch to pink turn-in beacons, and custom Darrel turn-in/drink targets follow the claimed NPC position.
+- `WofQuestNavigationRules.cs`, the multi-view `WofQuestNavigationRuntime.cs`, and six focused fixtures pass inside the full 478/478 EditMode suite. `Tools/capture-quest-navigation.ps1` also physically launched the Windows player at 1280 x 720 and visibly confirmed simultaneous cyan objective and pink turn-in beacon volumes.
+- This closes the detailed inventory/quest row's previously listed non-Darrel world-marker gap. Full multiplayer quest-state ownership remains open, so the row itself is not yet complete.
+
 | Domain | React oracle evidence | Unity evidence | Current state | Acceptance gate |
 |---|---|---|---|---|
 | Source identity | `D:\CodexProjects\Wizards-Only-Fools-React-Latest`; `package.json`; `package-lock.json`; 539 source modules | `Tools/inventory-react-oracle.ps1` | Verified and automated | Recorded 1,497-file receipt independently recomputes with identical source, public, build, package-lock, and GitHub-history hashes |
