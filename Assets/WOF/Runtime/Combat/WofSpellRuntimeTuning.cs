@@ -20,12 +20,28 @@ namespace WOF
         public const float HitscanRange = 150f;
         public const float HitscanRadius = 2.5f;
         public const float LightningRadius = 12f;
+        public const float IceSpellFlashbangRadius = 40f;
+        public const float IceSpellLocalOpacity = 0.4f;
+        public const float IceSpellRemoteOpacity = 1f;
+        public const float IceSpellFadeRatePerSecond = 1.5f;
         public const float DirectStatusRange = 48f;
         public const float DirectStatusRadius = 1.85f;
         public const float GrabRange = 40f;
         public const float GrabRadius = 1.8f;
         public const float TornadoRadius = 17f;
+        public const float TornadoPullInwardSpeed = 16f;
+        public const float TornadoPullSpinSpeed = 3.8f;
+        public const float TornadoPullVerticalSpeed = 2.6f;
+        public const int ExternalPullFrames = 15;
         public const float MeteorRadius = 15f;
+        public const int MeteorCount = 5;
+        public const float MeteorDelayStepSeconds = 0.24f;
+        public const float MeteorDelayRandomSeconds = 0.32f;
+        public const float MeteorFallDurationMinimumSeconds = 0.9f;
+        public const float MeteorFallDurationRandomSeconds = 0.35f;
+        public const float MeteorImpactRadiusMinimum = 3.2f;
+        public const float MeteorImpactRadiusRandom = 0.5f;
+        public const float MeteorTargetHeightOffset = 0.12f;
         public const float HealingCrystalRadius = 3f;
         public const float HealingCrystalHealPerSecond = 10f;
         public const float HealSpellHealPerSecond = 2f;
@@ -36,6 +52,15 @@ namespace WOF
         public const float BlinkMinimumDistance = 20f;
         public const float BlinkMaximumDistance = 60f;
         public const float BlinkUpwardOffset = 10f;
+        public const float GrabMinimumDistance = 4f;
+        public const float GrabMaximumDistance = 36f;
+        public const float GrabFollowSpeed = 18f;
+        public const float GrabThrowSpeed = 42f;
+        public const float GrabMinimumThrowVerticalSpeed = -18f;
+        public const float GrabMaximumThrowVerticalSpeed = 26f;
+        public const float GrabMaximumDurationSeconds = 6f;
+        public const float KunaiPullSpeed = 60f;
+        public const float KunaiPullVerticalBoost = 5f;
 
         public static WofSpellRuntimeMode GetMode(WofSpellId spell)
         {
@@ -58,7 +83,7 @@ namespace WOF
         {
             return spell switch
             {
-                WofSpellId.Fireball => 20f,
+                WofSpellId.Fireball => 80f,
                 WofSpellId.IceShard => 70f,
                 WofSpellId.IceSpell => 60f,
                 WofSpellId.RingsOfPower => 40f,
@@ -84,7 +109,7 @@ namespace WOF
                 WofSpellId.Portal => 12f,
                 WofSpellId.Blink => 0.2f,
                 WofSpellId.Tornado => 8f,
-                WofSpellId.MeteorShower => 6.5f,
+                WofSpellId.MeteorShower => 7.4f,
                 WofSpellId.Flamethrower => 0.4f,
                 WofSpellId.DiscShield or WofSpellId.OrbShield => 10f,
                 WofSpellId.Kunai => 2f,

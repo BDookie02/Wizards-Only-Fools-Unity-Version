@@ -803,11 +803,13 @@ function Invoke-WindowsSmoke {
                 (Select-String -LiteralPath $hostLog -Pattern 'CLIENT_RPC_SERVER_PATH_PASSED' -Quiet)
             $trainingDummyServerPathPassed = (Test-Path -LiteralPath $hostLog) -and
                 (Select-String -LiteralPath $hostLog -Pattern 'TRAINING_DUMMY_TWO_PEER_SERVER_PATH_PASSED' -Quiet)
+            $spellOutcomeMatrixPassed = (Test-Path -LiteralPath $hostLog) -and
+                (Select-String -LiteralPath $hostLog -Pattern 'SPELL_OUTCOME_MATRIX_PASSED cases=7' -Quiet)
             $clientReplicationPassed = (Test-Path -LiteralPath $clientLog) -and
                 (Select-String -LiteralPath $clientLog -Pattern 'CLIENT_REPLICATION_PROBE_PASSED' -Quiet)
             $clientTrainingDummyReplicationPassed = (Test-Path -LiteralPath $clientLog) -and
                 (Select-String -LiteralPath $clientLog -Pattern 'CLIENT_TRAINING_DUMMY_REPLICATION_PASSED' -Quiet)
-            if ($serverPathPassed -and $trainingDummyServerPathPassed -and
+            if ($serverPathPassed -and $trainingDummyServerPathPassed -and $spellOutcomeMatrixPassed -and
                 $clientReplicationPassed -and $clientTrainingDummyReplicationPassed) {
                 break
             }
@@ -862,6 +864,7 @@ function Invoke-WindowsSmoke {
     $trainingDummyServerDownConfirmed = (Test-Path -LiteralPath $hostLog) -and (Select-String -LiteralPath $hostLog -Pattern 'TRAINING_DUMMY_SERVER_DOWN_CONFIRMED owner=1 instance=automation-client-training-dummy sequence=5' -Quiet)
     $trainingDummyServerRespawnConfirmed = (Test-Path -LiteralPath $hostLog) -and (Select-String -LiteralPath $hostLog -Pattern 'TRAINING_DUMMY_SERVER_RESPAWN_CONFIRMED owner=1 instance=automation-client-training-dummy elapsedSeconds=' -Quiet)
     $trainingDummyServerPathPassed = (Test-Path -LiteralPath $hostLog) -and (Select-String -LiteralPath $hostLog -Pattern 'TRAINING_DUMMY_TWO_PEER_SERVER_PATH_PASSED owner=1 source=0 instance=automation-client-training-dummy hits=5' -Quiet)
+    $spellOutcomeMatrixPassed = (Test-Path -LiteralPath $hostLog) -and (Select-String -LiteralPath $hostLog -Pattern 'SPELL_OUTCOME_MATRIX_PASSED cases=7' -Quiet)
 
     $clientTrainingDummyUpsertSent = (Test-Path -LiteralPath $clientLog) -and (Select-String -LiteralPath $clientLog -Pattern 'CLIENT_TRAINING_DUMMY_UPSERT_SENT owner=1 instance=automation-client-training-dummy' -Quiet)
     $clientTrainingDummyPlacementReplicated = (Test-Path -LiteralPath $clientLog) -and (Select-String -LiteralPath $clientLog -Pattern 'CLIENT_TRAINING_DUMMY_PLACEMENT_REPLICATED observer=1 owner=1 instance=automation-client-training-dummy health=120' -Quiet)
@@ -891,7 +894,7 @@ function Invoke-WindowsSmoke {
     $clientRuntimeFailure = (Test-Path -LiteralPath $clientLog) -and
         (Select-String -LiteralPath $clientLog -Pattern $runtimeFailurePattern -Quiet)
     if (-not ($hostConnected -and $clientReady -and $probeStarted -and $probePositioned -and
-        $serverFireballCasts -eq 5 -and $serverDamageEvents -eq 5 -and $serverTargetDied -and
+        $serverFireballCasts -ge 5 -and $serverDamageEvents -ge 5 -and $serverTargetDied -and
         $serverTargetRespawned -and $serverRespawnConfirmed -and $serverCombatPassed -and $campfireDamagePassed -and
         $clientRpcFireballCasts -eq 5 -and $clientRpcDamageEvents -eq 5 -and $clientRpcTargetDied -and
         $clientRpcTargetRespawned -and $clientRpcServerRespawnConfirmed -and $clientRpcServerPathPassed -and
@@ -900,7 +903,7 @@ function Invoke-WindowsSmoke {
         $trainingDummyProbeStarted -and $trainingDummyPlacementAcknowledged -and
         $trainingDummyServerPlacementConfirmed -and $trainingDummyServerHits -eq 5 -and
         $trainingDummyServerDamageConfirmed -eq 5 -and $trainingDummyServerDownConfirmed -and
-        $trainingDummyServerRespawnConfirmed -and $trainingDummyServerPathPassed -and
+        $trainingDummyServerRespawnConfirmed -and $trainingDummyServerPathPassed -and $spellOutcomeMatrixPassed -and
         $clientTrainingDummyUpsertSent -and $clientTrainingDummyPlacementReplicated -and
         $clientTrainingDummyDamageEvents -eq 5 -and $clientTrainingDummyDownReplicated -and
         $clientTrainingDummyRespawnReplicated -and $clientTrainingDummyReplicationPassed -and
@@ -909,7 +912,7 @@ function Invoke-WindowsSmoke {
         $hostVillagerMultiplayerFacingReady -and $clientVillagerMultiplayerFacingReady -and
         -not $probeFailed -and -not $clientProbeFailed -and -not $clientTrainingDummyProbeFailed -and
         -not $hostRuntimeFailure -and -not $clientRuntimeFailure)) {
-        throw "Two-process LAN combat smoke failed. hostConnected=$hostConnected clientReady=$clientReady campfireDamagePassed=$campfireDamagePassed serverCombatPassed=$serverCombatPassed serverFireballCasts=$serverFireballCasts serverDamageEvents=$serverDamageEvents clientRpcServerPathPassed=$clientRpcServerPathPassed clientRpcFireballCasts=$clientRpcFireballCasts clientRpcDamageEvents=$clientRpcDamageEvents clientCastRpcRequests=$clientCastRpcRequests clientReplicatedDamageEvents=$clientReplicatedDamageEvents clientReplicatedDeath=$clientReplicatedDeath clientReplicatedRespawnHealth=$clientReplicatedRespawnHealth clientReplicatedRespawnAlive=$clientReplicatedRespawnAlive clientReplicationPassed=$clientReplicationPassed trainingDummyProbeStarted=$trainingDummyProbeStarted trainingDummyPlacementAcknowledged=$trainingDummyPlacementAcknowledged trainingDummyServerPlacementConfirmed=$trainingDummyServerPlacementConfirmed trainingDummyServerHits=$trainingDummyServerHits trainingDummyServerDamageConfirmed=$trainingDummyServerDamageConfirmed trainingDummyServerDownConfirmed=$trainingDummyServerDownConfirmed trainingDummyServerRespawnConfirmed=$trainingDummyServerRespawnConfirmed trainingDummyServerPathPassed=$trainingDummyServerPathPassed clientTrainingDummyUpsertSent=$clientTrainingDummyUpsertSent clientTrainingDummyPlacementReplicated=$clientTrainingDummyPlacementReplicated clientTrainingDummyDamageEvents=$clientTrainingDummyDamageEvents clientTrainingDummyDownReplicated=$clientTrainingDummyDownReplicated clientTrainingDummyRespawnReplicated=$clientTrainingDummyRespawnReplicated clientTrainingDummyReplicationPassed=$clientTrainingDummyReplicationPassed hostVillagerVisibilityReady=$hostVillagerVisibilityReady clientVillagerVisibilityReady=$clientVillagerVisibilityReady hostVillagerArchiveReady=$hostVillagerArchiveReady clientVillagerArchiveReady=$clientVillagerArchiveReady hostVillagerMultiplayerFacingReady=$hostVillagerMultiplayerFacingReady clientVillagerMultiplayerFacingReady=$clientVillagerMultiplayerFacingReady probeFailed=$probeFailed clientProbeFailed=$clientProbeFailed clientTrainingDummyProbeFailed=$clientTrainingDummyProbeFailed hostRuntimeFailure=$hostRuntimeFailure clientRuntimeFailure=$clientRuntimeFailure"
+        throw "Two-process LAN combat smoke failed. hostConnected=$hostConnected clientReady=$clientReady campfireDamagePassed=$campfireDamagePassed serverCombatPassed=$serverCombatPassed serverFireballCasts=$serverFireballCasts serverDamageEvents=$serverDamageEvents clientRpcServerPathPassed=$clientRpcServerPathPassed clientRpcFireballCasts=$clientRpcFireballCasts clientRpcDamageEvents=$clientRpcDamageEvents clientCastRpcRequests=$clientCastRpcRequests clientReplicatedDamageEvents=$clientReplicatedDamageEvents clientReplicatedDeath=$clientReplicatedDeath clientReplicatedRespawnHealth=$clientReplicatedRespawnHealth clientReplicatedRespawnAlive=$clientReplicatedRespawnAlive clientReplicationPassed=$clientReplicationPassed trainingDummyProbeStarted=$trainingDummyProbeStarted trainingDummyPlacementAcknowledged=$trainingDummyPlacementAcknowledged trainingDummyServerPlacementConfirmed=$trainingDummyServerPlacementConfirmed trainingDummyServerHits=$trainingDummyServerHits trainingDummyServerDamageConfirmed=$trainingDummyServerDamageConfirmed trainingDummyServerDownConfirmed=$trainingDummyServerDownConfirmed trainingDummyServerRespawnConfirmed=$trainingDummyServerRespawnConfirmed trainingDummyServerPathPassed=$trainingDummyServerPathPassed spellOutcomeMatrixPassed=$spellOutcomeMatrixPassed clientTrainingDummyUpsertSent=$clientTrainingDummyUpsertSent clientTrainingDummyPlacementReplicated=$clientTrainingDummyPlacementReplicated clientTrainingDummyDamageEvents=$clientTrainingDummyDamageEvents clientTrainingDummyDownReplicated=$clientTrainingDummyDownReplicated clientTrainingDummyRespawnReplicated=$clientTrainingDummyRespawnReplicated clientTrainingDummyReplicationPassed=$clientTrainingDummyReplicationPassed hostVillagerVisibilityReady=$hostVillagerVisibilityReady clientVillagerVisibilityReady=$clientVillagerVisibilityReady hostVillagerArchiveReady=$hostVillagerArchiveReady clientVillagerArchiveReady=$clientVillagerArchiveReady hostVillagerMultiplayerFacingReady=$hostVillagerMultiplayerFacingReady clientVillagerMultiplayerFacingReady=$clientVillagerMultiplayerFacingReady probeFailed=$probeFailed clientProbeFailed=$clientProbeFailed clientTrainingDummyProbeFailed=$clientTrainingDummyProbeFailed hostRuntimeFailure=$hostRuntimeFailure clientRuntimeFailure=$clientRuntimeFailure"
     }
 
     $villagerYelpProcess = Start-WindowsPlayerOnD -PlayerPath $playerPath -ProfileRoot $villagerYelpProfileRoot -ArgumentList @(

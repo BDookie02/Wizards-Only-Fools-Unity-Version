@@ -41,9 +41,36 @@ namespace WOF
         private int _frameIndex;
         private bool _areaImpactApplied;
         private WofSpellId _spell;
+        private Vector3 _velocity;
+        private MeteorImpact[] _meteorImpacts;
+
+        private struct MeteorImpact
+        {
+            public Vector3 Position;
+            public float Radius;
+            public double At;
+            public bool Applied;
+        }
 
         public WofSpellId Spell => _spell;
         public ulong SourceClientId => _sourceClientId.Value;
+        internal static int AppliedMeteorImpactCount { get; private set; }
+
+        internal static void ResetAutomationMeteorImpactCount()
+        {
+            AppliedMeteorImpactCount = 0;
+        }
+
+        internal static void DespawnAllAutomationServerProjectiles()
+        {
+            foreach (var projectile in FindObjectsByType<WofFireballProjectile>(FindObjectsSortMode.None))
+            {
+                if (projectile != null && projectile.IsServer && projectile.IsSpawned)
+                {
+                    projectile.NetworkObject.Despawn(true);
+                }
+            }
+        }
 
         public void InitializeServer(ulong sourceClientId, Vector3 direction, WofSpellId spell)
         {
@@ -51,6 +78,7 @@ namespace WOF
             _direction.Value = direction.sqrMagnitude > 0.000001f ? direction.normalized : Vector3.forward;
             _spellValue.Value = (int)spell;
             _spell = spell;
+            _velocity = ResolveInitialVelocity(spell, _direction.Value);
         }
 
         public override void OnNetworkSpawn()
@@ -66,7 +94,12 @@ namespace WOF
             {
                 var now = NetworkManager.ServerTime.Time;
                 _despawnAt = now + WofSpellRuntimeTuning.GetLifetimeSeconds(_spell);
-                _impactAt = now + (_spell == WofSpellId.MeteorShower ? 1.25d : 0d);
+                _impactAt = now;
+                _velocity = ResolveInitialVelocity(_spell, _direction.Value);
+                if (_spell == WofSpellId.MeteorShower)
+                {
+                    InitializeMeteorImpacts(now);
+                }
                 if (_spell == WofSpellId.Portal)
                 {
                     // Portals become endpoints on collision. A missed shot still expires.
@@ -118,8 +151,18 @@ namespace WOF
 
         private void MoveProjectile()
         {
-            var direction = _direction.Value.normalized;
-            var distance = WofSpellRuntimeTuning.GetSpeed(_spell) * Time.deltaTime;
+            if (_spell == WofSpellId.Kunai)
+            {
+                _velocity += Physics.gravity * (0.5f * Time.deltaTime);
+            }
+            else if (_spell == WofSpellId.SmokeBomb)
+            {
+                _velocity += Physics.gravity * (2f * Time.deltaTime);
+            }
+
+            var speed = _velocity.magnitude;
+            var direction = speed > 0.000001f ? _velocity / speed : _direction.Value.normalized;
+            var distance = speed * Time.deltaTime;
             if (distance <= 0f) return;
 
             if (Physics.SphereCast(
@@ -162,17 +205,21 @@ namespace WOF
 
                 if (player != null)
                 {
-                    if (!player.HasActiveSpellShield)
+                    if (!player.ShouldBlockServerSpellImpact(transform.position))
                     {
                         player.ApplyServerSpellImpact(_spell, _sourceClientId.Value);
+                    }
+                    if (_spell == WofSpellId.Kunai && TryGetSourcePlayer(out var playerHitSource))
+                    {
+                        playerHitSource.ApplyServerKunaiPull(hit.point);
                     }
                     NetworkObject.Despawn(true);
                     return;
                 }
 
-                if (_spell == WofSpellId.Kunai && TryGetSourcePlayer(out var source))
+                if (_spell == WofSpellId.Kunai && TryGetSourcePlayer(out var surfaceHitSource))
                 {
-                    source.ApplyServerKunaiPull(hit.point);
+                    surfaceHitSource.ApplyServerKunaiPull(hit.point);
                 }
                 NetworkObject.Despawn(true);
                 return;
@@ -205,15 +252,15 @@ namespace WOF
                     _sourceClientId.Value);
                 return;
             }
-            if (_spell == WofSpellId.MeteorShower && !_areaImpactApplied && now >= _impactAt)
+            if (_spell == WofSpellId.IceSpell && !_areaImpactApplied)
             {
                 _areaImpactApplied = true;
-                ApplyAreaDamage(WofSpellRuntimeTuning.MeteorRadius, 18f, false);
-                WofTrainingDummyRuntime.ApplyServerAreaSpellImpact(
-                    transform.position,
-                    WofSpellRuntimeTuning.MeteorRadius,
-                    _spell,
-                    _sourceClientId.Value);
+                ApplyIceSpellFlashbang();
+                return;
+            }
+            if (_spell == WofSpellId.MeteorShower)
+            {
+                UpdateMeteorImpacts(now);
                 return;
             }
             if (_spell == WofSpellId.Tornado)
@@ -260,7 +307,7 @@ namespace WOF
                 if (!player.IsSpawned || player.IsDead || player.OwnerClientId == _sourceClientId.Value ||
                     Vector3.SqrMagnitude(player.transform.position - transform.position) > radiusSquared)
                     continue;
-                if (!player.HasActiveSpellShield) player.ApplyServerDamage(damage, _sourceClientId.Value);
+                player.ApplyServerDamage(damage, _sourceClientId.Value);
                 if (pull) player.ApplyServerTornadoPull(transform.position);
             }
         }
@@ -275,6 +322,91 @@ namespace WOF
                     continue;
                 player.ApplyServerTornadoPull(transform.position);
             }
+        }
+
+        private void ApplyIceSpellFlashbang()
+        {
+            var radiusSquared = WofSpellRuntimeTuning.IceSpellFlashbangRadius *
+                                WofSpellRuntimeTuning.IceSpellFlashbangRadius;
+            foreach (var player in FindObjectsByType<WofPlayerController>(FindObjectsSortMode.None))
+            {
+                if (!player.IsSpawned || player.IsDead) continue;
+                var isSource = player.OwnerClientId == _sourceClientId.Value;
+                var squaredDistance = Vector3.SqrMagnitude(player.transform.position - transform.position);
+                if (!isSource && squaredDistance >= radiusSquared) continue;
+                var opacity = WofSpellOutcomeRules.ResolveIceSpellOpacity(isSource, squaredDistance);
+                if (opacity > 0f) player.ApplyServerFlashbang(opacity);
+            }
+        }
+
+        private void InitializeMeteorImpacts(double now)
+        {
+            _meteorImpacts = new MeteorImpact[WofSpellRuntimeTuning.MeteorCount];
+            var random = new System.Random(unchecked((int)(NetworkObjectId ^ (_sourceClientId.Value << 1))));
+            for (var index = 0; index < _meteorImpacts.Length; index++)
+            {
+                var angle = random.NextDouble() * System.Math.PI * 2d;
+                var radius = System.Math.Sqrt(random.NextDouble()) * WofSpellRuntimeTuning.MeteorRadius;
+                var position = transform.position + new Vector3(
+                    (float)(System.Math.Cos(angle) * radius),
+                    WofSpellRuntimeTuning.MeteorTargetHeightOffset,
+                    (float)(System.Math.Sin(angle) * radius));
+                var delay = index * WofSpellRuntimeTuning.MeteorDelayStepSeconds +
+                            (float)random.NextDouble() * WofSpellRuntimeTuning.MeteorDelayRandomSeconds;
+                var duration = WofSpellRuntimeTuning.MeteorFallDurationMinimumSeconds +
+                               (float)random.NextDouble() * WofSpellRuntimeTuning.MeteorFallDurationRandomSeconds;
+                _meteorImpacts[index] = new MeteorImpact
+                {
+                    Position = position,
+                    Radius = WofSpellRuntimeTuning.MeteorImpactRadiusMinimum +
+                             (float)random.NextDouble() * WofSpellRuntimeTuning.MeteorImpactRadiusRandom,
+                    At = now + delay + duration,
+                    Applied = false
+                };
+            }
+        }
+
+        private void UpdateMeteorImpacts(double now)
+        {
+            if (_meteorImpacts == null) InitializeMeteorImpacts(now);
+            for (var index = 0; index < _meteorImpacts.Length; index++)
+            {
+                var impact = _meteorImpacts[index];
+                if (impact.Applied || now < impact.At) continue;
+                impact.Applied = true;
+                _meteorImpacts[index] = impact;
+                AppliedMeteorImpactCount++;
+                ApplyAreaDamageAt(impact.Position, impact.Radius, 18f);
+                WofTrainingDummyRuntime.ApplyServerAreaSpellImpact(
+                    impact.Position,
+                    impact.Radius,
+                    _spell,
+                    _sourceClientId.Value);
+                Debug.Log(
+                    $"[WOF] METEOR_IMPACT owner={_sourceClientId.Value} index={index} position={impact.Position} radius={impact.Radius:F2}");
+            }
+        }
+
+        private void ApplyAreaDamageAt(Vector3 center, float radius, float damage)
+        {
+            var radiusSquared = radius * radius;
+            foreach (var player in FindObjectsByType<WofPlayerController>(FindObjectsSortMode.None))
+            {
+                if (!player.IsSpawned || player.IsDead || player.OwnerClientId == _sourceClientId.Value) continue;
+                var playerLevelCenter = new Vector3(center.x, player.transform.position.y, center.z);
+                if (Vector3.SqrMagnitude(player.transform.position - playerLevelCenter) <= radiusSquared)
+                {
+                    player.ApplyServerDamage(damage, _sourceClientId.Value);
+                }
+            }
+        }
+
+        private static Vector3 ResolveInitialVelocity(WofSpellId spell, Vector3 direction)
+        {
+            var normalized = direction.sqrMagnitude > 0.000001f ? direction.normalized : Vector3.forward;
+            var velocity = normalized * WofSpellRuntimeTuning.GetSpeed(spell);
+            if (spell == WofSpellId.SmokeBomb) velocity.y += 5f;
+            return velocity;
         }
 
         private void AnchorPortal(Vector3 position)

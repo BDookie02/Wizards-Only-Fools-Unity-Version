@@ -54,6 +54,7 @@ namespace WOF
         private float _leftFiringUntil;
         private float _rightFiringUntil;
         private readonly Dictionary<int, int> _baseTextSizes = new();
+        private Image _flashbangOverlay;
 
         public static WofHud Instance { get; private set; }
         public bool IsGameplayVisible => _gameplayVisible && !_gameplaySurfaceBlocked;
@@ -108,6 +109,7 @@ namespace WOF
                     _handIdleProbe = true;
                 }
             }
+            CreateFlashbangOverlay();
             SetGameplayVisible(false);
         }
 
@@ -201,6 +203,36 @@ namespace WOF
             {
                 _rightCastHeld = active;
             }
+        }
+
+        public void SetFlashbangOpacity(float opacity)
+        {
+            if (_flashbangOverlay == null) CreateFlashbangOverlay();
+            if (_flashbangOverlay == null) return;
+            var resolved = Mathf.Clamp01(opacity);
+            _flashbangOverlay.color = new Color(1f, 1f, 1f, resolved);
+            _flashbangOverlay.gameObject.SetActive(resolved > 0.0001f);
+        }
+
+        private void CreateFlashbangOverlay()
+        {
+            if (_flashbangOverlay != null || gameplayRoot == null) return;
+            var overlayObject = new GameObject(
+                "IceSpellFlashbang",
+                typeof(RectTransform),
+                typeof(CanvasRenderer),
+                typeof(Image));
+            overlayObject.transform.SetParent(gameplayRoot.transform, false);
+            overlayObject.transform.SetAsLastSibling();
+            var rect = overlayObject.GetComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            _flashbangOverlay = overlayObject.GetComponent<Image>();
+            _flashbangOverlay.raycastTarget = false;
+            _flashbangOverlay.color = new Color(1f, 1f, 1f, 0f);
+            overlayObject.SetActive(false);
         }
 
         public void SetGameplayVisible(bool visible)
