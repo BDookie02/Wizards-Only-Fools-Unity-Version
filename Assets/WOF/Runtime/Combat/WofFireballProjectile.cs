@@ -30,7 +30,7 @@ namespace WOF
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Server);
 
-        private static readonly Dictionary<ulong, List<WofFireballProjectile>> PortalEndpoints = new();
+        private static readonly List<WofFireballProjectile> PortalEndpoints = new(2);
         private static readonly Dictionary<ulong, double> PortalTravelerCooldowns = new();
         private MaterialPropertyBlock _glowProperties;
 
@@ -43,6 +43,10 @@ namespace WOF
         private WofSpellId _spell;
         private Vector3 _velocity;
         private MeteorImpact[] _meteorImpacts;
+        private ulong _pendingSourceClientId;
+        private Vector3 _pendingDirection = Vector3.forward;
+        private WofSpellId _pendingSpell = WofSpellId.Fireball;
+        private bool _hasPendingInitialization;
 
         private struct MeteorImpact
         {
@@ -55,6 +59,14 @@ namespace WOF
         public WofSpellId Spell => _spell;
         public ulong SourceClientId => _sourceClientId.Value;
         internal static int AppliedMeteorImpactCount { get; private set; }
+        internal static int ActivePortalEndpointCount
+        {
+            get
+            {
+                PortalEndpoints.RemoveAll(endpoint => endpoint == null || !endpoint.IsSpawned);
+                return PortalEndpoints.Count;
+            }
+        }
 
         internal static void ResetAutomationMeteorImpactCount()
         {
@@ -72,17 +84,53 @@ namespace WOF
             }
         }
 
+        internal static bool TryAnchorLatestAutomationPortal(ulong sourceClientId, Vector3 position)
+        {
+            WofFireballProjectile latest = null;
+            foreach (var projectile in FindObjectsByType<WofFireballProjectile>(FindObjectsSortMode.None))
+            {
+                if (projectile == null || !projectile.IsServer || !projectile.IsSpawned ||
+                    projectile._spell != WofSpellId.Portal || projectile._anchored.Value ||
+                    projectile._sourceClientId.Value != sourceClientId) continue;
+                if (latest == null || projectile.NetworkObjectId > latest.NetworkObjectId) latest = projectile;
+            }
+
+            if (latest == null) return false;
+            if (latest.TryAnchorPortal(position)) return true;
+            latest.NetworkObject.Despawn(true);
+            return false;
+        }
+
+        internal static bool HasAnchoredAutomationSpell(WofSpellId spell, ulong sourceClientId)
+        {
+            foreach (var projectile in FindObjectsByType<WofFireballProjectile>(FindObjectsSortMode.None))
+            {
+                if (projectile != null && projectile.IsServer && projectile.IsSpawned &&
+                    projectile._spell == spell && projectile._sourceClientId.Value == sourceClientId &&
+                    projectile._anchored.Value) return true;
+            }
+            return false;
+        }
+
         public void InitializeServer(ulong sourceClientId, Vector3 direction, WofSpellId spell)
         {
-            _sourceClientId.Value = sourceClientId;
-            _direction.Value = direction.sqrMagnitude > 0.000001f ? direction.normalized : Vector3.forward;
-            _spellValue.Value = (int)spell;
+            _pendingSourceClientId = sourceClientId;
+            _pendingDirection = direction.sqrMagnitude > 0.000001f ? direction.normalized : Vector3.forward;
+            _pendingSpell = spell;
+            _hasPendingInitialization = true;
             _spell = spell;
-            _velocity = ResolveInitialVelocity(spell, _direction.Value);
+            _velocity = ResolveInitialVelocity(spell, _pendingDirection);
         }
 
         public override void OnNetworkSpawn()
         {
+            if (IsServer && _hasPendingInitialization)
+            {
+                _sourceClientId.Value = _pendingSourceClientId;
+                _direction.Value = _pendingDirection;
+                _spellValue.Value = (int)_pendingSpell;
+                _hasPendingInitialization = false;
+            }
             _spellValue.OnValueChanged += HandleSpellChanged;
             _anchored.OnValueChanged += HandleAnchoredChanged;
             _spell = WofSpellLoadout.IsValid(_spellValue.Value)
@@ -103,7 +151,7 @@ namespace WOF
                 if (_spell == WofSpellId.Portal)
                 {
                     // Portals become endpoints on collision. A missed shot still expires.
-                    _despawnAt = now + 12d;
+                    _despawnAt = now + WofSpellRuntimeTuning.PortalLifetimeSeconds;
                 }
             }
         }
@@ -191,7 +239,10 @@ namespace WOF
 
                 if (_spell == WofSpellId.Portal)
                 {
-                    AnchorPortal(hit.point - direction * 1.5f + Vector3.up);
+                    if (!TryAnchorPortal(hit.point - direction * 1.5f + Vector3.up))
+                    {
+                        NetworkObject.Despawn(true);
+                    }
                     return;
                 }
                 if (_spell == WofSpellId.SmokeBomb)
@@ -409,50 +460,41 @@ namespace WOF
             return velocity;
         }
 
-        private void AnchorPortal(Vector3 position)
+        private bool TryAnchorPortal(Vector3 position)
         {
+            PortalEndpoints.RemoveAll(endpoint => endpoint == null || !endpoint.IsSpawned);
+            if (!WofSpellOutcomeRules.CanAddPortalEndpoint(PortalEndpoints.Count)) return false;
+
             _anchored.Value = true;
             transform.position = position;
-            _despawnAt = NetworkManager.ServerTime.Time + 12d;
-            if (!PortalEndpoints.TryGetValue(_sourceClientId.Value, out var endpoints))
-            {
-                endpoints = new List<WofFireballProjectile>(2);
-                PortalEndpoints.Add(_sourceClientId.Value, endpoints);
-            }
-            endpoints.RemoveAll(endpoint => endpoint == null || !endpoint.IsSpawned);
-            while (endpoints.Count >= 2)
-            {
-                var oldest = endpoints[0];
-                endpoints.RemoveAt(0);
-                if (oldest != null && oldest.IsSpawned) oldest.NetworkObject.Despawn(true);
-            }
-            endpoints.Add(this);
+            _despawnAt = NetworkManager.ServerTime.Time + WofSpellRuntimeTuning.PortalLifetimeSeconds;
+            PortalEndpoints.Add(this);
             ConfigureVisual();
+            return true;
         }
 
         private void UpdatePortalTraversal(double now)
         {
-            if (!PortalEndpoints.TryGetValue(_sourceClientId.Value, out var endpoints)) return;
-            endpoints.RemoveAll(endpoint => endpoint == null || !endpoint.IsSpawned || !endpoint._anchored.Value);
-            if (endpoints.Count != 2) return;
-            var other = endpoints[0] == this ? endpoints[1] : endpoints[0];
+            PortalEndpoints.RemoveAll(endpoint => endpoint == null || !endpoint.IsSpawned || !endpoint._anchored.Value);
+            if (PortalEndpoints.Count != WofSpellRuntimeTuning.PortalMaximumEndpoints) return;
+            var other = PortalEndpoints[0] == this ? PortalEndpoints[1] : PortalEndpoints[0];
             foreach (var player in FindObjectsByType<WofPlayerController>(FindObjectsSortMode.None))
             {
                 if (!player.IsSpawned || player.IsDead ||
-                    Vector3.SqrMagnitude(player.transform.position - transform.position) > 2.4f * 2.4f)
+                    !WofSpellOutcomeRules.IsInsidePortalBounds(player.transform.position, transform.position))
                     continue;
                 if (PortalTravelerCooldowns.TryGetValue(player.OwnerClientId, out var until) && now < until) continue;
-                PortalTravelerCooldowns[player.OwnerClientId] = now + 0.65d;
-                player.ApplyServerPortalTeleport(other.transform.position + Vector3.up * 0.25f);
+                PortalTravelerCooldowns[player.OwnerClientId] =
+                    now + WofSpellRuntimeTuning.PortalTeleportCooldownSeconds;
+                player.ApplyServerPortalTeleport(other.transform.position);
             }
         }
 
         private void RemovePortalEndpoint()
         {
-            if (!PortalEndpoints.TryGetValue(_sourceClientId.Value, out var endpoints)) return;
-            endpoints.Remove(this);
-            endpoints.RemoveAll(endpoint => endpoint == null || !endpoint.IsSpawned);
-            if (endpoints.Count == 0) PortalEndpoints.Remove(_sourceClientId.Value);
+            PortalEndpoints.Remove(this);
+            PortalEndpoints.RemoveAll(endpoint => endpoint == null || !endpoint.IsSpawned);
+            if (PortalEndpoints.Count == 0) PortalTravelerCooldowns.Clear();
         }
 
         private bool TryGetSourcePlayer(out WofPlayerController player)

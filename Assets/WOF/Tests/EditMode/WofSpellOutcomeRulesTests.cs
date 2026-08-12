@@ -75,5 +75,33 @@ namespace WOF.Tests
             Assert.That(WofSpellRuntimeTuning.MeteorImpactRadiusRandom, Is.EqualTo(0.5f));
             Assert.That(WofSpellRuntimeTuning.GetLifetimeSeconds(WofSpellId.MeteorShower), Is.EqualTo(7.4f));
         }
+
+        [Test]
+        public void PortalUsesReactGlobalTwoEndpointBoundsLifetimeAndCooldownContract()
+        {
+            Assert.That(WofSpellOutcomeRules.CanAddPortalEndpoint(0), Is.True);
+            Assert.That(WofSpellOutcomeRules.CanAddPortalEndpoint(1), Is.True);
+            Assert.That(WofSpellOutcomeRules.CanAddPortalEndpoint(2), Is.False);
+            Assert.That(WofSpellRuntimeTuning.PortalLifetimeSeconds, Is.EqualTo(12f));
+            Assert.That(WofSpellRuntimeTuning.PortalTeleportCooldownSeconds, Is.EqualTo(1f));
+            Assert.That(WofSpellOutcomeRules.IsInsidePortalBounds(
+                new Vector3(1.6f, 2.4f, 1.6f), Vector3.zero), Is.True);
+            Assert.That(WofSpellOutcomeRules.IsInsidePortalBounds(
+                new Vector3(1.61f, 0f, 0f), Vector3.zero), Is.False);
+            Assert.That(WofSpellOutcomeRules.IsInsidePortalBounds(
+                new Vector3(0f, 2.41f, 0f), Vector3.zero), Is.False);
+        }
+
+        [Test]
+        public void MagicGlassOrbUsesReactRelativeAngleAndLockThreshold()
+        {
+            var forward = Vector3.forward;
+            Assert.That(WofSpellOutcomeRules.ResolveMagicGlassOrbRelativeAngle(forward, forward), Is.Zero);
+            Assert.That(WofSpellOutcomeRules.ResolveMagicGlassOrbRelativeAngle(forward, Vector3.right),
+                Is.EqualTo(Mathf.PI * 0.5f).Within(0.0001f));
+            Assert.That(WofSpellOutcomeRules.IsMagicGlassOrbLocked(
+                WofSpellRuntimeTuning.MagicGlassOrbLockAngleRadians), Is.True);
+            Assert.That(WofSpellOutcomeRules.IsMagicGlassOrbLocked(0.121f), Is.False);
+        }
     }
 }

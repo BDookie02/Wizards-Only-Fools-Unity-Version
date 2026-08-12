@@ -61,6 +61,13 @@ namespace WOF
         public const float GrabMaximumDurationSeconds = 6f;
         public const float KunaiPullSpeed = 60f;
         public const float KunaiPullVerticalBoost = 5f;
+        public const int PortalMaximumEndpoints = 2;
+        public const float PortalLifetimeSeconds = 12f;
+        public const float PortalTeleportCooldownSeconds = 1f;
+        public const float PortalHalfWidth = 1.6f;
+        public const float PortalHalfHeight = 2.4f;
+        public const float PortalHalfDepth = 1.6f;
+        public const float MagicGlassOrbLockAngleRadians = 0.12f;
 
         public static WofSpellRuntimeMode GetMode(WofSpellId spell)
         {

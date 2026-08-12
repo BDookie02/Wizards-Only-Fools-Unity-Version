@@ -1345,7 +1345,338 @@ namespace WOF
             }
             Debug.Log(
                 $"[WOF-AUTOMATION] SPELL_OUTCOME_KUNAI_PASSED health={target.Health} pullDistance={kunaiPullDistance:F2}");
-            Debug.Log("[WOF-AUTOMATION] SPELL_OUTCOME_MATRIX_PASSED cases=7");
+
+            var directSpells = new[]
+            {
+                WofSpellId.IceShard,
+                WofSpellId.ArcaneBeam,
+                WofSpellId.RingsOfPower,
+                WofSpellId.Flamethrower
+            };
+            for (var index = 0; index < directSpells.Length; index++)
+            {
+                var directSpell = directSpells[index];
+                if (!attacker.PrepareForAutomationCombatProbe(attackerPosition, 0f) ||
+                    !target.PrepareForAutomationCombatProbe(targetPosition, 180f) ||
+                    !attacker.TryAutomationServerCastSpell(
+                        WofHandSide.Right,
+                        directSpell,
+                        target.transform.position + Vector3.up))
+                {
+                    FailCombatProbe($"spell-matrix-direct-{directSpell}-setup-failed");
+                    yield break;
+                }
+
+                var expectedHealth = WofGameConstants.MaxHealth -
+                                     WofSpellRuntimeTuning.GetPlayerDamage(directSpell);
+                deadline = Time.realtimeSinceStartup + 2f;
+                while (Time.realtimeSinceStartup < deadline && target.Health > expectedHealth + 0.01f)
+                    yield return null;
+                if (Mathf.Abs(target.Health - expectedHealth) > 0.01f)
+                {
+                    FailCombatProbe(
+                        $"spell-matrix-direct-{directSpell}-health-{target.Health:F2}-expected-{expectedHealth:F2}");
+                    yield break;
+                }
+            }
+            Debug.Log("[WOF-AUTOMATION] SPELL_OUTCOME_DIRECT_DAMAGE_PASSED spells=4");
+
+            if (!attacker.PrepareForAutomationCombatProbe(attackerPosition, 0f) ||
+                !target.PrepareForAutomationCombatProbe(targetPosition, 180f) ||
+                !attacker.TryAutomationServerCastSpell(
+                    WofHandSide.Right,
+                    WofSpellId.Lightning,
+                    target.transform.position))
+            {
+                FailCombatProbe("spell-matrix-utility-lightning-setup-failed");
+                yield break;
+            }
+            yield return new WaitForSecondsRealtime(0.25f);
+            if (target.Health != WofGameConstants.MaxHealth)
+            {
+                FailCombatProbe($"spell-matrix-lightning-damaged-player-{target.Health:F2}");
+                yield break;
+            }
+
+            if (!attacker.PrepareForAutomationCombatProbe(attackerPosition, 0f) ||
+                !target.PrepareForAutomationCombatProbe(targetPosition, 180f) ||
+                !attacker.TryAutomationServerCastSpell(
+                    WofHandSide.Right,
+                    WofSpellId.SmokeBomb,
+                    target.transform.position + Vector3.up))
+            {
+                FailCombatProbe("spell-matrix-utility-smoke-setup-failed");
+                yield break;
+            }
+            deadline = Time.realtimeSinceStartup + 2f;
+            while (Time.realtimeSinceStartup < deadline &&
+                   !WofFireballProjectile.HasAnchoredAutomationSpell(
+                       WofSpellId.SmokeBomb,
+                       attacker.OwnerClientId)) yield return null;
+            if (!WofFireballProjectile.HasAnchoredAutomationSpell(
+                    WofSpellId.SmokeBomb,
+                    attacker.OwnerClientId) || target.Health != WofGameConstants.MaxHealth)
+            {
+                FailCombatProbe($"spell-matrix-smoke-cloud-mismatch-health-{target.Health:F2}");
+                yield break;
+            }
+
+            if (!attacker.PrepareForAutomationCombatProbe(attackerPosition, 0f))
+            {
+                FailCombatProbe("spell-matrix-utility-blink-preparation-failed");
+                yield break;
+            }
+            var blinkStart = attacker.transform.position;
+            if (!attacker.TryAutomationServerCastSpell(WofHandSide.Right, WofSpellId.Blink, blinkStart))
+            {
+                FailCombatProbe("spell-matrix-utility-blink-cast-failed");
+                yield break;
+            }
+            var blinkDelta = attacker.transform.position - blinkStart;
+            var blinkPlanarDistance = new Vector2(blinkDelta.x, blinkDelta.z).magnitude;
+            if (blinkPlanarDistance < WofSpellRuntimeTuning.BlinkMinimumDistance - 0.01f ||
+                blinkPlanarDistance > WofSpellRuntimeTuning.BlinkMaximumDistance + 0.01f ||
+                Mathf.Abs(blinkDelta.y - WofSpellRuntimeTuning.BlinkUpwardOffset) > 0.01f)
+            {
+                FailCombatProbe($"spell-matrix-blink-delta-{blinkDelta}-planar-{blinkPlanarDistance:F2}");
+                yield break;
+            }
+
+            if (!attacker.PrepareForAutomationCombatProbe(attackerPosition, 0f))
+            {
+                FailCombatProbe("spell-matrix-utility-heal-preparation-failed");
+                yield break;
+            }
+            attacker.ApplyServerDamage(10f, attacker.OwnerClientId, true);
+            if (!attacker.BeginAutomationServerHeldSpell(WofHandSide.Right, WofSpellId.Heal))
+            {
+                FailCombatProbe("spell-matrix-utility-heal-start-failed");
+                yield break;
+            }
+            yield return new WaitForSecondsRealtime(0.55f);
+            if (!attacker.ReleaseAutomationServerHeldSpell(WofHandSide.Right) ||
+                attacker.Health < 90.7f || attacker.Health > 92.5f)
+            {
+                FailCombatProbe($"spell-matrix-held-heal-health-{attacker.Health:F2}");
+                yield break;
+            }
+            Debug.Log(
+                $"[WOF-AUTOMATION] SPELL_OUTCOME_UTILITY_PASSED lightningHealth={target.Health:F1} smoke=true blink={blinkPlanarDistance:F2} heal={attacker.Health:F2}");
+
+            if (!attacker.PrepareForAutomationCombatProbe(attackerPosition, 0f) ||
+                !attacker.TryAutomationServerCastSpell(WofHandSide.Right, WofSpellId.MagicArmor, attackerPosition) ||
+                attacker.Armor != WofGameConstants.MaxArmor)
+            {
+                FailCombatProbe("spell-matrix-self-magic-armor-failed");
+                yield break;
+            }
+            if (!attacker.PrepareForAutomationCombatProbe(attackerPosition, 0f) ||
+                !attacker.TryAutomationServerCastSpell(WofHandSide.Right, WofSpellId.SpeedBoost, attackerPosition) ||
+                !attacker.IsSpeedBoostActiveForAutomation)
+            {
+                FailCombatProbe("spell-matrix-self-speed-boost-failed");
+                yield break;
+            }
+            if (!attacker.PrepareForAutomationCombatProbe(attackerPosition, 0f) ||
+                !attacker.TryAutomationServerCastSpell(WofHandSide.Right, WofSpellId.JumpBoost, attackerPosition) ||
+                !attacker.IsJumpBoostActiveForAutomation)
+            {
+                FailCombatProbe("spell-matrix-self-jump-boost-failed");
+                yield break;
+            }
+
+            var orbOffAxisPosition = attackerPosition + Vector3.right * 10f;
+            if (!attacker.PrepareForAutomationCombatProbe(attackerPosition, 0f) ||
+                !target.PrepareForAutomationCombatProbe(orbOffAxisPosition, 180f) ||
+                !attacker.TryAutomationServerCastSpell(WofHandSide.Right, WofSpellId.MagicGlassOrb, attackerPosition) ||
+                !attacker.IsMagicGlassOrbActiveForAutomation)
+            {
+                FailCombatProbe("spell-matrix-self-magic-glass-orb-failed");
+                yield break;
+            }
+            yield return new WaitForSecondsRealtime(0.24f);
+            if (WofHud.Instance == null || !WofHud.Instance.MagicGlassOrbHasSignal ||
+                WofHud.Instance.MagicGlassOrbIsLocked)
+            {
+                FailCombatProbe("spell-matrix-magic-glass-orb-off-axis-signal-failed");
+                yield break;
+            }
+            if (!target.RepositionForAutomationCombatProbe(attackerPosition + Vector3.forward * 10f, 180f))
+            {
+                FailCombatProbe("spell-matrix-magic-glass-orb-lock-reposition-failed");
+                yield break;
+            }
+            yield return new WaitForSecondsRealtime(0.24f);
+            if (!WofHud.Instance.MagicGlassOrbHasSignal || !WofHud.Instance.MagicGlassOrbIsLocked)
+            {
+                FailCombatProbe("spell-matrix-magic-glass-orb-lock-signal-failed");
+                yield break;
+            }
+            Debug.Log("[WOF-AUTOMATION] SPELL_OUTCOME_SELF_BUFFS_PASSED armor=50 speed=true jump=true orbSignal=locked");
+
+            if (!attacker.PrepareForAutomationCombatProbe(attackerPosition, 0f) ||
+                !target.PrepareForAutomationCombatProbe(targetPosition, 180f) ||
+                !attacker.TryAutomationServerCastSpell(
+                    WofHandSide.Right,
+                    WofSpellId.TungstonBallsack,
+                    target.transform.position + Vector3.up) ||
+                !target.IsSlowEffectActive)
+            {
+                FailCombatProbe("spell-matrix-status-tungston-failed");
+                yield break;
+            }
+
+            var projectileStatuses = new[] { WofSpellId.Sleep, WofSpellId.Poison, WofSpellId.Acid };
+            for (var index = 0; index < projectileStatuses.Length; index++)
+            {
+                var statusSpell = projectileStatuses[index];
+                if (!attacker.PrepareForAutomationCombatProbe(attackerPosition, 0f) ||
+                    !target.PrepareForAutomationCombatProbe(targetPosition, 180f) ||
+                    !attacker.TryAutomationServerCastSpell(
+                        WofHandSide.Right,
+                        statusSpell,
+                        target.transform.position + Vector3.up))
+                {
+                    FailCombatProbe($"spell-matrix-status-{statusSpell}-setup-failed");
+                    yield break;
+                }
+                deadline = Time.realtimeSinceStartup + 2f;
+                while (Time.realtimeSinceStartup < deadline &&
+                       !(statusSpell == WofSpellId.Sleep ? target.IsSleepEffectActive :
+                           statusSpell == WofSpellId.Poison ? target.IsPoisonEffectActive :
+                           target.IsAcidEffectActive)) yield return null;
+                var active = statusSpell == WofSpellId.Sleep ? target.IsSleepEffectActive :
+                    statusSpell == WofSpellId.Poison ? target.IsPoisonEffectActive :
+                    target.IsAcidEffectActive;
+                if (!active)
+                {
+                    FailCombatProbe($"spell-matrix-status-{statusSpell}-not-active");
+                    yield break;
+                }
+            }
+
+            if (!target.PrepareForAutomationCombatProbe(targetPosition, 180f))
+            {
+                FailCombatProbe("spell-matrix-toxic-stack-preparation-failed");
+                yield break;
+            }
+            target.ApplyServerStatus(WofSpellId.Poison, attacker.OwnerClientId);
+            target.ApplyServerStatus(WofSpellId.Acid, attacker.OwnerClientId);
+            var toxicHealthBefore = target.Health;
+            yield return new WaitForSecondsRealtime(0.5f);
+            var toxicDamage = toxicHealthBefore - target.Health;
+            if (!target.IsPoisonEffectActive || !target.IsAcidEffectActive ||
+                toxicDamage < 3.5f || toxicDamage > 6.5f)
+            {
+                FailCombatProbe($"spell-matrix-toxic-stack-damage-{toxicDamage:F2}");
+                yield break;
+            }
+            Debug.Log($"[WOF-AUTOMATION] SPELL_OUTCOME_STATUS_PASSED slow=true sleep=true poison=true acid=true stackedDamage={toxicDamage:F2}");
+
+            var healingTargetPosition = attackerPosition + Vector3.right * 2f;
+            if (!attacker.PrepareForAutomationCombatProbe(attackerPosition, 0f) ||
+                !target.PrepareForAutomationCombatProbe(healingTargetPosition, 180f))
+            {
+                FailCombatProbe("spell-matrix-healing-crystals-preparation-failed");
+                yield break;
+            }
+            target.ApplyServerDamage(20f, attacker.OwnerClientId, true);
+            target.ApplyServerStatus(WofSpellId.Poison, attacker.OwnerClientId);
+            target.ApplyServerStatus(WofSpellId.Acid, attacker.OwnerClientId);
+            var healingHealthBefore = target.Health;
+            if (!attacker.TryAutomationServerCastSpell(
+                    WofHandSide.Right,
+                    WofSpellId.HealingCrystals,
+                    healingTargetPosition))
+            {
+                FailCombatProbe("spell-matrix-healing-crystals-cast-failed");
+                yield break;
+            }
+            deadline = Time.realtimeSinceStartup + 1f;
+            while (Time.realtimeSinceStartup < deadline &&
+                   (target.IsPoisonEffectActive || target.IsAcidEffectActive ||
+                    target.Health <= healingHealthBefore)) yield return null;
+            if (target.IsPoisonEffectActive || target.IsAcidEffectActive ||
+                target.Health <= healingHealthBefore)
+            {
+                FailCombatProbe($"spell-matrix-healing-crystals-health-{target.Health:F2}-before-{healingHealthBefore:F2}");
+                yield break;
+            }
+            Debug.Log($"[WOF-AUTOMATION] SPELL_OUTCOME_HEALING_CRYSTALS_PASSED health={target.Health:F2} cleansed=true");
+
+            var firstPortalPosition = targetPosition;
+            var secondPortalPosition = targetPosition + Vector3.right * 20f;
+            if (!attacker.PrepareForAutomationCombatProbe(attackerPosition, 0f) ||
+                !target.PrepareForAutomationCombatProbe(targetPosition, 180f) ||
+                !attacker.TryAutomationServerCastSpell(
+                    WofHandSide.Right,
+                    WofSpellId.Portal,
+                    firstPortalPosition) ||
+                !WofFireballProjectile.TryAnchorLatestAutomationPortal(
+                    attacker.OwnerClientId,
+                    firstPortalPosition) ||
+                !target.TryAutomationServerCastSpell(
+                    WofHandSide.Left,
+                    WofSpellId.Portal,
+                    secondPortalPosition) ||
+                !WofFireballProjectile.TryAnchorLatestAutomationPortal(
+                    target.OwnerClientId,
+                    secondPortalPosition))
+            {
+                FailCombatProbe("spell-matrix-portal-pair-setup-failed");
+                yield break;
+            }
+            deadline = Time.realtimeSinceStartup + 1f;
+            while (Time.realtimeSinceStartup < deadline &&
+                   Vector3.Distance(target.transform.position, secondPortalPosition) > 0.2f) yield return null;
+            if (Vector3.Distance(target.transform.position, secondPortalPosition) > 0.2f)
+            {
+                FailCombatProbe($"spell-matrix-portal-first-traversal-position-{target.transform.position}");
+                yield break;
+            }
+            if (!target.RepositionForAutomationCombatProbe(firstPortalPosition, 180f))
+            {
+                FailCombatProbe("spell-matrix-portal-cooldown-reposition-failed");
+                yield break;
+            }
+            yield return new WaitForSecondsRealtime(0.25f);
+            var cooldownPlanarDistance = Vector2.Distance(
+                new Vector2(target.transform.position.x, target.transform.position.z),
+                new Vector2(firstPortalPosition.x, firstPortalPosition.z));
+            if (cooldownPlanarDistance > 0.2f)
+            {
+                FailCombatProbe(
+                    $"spell-matrix-portal-one-second-cooldown-failed-planar-{cooldownPlanarDistance:F2}");
+                yield break;
+            }
+            yield return new WaitForSecondsRealtime(0.8f);
+            deadline = Time.realtimeSinceStartup + 0.5f;
+            while (Time.realtimeSinceStartup < deadline &&
+                   Vector3.Distance(target.transform.position, secondPortalPosition) > 0.2f) yield return null;
+            if (Vector3.Distance(target.transform.position, secondPortalPosition) > 0.2f)
+            {
+                FailCombatProbe("spell-matrix-portal-post-cooldown-traversal-failed");
+                yield break;
+            }
+            yield return new WaitForSecondsRealtime(1.05f);
+            if (!attacker.TryAutomationServerCastSpell(
+                    WofHandSide.Right,
+                    WofSpellId.Portal,
+                    firstPortalPosition + Vector3.forward * 4f))
+            {
+                FailCombatProbe("spell-matrix-portal-third-cast-failed");
+                yield break;
+            }
+            if (WofFireballProjectile.TryAnchorLatestAutomationPortal(
+                    attacker.OwnerClientId,
+                    firstPortalPosition + Vector3.forward * 4f) ||
+                WofFireballProjectile.ActivePortalEndpointCount != WofSpellRuntimeTuning.PortalMaximumEndpoints)
+            {
+                FailCombatProbe($"spell-matrix-portal-third-endpoint-count-{WofFireballProjectile.ActivePortalEndpointCount}");
+                yield break;
+            }
+            Debug.Log("[WOF-AUTOMATION] SPELL_OUTCOME_PORTAL_PASSED endpoints=2 crossOwner=true cooldown=1.00");
+            Debug.Log("[WOF-AUTOMATION] SPELL_OUTCOME_MATRIX_PASSED cases=12");
         }
 
         private void FailCombatProbe(string reason)

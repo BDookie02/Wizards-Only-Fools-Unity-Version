@@ -205,6 +205,7 @@ namespace WOF
         private bool _mountainVillageViewProbe;
         private bool _grassViewProbe;
         private bool _grassOverheadViewProbe;
+        private bool _magicGlassOrbViewProbe;
         private bool _hasDarrelReturnPosition;
         private bool _darrelReturnArmed;
         private Vector3 _darrelReturnPosition;
@@ -229,6 +230,9 @@ namespace WOF
         public bool IsSlowEffectActive => IsTimedBuffActive(_slowUntil.Value);
         public bool IsPoisonEffectActive => IsTimedBuffActive(_poisonUntil.Value);
         public bool IsAcidEffectActive => IsTimedBuffActive(_acidUntil.Value);
+        internal bool IsSpeedBoostActiveForAutomation => IsSpeedBoostActive;
+        internal bool IsJumpBoostActiveForAutomation => IsJumpBoostActive;
+        internal bool IsMagicGlassOrbActiveForAutomation => IsTimedBuffActive(_magicGlassOrbUntil.Value);
         public float FlashbangOpacity => _flashbangOpacity.Value;
         public bool IsGrabbed => _isGrabbed.Value;
         public bool IsGrounded => IsMeditating || (!IsVClipEnabled && (IsLocalLilyCoilActive
@@ -336,6 +340,10 @@ namespace WOF
                 {
                     _grassViewProbe = true;
                     _grassOverheadViewProbe = true;
+                }
+                else if (argument.Equals("--wof-magic-glass-orb-view-probe", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    _magicGlassOrbViewProbe = true;
                 }
             }
             _villagerViewProbe = WofPerformanceModeRuntime.IsVillagerViewProbe;
@@ -448,6 +456,10 @@ namespace WOF
                 _castingUntil.Value = 0d;
                 _leftEquippedSpell.Value = (int)WofSpellLoadout.ReactDefaultLeft;
                 _rightEquippedSpell.Value = (int)WofSpellLoadout.ReactDefaultRight;
+                if (OwnerClientId == 0 && _magicGlassOrbViewProbe)
+                {
+                    _leftEquippedSpell.Value = (int)WofSpellId.MagicGlassOrb;
+                }
                 _speedBoostUntil.Value = 0d;
                 _jumpBoostUntil.Value = 0d;
                 _discShieldUntil.Value = 0d;
@@ -456,7 +468,9 @@ namespace WOF
                 _sleepUntil.Value = 0d;
                 _poisonUntil.Value = 0d;
                 _acidUntil.Value = 0d;
-                _magicGlassOrbUntil.Value = 0d;
+                _magicGlassOrbUntil.Value = OwnerClientId == 0 && _magicGlassOrbViewProbe
+                    ? double.MaxValue
+                    : 0d;
                 _flashbangOpacity.Value = 0f;
                 _isGrabbed.Value = false;
             }
@@ -481,6 +495,10 @@ namespace WOF
                     _pitch = _grassOverheadViewProbe ? 82f : -8f;
                     ApplyCameraRotation();
                     Debug.Log($"[WOF-AUTOMATION] GRASS_VIEW_PROBE_READY variant={(_grassOverheadViewProbe ? "overhead" : "ground")} position={transform.position} yaw={_yaw} pitch={_pitch}");
+                }
+                else if (_magicGlassOrbViewProbe)
+                {
+                    Debug.Log("[WOF-AUTOMATION] MAGIC_GLASS_ORB_VIEW_PROBE_READY signal=none");
                 }
                 else if (_desertVillageViewProbe)
                 {
@@ -1859,6 +1877,18 @@ namespace WOF
             return true;
         }
 
+        internal bool RepositionForAutomationCombatProbe(Vector3 position, float yaw)
+        {
+            if (!IsServer || !IsSpawned || _isDead.Value) return false;
+            _serverVerticalVelocity = 0f;
+            _predictedVerticalVelocity = 0f;
+            _serverExternalPullVelocity = Vector3.zero;
+            _serverExternalPullFrames = 0;
+            _serverImpulsePlanarVelocity = Vector3.zero;
+            Teleport(position, yaw);
+            return true;
+        }
+
         internal bool TryAutomationServerCastSpell(
             WofHandSide hand,
             WofSpellId spell,
@@ -3230,9 +3260,10 @@ namespace WOF
                 WofSpellLoadout.GetDisplayName(LeftEquippedSpell),
                 WofSpellLoadout.GetDisplayName(RightEquippedSpell));
             WofHud.Instance?.SetMagicHandsVisible(!IsMeditating);
-            WofHud.Instance?.SetHeldSpellVisibility(
-                !IsMeditating && LeftEquippedSpell == WofSpellId.Fireball,
-                !IsMeditating && RightEquippedSpell == WofSpellId.Fireball);
+            if (!IsMeditating)
+            {
+                WofHud.Instance?.SetHeldSpellPresentation(LeftEquippedSpell, RightEquippedSpell, this);
+            }
             PublishMovementHud();
         }
 

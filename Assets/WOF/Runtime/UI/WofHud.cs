@@ -55,6 +55,10 @@ namespace WOF
         private float _rightFiringUntil;
         private readonly Dictionary<int, int> _baseTextSizes = new();
         private Image _flashbangOverlay;
+        private WofMagicGlassOrbGraphic _leftMagicGlassOrb;
+        private WofMagicGlassOrbGraphic _rightMagicGlassOrb;
+        private WofPlayerController _magicGlassOrbOwner;
+        private float _nextMagicGlassOrbSignalAt;
 
         public static WofHud Instance { get; private set; }
         public bool IsGameplayVisible => _gameplayVisible && !_gameplaySurfaceBlocked;
@@ -62,6 +66,12 @@ namespace WOF
         public bool AreMagicHandsVisible => _magicHandsVisible &&
                                             leftHandImage != null && leftHandImage.gameObject.activeInHierarchy &&
                                             rightHandImage != null && rightHandImage.gameObject.activeInHierarchy;
+        internal bool MagicGlassOrbHasSignal =>
+            (_leftMagicGlassOrb != null && _leftMagicGlassOrb.gameObject.activeInHierarchy && _leftMagicGlassOrb.HasSignal) ||
+            (_rightMagicGlassOrb != null && _rightMagicGlassOrb.gameObject.activeInHierarchy && _rightMagicGlassOrb.HasSignal);
+        internal bool MagicGlassOrbIsLocked =>
+            (_leftMagicGlassOrb != null && _leftMagicGlassOrb.gameObject.activeInHierarchy && _leftMagicGlassOrb.IsLocked) ||
+            (_rightMagicGlassOrb != null && _rightMagicGlassOrb.gameObject.activeInHierarchy && _rightMagicGlassOrb.IsLocked);
 
         public void SetTextScale(float scale)
         {
@@ -110,6 +120,7 @@ namespace WOF
                 }
             }
             CreateFlashbangOverlay();
+            CreateMagicGlassOrbEffects();
             SetGameplayVisible(false);
         }
 
@@ -124,6 +135,7 @@ namespace WOF
         private void Update()
         {
             RefreshMobileControlVisibility();
+            UpdateMagicGlassOrbEffects();
             if (gameplayRoot == null || !gameplayRoot.activeInHierarchy)
             {
                 return;
@@ -369,10 +381,16 @@ namespace WOF
             return builder.ToString();
         }
 
-        public void SetHeldSpellVisibility(bool leftVisible, bool rightVisible)
+        public void SetHeldSpellPresentation(
+            WofSpellId leftSpell,
+            WofSpellId rightSpell,
+            WofPlayerController owner)
         {
-            if (leftHeldSpellImage != null) leftHeldSpellImage.gameObject.SetActive(_magicHandsVisible && leftVisible);
-            if (heldSpellImage != null) heldSpellImage.gameObject.SetActive(_magicHandsVisible && rightVisible);
+            _magicGlassOrbOwner = owner;
+            CreateMagicGlassOrbEffects();
+            ApplyHeldSpellPresentation(leftHeldSpellImage, _leftMagicGlassOrb, leftSpell);
+            ApplyHeldSpellPresentation(heldSpellImage, _rightMagicGlassOrb, rightSpell);
+            _nextMagicGlassOrbSignalAt = 0f;
         }
 
         public void SetMagicHandsVisible(bool visible)
@@ -420,6 +438,103 @@ namespace WOF
             {
                 mobileRoot.SetActive(shouldShow);
             }
+        }
+
+        private void CreateMagicGlassOrbEffects()
+        {
+            _leftMagicGlassOrb ??= CreateMagicGlassOrbEffect(leftHeldSpellImage, "LeftMagicGlassOrb", false);
+            _rightMagicGlassOrb ??= CreateMagicGlassOrbEffect(heldSpellImage, "RightMagicGlassOrb", true);
+        }
+
+        private static WofMagicGlassOrbGraphic CreateMagicGlassOrbEffect(Image parentImage, string name, bool right)
+        {
+            if (parentImage == null) return null;
+            var existing = parentImage.transform.Find(name)?.GetComponent<WofMagicGlassOrbGraphic>();
+            if (existing != null) return existing;
+
+            var effectObject = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer),
+                typeof(WofMagicGlassOrbGraphic));
+            effectObject.transform.SetParent(parentImage.transform, false);
+            var rect = effectObject.GetComponent<RectTransform>();
+            var anchor = right
+                ? new Vector2(358f / 859f, (495f - 224f) / 495f)
+                : new Vector2(338f / 859f, (495f - 218f) / 495f);
+            rect.anchorMin = anchor;
+            rect.anchorMax = anchor;
+            rect.pivot = new Vector2(0.5f, 0f);
+            rect.anchoredPosition = Vector2.zero;
+            var graphic = effectObject.GetComponent<WofMagicGlassOrbGraphic>();
+            graphic.raycastTarget = false;
+            effectObject.SetActive(false);
+            return graphic;
+        }
+
+        private void ApplyHeldSpellPresentation(
+            Image parentImage,
+            WofMagicGlassOrbGraphic magicGlassOrb,
+            WofSpellId spell)
+        {
+            if (parentImage == null) return;
+            var showFireball = _magicHandsVisible && spell == WofSpellId.Fireball;
+            var showMagicGlassOrb = _magicHandsVisible && spell == WofSpellId.MagicGlassOrb;
+            parentImage.gameObject.SetActive(showFireball || showMagicGlassOrb);
+            parentImage.enabled = showFireball;
+            magicGlassOrb?.gameObject.SetActive(showMagicGlassOrb);
+        }
+
+        private void UpdateMagicGlassOrbEffects()
+        {
+            var leftActive = _leftMagicGlassOrb != null && _leftMagicGlassOrb.gameObject.activeInHierarchy;
+            var rightActive = _rightMagicGlassOrb != null && _rightMagicGlassOrb.gameObject.activeInHierarchy;
+            if (!leftActive && !rightActive) return;
+
+            var charging = (leftActive && _leftCastHeld) || (rightActive && _rightCastHeld);
+            var size = ResolveMagicGlassOrbSize(charging);
+            if (leftActive) _leftMagicGlassOrb.rectTransform.sizeDelta = Vector2.one * size;
+            if (rightActive) _rightMagicGlassOrb.rectTransform.sizeDelta = Vector2.one * size;
+
+            if (Time.unscaledTime < _nextMagicGlassOrbSignalAt) return;
+            _nextMagicGlassOrbSignalAt = Time.unscaledTime + 0.16f;
+            var hasSignal = TryResolveMagicGlassOrbSignal(_magicGlassOrbOwner, out var locked);
+            if (leftActive) _leftMagicGlassOrb.SetSignal(hasSignal, locked);
+            if (rightActive) _rightMagicGlassOrb.SetSignal(hasSignal, locked);
+        }
+
+        private float ResolveMagicGlassOrbSize(bool charging)
+        {
+            var physicalMinimum = charging ? 203f : 169f;
+            var physicalMaximum = charging ? 378f : 316f;
+            var viewportRatio = charging ? 0.4644f : 0.3784f;
+            var physicalSize = Mathf.Clamp(Screen.height * viewportRatio, physicalMinimum, physicalMaximum);
+            var canvas = GetComponent<Canvas>();
+            var scaleFactor = canvas != null ? Mathf.Max(0.0001f, canvas.scaleFactor) : 1f;
+            return physicalSize / scaleFactor;
+        }
+
+        private static bool TryResolveMagicGlassOrbSignal(WofPlayerController owner, out bool locked)
+        {
+            locked = false;
+            if (owner == null || !owner.IsSpawned || owner.IsDead) return false;
+
+            WofPlayerController nearest = null;
+            var nearestDistanceSquared = float.PositiveInfinity;
+            foreach (var player in FindObjectsByType<WofPlayerController>(FindObjectsSortMode.None))
+            {
+                if (player == null || !player.IsSpawned || player.IsDead ||
+                    player.OwnerClientId == owner.OwnerClientId) continue;
+                var offset = player.transform.position - owner.transform.position;
+                offset.y = 0f;
+                var distanceSquared = offset.sqrMagnitude;
+                if (distanceSquared <= 0.01f || distanceSquared >= nearestDistanceSquared) continue;
+                nearest = player;
+                nearestDistanceSquared = distanceSquared;
+            }
+
+            if (nearest == null) return false;
+            var direction = nearest.transform.position - owner.transform.position;
+            var angle = WofSpellOutcomeRules.ResolveMagicGlassOrbRelativeAngle(owner.transform.forward, direction);
+            locked = WofSpellOutcomeRules.IsMagicGlassOrbLocked(angle);
+            return true;
         }
 
         private static void AnimateFrames(Image target, Sprite[] frames, ref float clock, ref int index, float frameSeconds)
@@ -527,6 +642,114 @@ namespace WOF
         internal static string NormalizeSpellLabel(string value)
         {
             return string.IsNullOrWhiteSpace(value) ? "NO MANA" : value.Trim().ToUpperInvariant();
+        }
+    }
+
+    /// <summary>
+    /// Exact 24x24 code-native port of React's equipped Magic Glass Orb SVG.
+    /// The center signal is cyan with no target, red off-axis, and green while
+    /// the nearest living remote wizard is inside the 0.12-radian lock cone.
+    /// </summary>
+    public sealed class WofMagicGlassOrbGraphic : MaskableGraphic
+    {
+        private readonly struct PixelBlock
+        {
+            public readonly int X;
+            public readonly int Y;
+            public readonly int Width;
+            public readonly int Height;
+            public readonly Color32 Color;
+
+            public PixelBlock(int x, int y, int width, int height, Color32 color)
+            {
+                X = x;
+                Y = y;
+                Width = width;
+                Height = height;
+                Color = color;
+            }
+        }
+
+        private static readonly PixelBlock[] Blocks =
+        {
+            Block(8, 1, 8, 1, "E0F7FF", 0.74f),
+            Block(5, 2, 14, 2, "7DD3FC"),
+            Block(4, 4, 17, 2, "67E8F9"),
+            Block(3, 6, 19, 4, "38BDF8"),
+            Block(2, 10, 20, 5, "0EA5E9"),
+            Block(3, 15, 18, 3, "0284C7"),
+            Block(5, 18, 14, 2, "0369A1"),
+            Block(8, 20, 8, 1, "075985"),
+            Block(3, 10, 2, 4, "7DD3FC", 0.52f),
+            Block(5, 6, 3, 3, "BAE6FD", 0.56f),
+            Block(9, 4, 4, 3, "ECFEFF", 0.74f),
+            Block(13, 6, 2, 2, "FFFFFF", 0.82f),
+            Block(16, 8, 2, 2, "E0F2FE", 0.54f),
+            Block(15, 16, 4, 2, "075985", 0.28f),
+            Block(6, 17, 3, 1, "67E8F9", 0.42f)
+        };
+
+        private bool _hasSignal;
+        private bool _locked;
+
+        public bool HasSignal => _hasSignal;
+        public bool IsLocked => _locked;
+
+        public void SetSignal(bool hasSignal, bool locked)
+        {
+            locked &= hasSignal;
+            if (_hasSignal == hasSignal && _locked == locked) return;
+            _hasSignal = hasSignal;
+            _locked = locked;
+            SetVerticesDirty();
+        }
+
+        protected override void OnPopulateMesh(VertexHelper vertexHelper)
+        {
+            vertexHelper.Clear();
+            for (var index = 0; index < Blocks.Length; index++) AddBlock(vertexHelper, Blocks[index]);
+
+            var signalColor = !_hasSignal
+                ? Hex("7DD3FC", 0.78f)
+                : _locked ? Hex("4ADE80") : Hex("EF4444");
+            AddBlock(vertexHelper, new PixelBlock(11, 11, _hasSignal ? 3 : 2, _hasSignal ? 3 : 2, signalColor));
+            AddBlock(vertexHelper, Block(11, 11, 1, 1, "FFFFFF", 0.58f));
+        }
+
+        private void AddBlock(VertexHelper vertexHelper, PixelBlock block)
+        {
+            var bounds = GetPixelBounds(block.X, block.Y, block.Width, block.Height);
+            var start = vertexHelper.currentVertCount;
+            vertexHelper.AddVert(new Vector3(bounds.xMin, bounds.yMin), block.Color, Vector2.zero);
+            vertexHelper.AddVert(new Vector3(bounds.xMin, bounds.yMax), block.Color, Vector2.up);
+            vertexHelper.AddVert(new Vector3(bounds.xMax, bounds.yMax), block.Color, Vector2.one);
+            vertexHelper.AddVert(new Vector3(bounds.xMax, bounds.yMin), block.Color, Vector2.right);
+            vertexHelper.AddTriangle(start, start + 1, start + 2);
+            vertexHelper.AddTriangle(start, start + 2, start + 3);
+        }
+
+        private Rect GetPixelBounds(int x, int y, int width, int height)
+        {
+            var area = GetPixelAdjustedRect();
+            var pixelWidth = area.width / 24f;
+            var pixelHeight = area.height / 24f;
+            return new Rect(
+                area.xMin + x * pixelWidth,
+                area.yMax - (y + height) * pixelHeight,
+                width * pixelWidth,
+                height * pixelHeight);
+        }
+
+        private static PixelBlock Block(int x, int y, int width, int height, string hex, float opacity = 1f)
+        {
+            return new PixelBlock(x, y, width, height, Hex(hex, opacity));
+        }
+
+        private static Color32 Hex(string hex, float opacity = 1f)
+        {
+            ColorUtility.TryParseHtmlString($"#{hex}", out var parsed);
+            parsed.a = Mathf.Clamp01(opacity);
+            return parsed;
         }
     }
 }

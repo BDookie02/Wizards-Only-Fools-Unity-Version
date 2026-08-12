@@ -95,5 +95,40 @@ namespace WOF
             if (incomingSide.sqrMagnitude <= 0.000001f || forward.sqrMagnitude <= 0.000001f) return false;
             return Vector3.Dot(forward.normalized, incomingSide.normalized) > 0f;
         }
+
+        public static bool CanAddPortalEndpoint(int activeEndpointCount)
+        {
+            return activeEndpointCount >= 0 &&
+                   activeEndpointCount < WofSpellRuntimeTuning.PortalMaximumEndpoints;
+        }
+
+        public static bool IsInsidePortalBounds(Vector3 travelerPosition, Vector3 portalPosition)
+        {
+            var offset = travelerPosition - portalPosition;
+            return Mathf.Abs(offset.x) <= WofSpellRuntimeTuning.PortalHalfWidth &&
+                   Mathf.Abs(offset.y) <= WofSpellRuntimeTuning.PortalHalfHeight &&
+                   Mathf.Abs(offset.z) <= WofSpellRuntimeTuning.PortalHalfDepth;
+        }
+
+        public static float ResolveMagicGlassOrbRelativeAngle(Vector3 sourceForward, Vector3 targetDirection)
+        {
+            sourceForward.y = 0f;
+            targetDirection.y = 0f;
+            if (sourceForward.sqrMagnitude <= 0.000001f || targetDirection.sqrMagnitude <= 0.000001f)
+            {
+                return 0f;
+            }
+
+            return Vector3.SignedAngle(
+                       sourceForward.normalized,
+                       targetDirection.normalized,
+                       Vector3.up) * Mathf.Deg2Rad;
+        }
+
+        public static bool IsMagicGlassOrbLocked(float relativeAngleRadians)
+        {
+            return float.IsFinite(relativeAngleRadians) &&
+                   Mathf.Abs(relativeAngleRadians) <= WofSpellRuntimeTuning.MagicGlassOrbLockAngleRadians;
+        }
     }
 }
