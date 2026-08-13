@@ -111,6 +111,19 @@ namespace WOF.Tests.EditMode
         }
 
         [Test]
+        public void MobileMapPinchZoomUsesScreenRelativeDistanceAndRejectsInvalidSamples()
+        {
+            Assert.That(
+                WofNavigationMapRuntime.GetTouchPinchZoomDelta(200f, 400f, 1000f),
+                Is.EqualTo(0.5f).Within(0.0001f));
+            Assert.That(
+                WofNavigationMapRuntime.GetTouchPinchZoomDelta(400f, 200f, 1000f),
+                Is.EqualTo(-0.5f).Within(0.0001f));
+            Assert.That(WofNavigationMapRuntime.GetTouchPinchZoomDelta(-1f, 200f, 1000f), Is.Zero);
+            Assert.That(WofNavigationMapRuntime.GetTouchPinchZoomDelta(200f, 400f, 0f), Is.Zero);
+        }
+
+        [Test]
         public void WaypointCompassDirectionUsesWorldNorthAndEast()
         {
             Assert.That(

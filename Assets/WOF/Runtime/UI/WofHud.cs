@@ -63,6 +63,7 @@ namespace WOF
         public static WofHud Instance { get; private set; }
         public bool IsGameplayVisible => _gameplayVisible && !_gameplaySurfaceBlocked;
         public bool AreMobileControlsVisible => mobileRoot != null && mobileRoot.activeInHierarchy;
+        public Transform MobileControlsRoot => mobileRoot == null ? null : mobileRoot.transform;
         public bool AreMagicHandsVisible => _magicHandsVisible &&
                                             leftHandImage != null && leftHandImage.gameObject.activeInHierarchy &&
                                             rightHandImage != null && rightHandImage.gameObject.activeInHierarchy;

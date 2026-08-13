@@ -1,6 +1,6 @@
 param(
     [string]$ProjectRoot = 'D:\CodexProjects\Wizards-Only-Fools-Unity',
-    [string]$ResponseFile = 'Library\Bee\artifacts\1900b0aP.dag\WOF.Runtime.rsp',
+    [string]$ResponseFile = '',
     [switch]$IncludeTreeHouseTests,
     [switch]$IncludeGraveyardTests,
     [switch]$IncludeDesertTests,
@@ -14,7 +14,19 @@ if (-not $resolvedProjectRoot.StartsWith('D:\', [System.StringComparison]::Ordin
     throw "The Unity project must stay on D:. Refusing $resolvedProjectRoot"
 }
 
-$resolvedResponseFile = if ([System.IO.Path]::IsPathRooted($ResponseFile)) {
+$resolvedResponseFile = if ([string]::IsNullOrWhiteSpace($ResponseFile)) {
+    $discoveredResponseFile = Get-ChildItem `
+            -LiteralPath (Join-Path $resolvedProjectRoot 'Library\Bee\artifacts') `
+            -Filter 'WOF.Runtime.rsp' `
+            -File `
+            -Recurse |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -First 1 -ExpandProperty FullName
+    if ([string]::IsNullOrWhiteSpace($discoveredResponseFile)) {
+        throw 'No current WOF.Runtime Bee response file was found.'
+    }
+    [System.IO.Path]::GetFullPath($discoveredResponseFile)
+} elseif ([System.IO.Path]::IsPathRooted($ResponseFile)) {
     [System.IO.Path]::GetFullPath($ResponseFile)
 } else {
     [System.IO.Path]::GetFullPath((Join-Path $resolvedProjectRoot $ResponseFile))
