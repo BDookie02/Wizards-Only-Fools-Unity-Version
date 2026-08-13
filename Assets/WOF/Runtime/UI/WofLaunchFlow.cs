@@ -91,6 +91,7 @@ namespace WOF
         private string _hatStyle = "floppy-wizard";
         private string _hairStyle = "none";
         private bool _initialized;
+        private bool _publicSessionOperationInProgress;
         private Button _lanHostButton;
 
         public WofLaunchStage Stage => _stage;
@@ -113,6 +114,7 @@ namespace WOF
             multiplayerBackButton?.onClick.AddListener(ShowSave);
             createLobbyButton?.onClick.AddListener(CreateLobby);
             copyMobileLinkButton?.onClick.AddListener(JoinLobby);
+            inviteCodeInput?.onSubmit.AddListener(SubmitInviteCode);
             lobbyBackButton?.onClick.AddListener(ShowMultiplayer);
             CreateLanHostControl();
 
@@ -137,6 +139,11 @@ namespace WOF
             RefreshLobbyLink();
             ApplyAutomationPreviewProbe();
             _initialized = true;
+        }
+
+        private void OnDestroy()
+        {
+            inviteCodeInput?.onSubmit.RemoveListener(SubmitInviteCode);
         }
 
         private void OnEnable()
@@ -356,6 +363,11 @@ namespace WOF
 
         private async void CreateLobby()
         {
+            if (_publicSessionOperationInProgress)
+            {
+                return;
+            }
+
             if (_survivalLobby && _profile != null)
             {
                 _profile.lastMode = "multiplayer-survival";
@@ -369,25 +381,35 @@ namespace WOF
                 return;
             }
 
-            var joinCode = await bootstrap.StartPublicHostAsync();
-            if (string.IsNullOrEmpty(joinCode))
+            _publicSessionOperationInProgress = true;
+            SetPublicSessionControlsInteractable(false);
+            try
             {
-                return;
-            }
+                var joinCode = await bootstrap.StartPublicHostAsync();
+                if (string.IsNullOrEmpty(joinCode))
+                {
+                    return;
+                }
 
-            if (inviteCodeInput != null)
-            {
-                inviteCodeInput.text = joinCode;
-            }
+                if (inviteCodeInput != null)
+                {
+                    inviteCodeInput.text = joinCode;
+                }
 
-            if (mobileLinkInput != null)
-            {
-                mobileLinkInput.text = $"PUBLIC INVITE CODE: {joinCode}";
-            }
+                if (mobileLinkInput != null)
+                {
+                    mobileLinkInput.text = $"PUBLIC INVITE CODE: {joinCode}";
+                }
 
-            if (copyMobileLinkButtonLabel != null)
+                if (copyMobileLinkButtonLabel != null)
+                {
+                    copyMobileLinkButtonLabel.text = "COPY INVITE CODE";
+                }
+            }
+            finally
             {
-                copyMobileLinkButtonLabel.text = "COPY INVITE CODE";
+                _publicSessionOperationInProgress = false;
+                SetPublicSessionControlsInteractable(true);
             }
         }
 
@@ -421,6 +443,11 @@ namespace WOF
                 return;
             }
 
+            if (_publicSessionOperationInProgress)
+            {
+                return;
+            }
+
             if (string.IsNullOrEmpty(joinCode))
             {
                 SetStatus(WofPublicSessionRules.JoinCodeRequired);
@@ -430,7 +457,51 @@ namespace WOF
             bootstrap?.SetSurvivalSession(_survivalLobby);
             if (bootstrap != null)
             {
-                await bootstrap.StartPublicClientAsync(joinCode);
+                _publicSessionOperationInProgress = true;
+                SetPublicSessionControlsInteractable(false);
+                try
+                {
+                    await bootstrap.StartPublicClientAsync(joinCode);
+                }
+                finally
+                {
+                    _publicSessionOperationInProgress = false;
+                    SetPublicSessionControlsInteractable(true);
+                }
+            }
+        }
+
+        private void SubmitInviteCode(string _)
+        {
+            if (inviteCodeInput == null || inviteCodeInput.wasCanceled)
+            {
+                return;
+            }
+
+            inviteCodeInput.DeactivateInputField();
+            if (copyMobileLinkButton != null && EventSystem.current != null)
+            {
+                EventSystem.current.SetSelectedGameObject(copyMobileLinkButton.gameObject);
+            }
+
+            JoinLobby();
+        }
+
+        private void SetPublicSessionControlsInteractable(bool interactable)
+        {
+            if (createLobbyButton != null)
+            {
+                createLobbyButton.interactable = interactable;
+            }
+
+            if (copyMobileLinkButton != null)
+            {
+                copyMobileLinkButton.interactable = interactable;
+            }
+
+            if (inviteCodeInput != null)
+            {
+                inviteCodeInput.interactable = interactable;
             }
         }
 
