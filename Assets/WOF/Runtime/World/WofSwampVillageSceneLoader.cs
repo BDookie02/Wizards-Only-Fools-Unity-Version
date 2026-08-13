@@ -17,7 +17,7 @@ namespace WOF
                 yield return WofAdditiveSceneLoadScheduler.LoadSceneAdditively(
                     SceneName,
                     "SWAMP_VILLAGE_SCENE_FAILED",
-                    IsViewProbeRequested()
+                    IsViewProbeRequested() || WofSwampTraversalProbe.IsRequested()
                         ? WofAdditiveSceneLoadScheduler.ProbePriority
                         : WofAdditiveSceneLoadScheduler.SwampPriority);
             }
@@ -29,9 +29,10 @@ namespace WOF
                 yield break;
             }
 
-            if (IsViewProbeRequested())
+            if (IsViewProbeRequested() || WofSwampTraversalProbe.IsRequested())
             {
                 var controllerProbe = IsControllerProbeRequested();
+                var traversalProbe = WofSwampTraversalProbe.IsRequested();
                 var deadline = Time.realtimeSinceStartup + 20f;
                 WofPlayerController player = null;
                 while (Time.realtimeSinceStartup < deadline && player == null)
@@ -51,7 +52,9 @@ namespace WOF
                 }
 
                 if (player == null || !player.PrepareForAutomationVillagerInteractionProbe(
-                        controllerProbe
+                        traversalProbe
+                            ? WofSwampTraversalRules.BuildNorthToEastRoute()[0]
+                            : controllerProbe
                             ? WofSwampVillageLayout.FirstVillagerControllerProbeSpawn
                             : WofSwampVillageLayout.ViewProbeSpawn,
                         0f,
@@ -59,6 +62,13 @@ namespace WOF
                 {
                     Debug.LogError("[WOF-AUTOMATION] SWAMP_VILLAGE_SCENE_FAILED stage=probe-position");
                     yield break;
+                }
+
+                if (traversalProbe)
+                {
+                    yield return WofSwampTraversalProbe.Run(
+                        player,
+                        WofSwampTraversalRules.BuildNorthToEastRoute());
                 }
             }
 

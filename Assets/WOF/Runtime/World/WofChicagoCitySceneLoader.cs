@@ -29,11 +29,11 @@ namespace WOF
                 yield break;
             }
 
-            if (IsChicagoViewProbeRequested())
+            WofPlayerController probePlayer = null;
+            if (IsChicagoViewProbeRequested() || WofChicagoTraversalProbe.IsRequested())
             {
                 var deadline = Time.realtimeSinceStartup + 20f;
-                WofPlayerController player = null;
-                while (Time.realtimeSinceStartup < deadline && player == null)
+                while (Time.realtimeSinceStartup < deadline && probePlayer == null)
                 {
                     var players = FindObjectsByType<WofPlayerController>(
                         FindObjectsInactive.Exclude,
@@ -42,20 +42,27 @@ namespace WOF
                     {
                         if (candidate.IsSpawned && candidate.IsOwner)
                         {
-                            player = candidate;
+                            probePlayer = candidate;
                             break;
                         }
                     }
-                    if (player == null) yield return null;
+                    if (probePlayer == null) yield return null;
                 }
 
-                if (player == null || !player.PrepareForAutomationVillagerInteractionProbe(
+                if (probePlayer == null || !probePlayer.PrepareForAutomationVillagerInteractionProbe(
                         WofChicagoCityLayout.ViewProbeSpawn,
                         0f,
                         -5f))
                 {
                     Debug.LogError("[WOF-AUTOMATION] CHICAGO_CITY_SCENE_FAILED stage=probe-position");
                     yield break;
+                }
+
+                if (WofChicagoTraversalProbe.IsRequested())
+                {
+                    yield return WofChicagoTraversalProbe.Run(
+                        probePlayer,
+                        WofChicagoTraversalRules.BuildBeanParkRoute());
                 }
             }
 

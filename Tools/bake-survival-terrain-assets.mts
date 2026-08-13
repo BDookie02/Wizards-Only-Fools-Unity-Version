@@ -69,6 +69,11 @@ const survivalTreeVisuals = await import(pathToFileURL(treeVisualsPath).href);
 const survivalWaterFeatures = await import(pathToFileURL(waterFeaturesPath).href);
 const gameStore = await import(pathToFileURL(storePath).href);
 const blockSize = Number(gameStore.SURVIVAL_BLOCK_SIZE);
+const desertVillageCenterX = 4 * blockSize;
+const desertVillageCenterZ = -4 * blockSize;
+const desertVillageHalfSize = blockSize * 0.5;
+const desertVillageBaseHeight = 17.885722662941443;
+const desertVillageFoundationBlendDistance = 192;
 const minimumChunkX = -4;
 const maximumChunkX = 6;
 const minimumChunkZ = -4;
@@ -160,6 +165,23 @@ const makeSurvivalChunk = (cx: number, cz: number): SurvivalChunk => ({
   riverVertical: survivalMath.survivalHash01(cx, cz, 5) > 0.5,
   lod: "near",
 });
+const smoothstep01 = (value: number) => {
+  const clamped = Math.max(0, Math.min(1, value));
+  return clamped * clamped * (3 - 2 * clamped);
+};
+const getUnityDesertFoundationMask = (worldX: number, worldZ: number) => {
+  const outsideX = Math.max(0, Math.abs(worldX - desertVillageCenterX) - desertVillageHalfSize);
+  const outsideZ = Math.max(0, Math.abs(worldZ - desertVillageCenterZ) - desertVillageHalfSize);
+  const outsideDistance = Math.hypot(outsideX, outsideZ);
+  return 1 - smoothstep01(outsideDistance / desertVillageFoundationBlendDistance);
+};
+const getUnitySurvivalTerrainHeightForChunk = (chunk: SurvivalChunk, localX: number, localZ: number) => {
+  const sourceHeight = terrainSurface.getSurvivalTerrainHeightForChunk(chunk, localX, localZ);
+  const worldX = chunk.x + localX;
+  const worldZ = chunk.z + localZ;
+  const mask = getUnityDesertFoundationMask(worldX, worldZ);
+  return sourceHeight + (desertVillageBaseHeight - sourceHeight) * mask;
+};
 const streamingFixtureCoords: ReadonlyArray<readonly [number, number]> = [
   [7, 0],
   [7, 4],
@@ -180,7 +202,7 @@ const streamingChunkFixtures: SurvivalStreamingChunkFixture[] = streamingFixture
   const samples = streamingFixtureLocalSamples.map(([localX, localZ]) => {
     const worldX = chunk.x + localX;
     const worldZ = chunk.z + localZ;
-    const height = terrainSurface.getSurvivalTerrainHeightForChunk(chunk, localX, localZ);
+    const height = getUnitySurvivalTerrainHeightForChunk(chunk, localX, localZ);
     terrainSurface.getSurvivalRenderedTerrainColorInto(worldX, worldZ, height, colorScratch);
     return {
       localX,
@@ -291,7 +313,10 @@ const makeExactFoliageForChunk = (
       sampleDistance,
     );
     if (surface.normal.y < minNormalY || surface.heightRange > maxHeightRange) continue;
-    const y = surface.y + getUnityMountainPerimeterLift(worldX, worldZ, blockSize);
+    const sourceTerrainY = terrainSurface.getSurvivalTerrainHeightForChunk(chunk, localX, localZ);
+    const foundationTerrainY = getUnitySurvivalTerrainHeightForChunk(chunk, localX, localZ);
+    const y = surface.y + (foundationTerrainY - sourceTerrainY) +
+      getUnityMountainPerimeterLift(worldX, worldZ, blockSize);
     const waterY = survivalBiome.getSurvivalWaterLevelAtWorld(worldX, worldZ);
     if (y < waterY + 0.2) continue;
 
@@ -431,7 +456,7 @@ for (let cz = minimumChunkZ; cz <= maximumChunkZ; cz += 1) {
         const worldX = chunk.x + localX;
         const worldZ = chunk.z + localZ;
         const mountainLift = getUnityMountainPerimeterLift(worldX, worldZ, blockSize);
-        const y = terrainSurface.getSurvivalTerrainHeightForChunk(chunk, localX, localZ) + mountainLift;
+        const y = getUnitySurvivalTerrainHeightForChunk(chunk, localX, localZ) + mountainLift;
         terrainSurface.getSurvivalRenderedTerrainColorInto(worldX, worldZ, y, colorScratch);
         const mountainColor = getUnityMountainBandedColor(
           worldX,
@@ -460,7 +485,7 @@ for (let cz = minimumChunkZ; cz <= maximumChunkZ; cz += 1) {
 }
 
 const sourceHash = createHash("sha256");
-sourceHash.update("unity-mountain-caldera-perimeter-v3-banded");
+sourceHash.update("unity-mountain-caldera-perimeter-v3-banded-desert-foundation-v1");
 for (const sourcePath of sourcePaths) {
   sourceHash.update(sourcePath.replace(reactRoot, "").replaceAll("\\", "/"));
   sourceHash.update(await readFile(sourcePath));

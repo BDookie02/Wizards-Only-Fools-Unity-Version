@@ -47,6 +47,10 @@ namespace WOF
         private const double DesertExpansionMinZ = -4d * BlockSize - BlockSize * 0.5d;
         private const double DesertExpansionMaxZ = -3d * BlockSize + BlockSize * 0.5d;
         private const double DesertExpansionBlendDistance = 192d;
+        private const double DesertVillageCenterX = 4d * BlockSize;
+        private const double DesertVillageCenterZ = -4d * BlockSize;
+        private const double DesertVillageHalfSize = BlockSize * 0.5d;
+        private const double DesertVillageBaseHeight = 17.885722662941443d;
         private const double BaseVillageHalfSize = 256d;
         private const double BaseVillageExitHeight = 2d;
         private const double BaseVillageExitBlendDistance = 220d;
@@ -325,7 +329,19 @@ namespace WOF
                 height -= SmoothstepRange(0.72d, 1d, townRouteMask) * 0.06d * (1d - restoredSuppression);
             }
 
+            var desertFoundationMask = GetDesertVillageFoundationMaskAtWorld(worldX, worldZ);
+            if (desertFoundationMask > 0d)
+                height = Lerp(height, DesertVillageBaseHeight, desertFoundationMask);
+
             return height;
+        }
+
+        internal static double GetDesertVillageFoundationMaskAtWorld(double worldX, double worldZ)
+        {
+            var outsideX = Math.Max(0d, Math.Abs(worldX - DesertVillageCenterX) - DesertVillageHalfSize);
+            var outsideZ = Math.Max(0d, Math.Abs(worldZ - DesertVillageCenterZ) - DesertVillageHalfSize);
+            var outsideDistance = Math.Sqrt(outsideX * outsideX + outsideZ * outsideZ);
+            return 1d - SmoothstepRange(0d, DesertExpansionBlendDistance, outsideDistance);
         }
 
         internal static Color GetRenderedTerrainColor(double worldX, double worldZ, double height)

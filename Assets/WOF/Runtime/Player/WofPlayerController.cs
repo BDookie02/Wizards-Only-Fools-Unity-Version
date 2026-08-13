@@ -221,6 +221,8 @@ namespace WOF
         private double _nextManaDecayAt;
         private readonly Dictionary<string, double> _manaFlowerCooldowns = new();
         private WofVoiceChatRuntime _voiceChatRuntime;
+        private WofTreeHouseTraversalRuntime _treeHouseTraversalRuntime;
+        private WofDesertTraversalRuntime _desertTraversalRuntime;
 
         public float Health => _health.Value;
         public float Armor => _armor.Value;
@@ -486,6 +488,20 @@ namespace WOF
                 _isGrabbed.Value = false;
             }
 
+            if (WofTreeHouseTraversalRules.RunsControllerSimulation(IsServer, IsOwner))
+            {
+                _treeHouseTraversalRuntime = gameObject.GetComponent<WofTreeHouseTraversalRuntime>() ??
+                                             gameObject.AddComponent<WofTreeHouseTraversalRuntime>();
+                _treeHouseTraversalRuntime.Configure(this);
+            }
+
+            if (IsOwner && WofDesertTraversalRuntime.IsProbeRequested())
+            {
+                _desertTraversalRuntime = gameObject.GetComponent<WofDesertTraversalRuntime>() ??
+                                           gameObject.AddComponent<WofDesertTraversalRuntime>();
+                _desertTraversalRuntime.Configure(this);
+            }
+
             if (IsOwner)
             {
                 _voiceChatRuntime = gameObject.GetComponent<WofVoiceChatRuntime>() ??
@@ -569,6 +585,10 @@ namespace WOF
             _leftEquippedSpell.OnValueChanged -= HandleEquippedSpellChanged;
             _rightEquippedSpell.OnValueChanged -= HandleEquippedSpellChanged;
             _voiceChannelName.OnValueChanged -= HandleVoiceChannelChanged;
+            if (_treeHouseTraversalRuntime != null) Destroy(_treeHouseTraversalRuntime);
+            _treeHouseTraversalRuntime = null;
+            if (_desertTraversalRuntime != null) Destroy(_desertTraversalRuntime);
+            _desertTraversalRuntime = null;
             if (IsOwner)
             {
                 if (_voiceChatRuntime != null) Destroy(_voiceChatRuntime);

@@ -115,6 +115,12 @@ namespace WOF
                 return;
             }
             _treeMaterial.enableInstancing = true;
+            if (WofDesertVillageFoundationRuntime.InstallIfNeeded(transform.parent, terrainMaterial) == null)
+            {
+                Debug.LogError("[WOF-AUTOMATION] SURVIVAL_STREAMING_FAILED reason=desert-foundation");
+                enabled = false;
+                return;
+            }
             Debug.Log($"[WOF-AUTOMATION] SURVIVAL_STREAMING_RUNTIME_READY radius={WofSurvivalTerrainMath.RenderRadius} collisionRadius={WofSurvivalTerrainMath.CollisionRadius} offsets={OrderedOffsets.Length}");
         }
 
