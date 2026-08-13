@@ -2,9 +2,9 @@
 
 ## Playable downloads
 
-- [Download the Android APK](https://github.com/BDookie02/Wizards-Only-Fools-Unity-Version/releases/download/unity-version-v0.4.16/WizardsOnlyFools.apk)
-- [Download the Windows version](https://github.com/BDookie02/Wizards-Only-Fools-Unity-Version/releases/download/unity-version-v0.4.16/WizardsOnlyFools-Windows-Unity-Version-v0.4.16.zip)
-- [View the Unity Version release and testing notes](https://github.com/BDookie02/Wizards-Only-Fools-Unity-Version/releases/tag/unity-version-v0.4.16)
+- [Download the Android APK](https://github.com/BDookie02/Wizards-Only-Fools-Unity-Version/releases/download/unity-version-v0.4.17/WizardsOnlyFools.apk)
+- [Download the Windows version](https://github.com/BDookie02/Wizards-Only-Fools-Unity-Version/releases/download/unity-version-v0.4.17/WizardsOnlyFools-Windows-Unity-Version-v0.4.17.zip)
+- [View the Unity Version release and testing notes](https://github.com/BDookie02/Wizards-Only-Fools-Unity-Version/releases/tag/unity-version-v0.4.17)
 
 For Windows, extract the complete ZIP before launching `WizardsOnlyFools.exe`. On Android, download and install `WizardsOnlyFools.apk`.
 
@@ -16,7 +16,7 @@ The React build remains the behavioral and visual oracle. The abandoned C++ rewr
 
 The larger D-drive working snapshot is the current playable oracle; the clean GitHub `main` checkout at commit `0e293150cc9d92dcab19f8775889b3c43f2ee54a` is preserved separately as the public-history oracle. Their verified relationship and conflict rules are recorded in `Docs\Migration\REACT_SOURCE_PROVENANCE.md`.
 
-`Docs\Migration\PARITY_MATRIX.md` is the acceptance ledger. It distinguishes implemented-but-unverified work from completed parity and prevents later slices from silently bypassing build, networking, mobile, or physical-interaction gates. The exact Android v0.4.16 artifact and emulator evidence are recorded in `docs\Migration\ANDROID_RELEASE_GATE.md`.
+`Docs\Migration\PARITY_MATRIX.md` is the acceptance ledger. It distinguishes implemented-but-unverified work from completed parity and prevents later slices from silently bypassing build, networking, mobile, or physical-interaction gates. The exact Android v0.4.17 artifact and emulator evidence are recorded in `docs\Migration\ANDROID_RELEASE_GATE.md`.
 
 ## Pinned production stack
 
@@ -39,7 +39,7 @@ The current world-quality slice adds player-centered, instanced Breath-of-the-Wi
 
 Current native controller bindings mirror the React defaults: left stick moves and climbs mountain ladders, right stick looks, A jumps/selects and drives the React jump thruster while held, X interacts, L3 latches sprint while movement continues, B holds slide/crouch in gameplay and goes back/closes in menus, LT casts the left hand, RT casts the right hand, Start submits highlighted actions or backs out of menus, and D-pad/left stick navigate menus and dialogue choices. D-pad Up opens the spell book, D-pad Left opens the live map, and D-pad Right retains the React inventory shortcut exactly: while standing still, a release after a tap shorter than three seconds opens inventory; A opens its journal and B/Start backs out. Mobile touch controls automatically disappear whenever Unity reports a connected controller. Sprint, slide, crouch, thruster, and ladder traversal use the React speeds, timing, camera-height delta, and original baked directional animation frames. The runtime reports every controller Unity recognizes, including hot-plug changes. Automated native-device integration and Windows-player inventory, spell-menu, live-map, gate-traversal, thruster, base-villager, exact desert/swamp/mountain villager/town, exact mountain ladder-climb and trailhead-to-summit traversal, Darrel-dialog, and two-outcome Spirit-Dragon probes pass; the dragon probe verifies the actual in-world controller prompt, X interaction, both LT/RT proximity interactions, controller navigation, fatal server damage, death, respawn, peaceful completion, reward, and close. The command console retains React's keyboard-only Slash opening rather than inventing a controller shortcut, while native Gamepad movement, look, jump, sprint, slide, and casting are regression-tested as suppressed whenever the console owns input. A physical controller must still be awake and reported by Unity before hardware interaction can be marked complete.
 
-The Android v0.4.16 gate passed 575/575 tests, exact ARM64 APK identity/install on Android 15, landscape launch at 2400 x 1080, and an in-player authoritative base-mana-source refill from 0 to 60. The preceding unchanged v0.4.15 gate covers live Android-to-Windows Relay joining through the native keyboard Done/Enter action, while the earlier unchanged gameplay gate covers touch navigation into a ready Solo session, the full spell book, pause/settings, world-map waypoint placement, Lily Coil fast travel, and Android-gamepad-triggered hiding of every touch overlay. Real-phone pinch/performance/lifecycle/Relay, physical-controller, and audible microphone/Vivox gates remain open and are not implied by the emulator result.
+The Android v0.4.17 gate passed 578/578 tests, exact ARM64 APK identity/install on Android 15, landscape launch at 2400 x 1080, and an in-player mobile ambient-bird probe with the React-matched 24 Hz update cap. The preceding v0.4.16 gate covers the authoritative base-mana-source refill from 0 to 60, while the unchanged v0.4.15 gate covers live Android-to-Windows Relay joining through the native keyboard Done/Enter action. The earlier unchanged gameplay gate covers touch navigation into a ready Solo session, the full spell book, pause/settings, world-map waypoint placement, Lily Coil fast travel, and Android-gamepad-triggered hiding of every touch overlay. Real-phone pinch/performance/lifecycle/Relay, physical-controller, and audible microphone/Vivox gates remain open and are not implied by the emulator result.
 
 ## One-command automation
 

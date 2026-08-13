@@ -61,6 +61,76 @@ namespace WOF.Tests.EditMode
         }
 
         [Test]
+        public void AmbientBirdFlocksMatchExactReactBiomeCountsAndFirstBirdFixtures()
+        {
+            var jungle = WofSurvivalAmbientBirdRules.MakeFlock(-2, -2);
+            Assert.That(jungle.Biome, Is.EqualTo(WofSurvivalBiome.Jungle));
+            Assert.That(jungle.Seed, Is.EqualTo(0.19214980959804961d).Within(1e-12d));
+            Assert.That(jungle.BaseY, Is.EqualTo(192f));
+            Assert.That(jungle.Birds.Length, Is.EqualTo(10));
+            AssertBird(jungle.Birds[0], "macaw", 250.7270428166733d, 50.94203872376238d,
+                172.88083192929486d, 0.7746743002564356d, 0.49407289426380885d,
+                3.3843006841763312d);
+
+            var desert = WofSurvivalAmbientBirdRules.MakeFlock(1, 0);
+            Assert.That(desert.Biome, Is.EqualTo(WofSurvivalBiome.Desert));
+            Assert.That(desert.Seed, Is.EqualTo(0.40742369050713023d).Within(1e-12d));
+            Assert.That(desert.BaseY, Is.EqualTo(176f));
+            Assert.That(desert.Birds.Length, Is.EqualTo(9));
+            AssertBird(desert.Birds[0], "hawk", 86.80101576366806d, 50.20312161404581d,
+                289.9895745352664d, 0.9954229762325266d, -0.021595425161649473d,
+                5.054436652511752d);
+
+            Assert.That(WofSurvivalAmbientBirdRules.MakeFlock(-2, 0).Birds.Length, Is.EqualTo(8));
+            Assert.That(WofSurvivalAmbientBirdRules.MakeFlock(1, -2).Birds.Length, Is.EqualTo(9));
+            Assert.That(WofSurvivalAmbientBirdRules.MakeFlock(0, -1).Birds.Length, Is.EqualTo(9));
+            Assert.That(WofSurvivalAmbientBirdRules.MakeFlock(-1, -2).Birds.Length, Is.EqualTo(9));
+        }
+
+        [Test]
+        public void AmbientBirdVisibilityAndStageOneDelayMatchReactGates()
+        {
+            Assert.That(WofSurvivalAmbientBirdRules.ShouldShowBirds(
+                true, true, false, -2, -2, 0), Is.True);
+            Assert.That(WofSurvivalAmbientBirdRules.ShouldShowBirds(
+                false, true, false, -2, -2, 0), Is.False);
+            Assert.That(WofSurvivalAmbientBirdRules.ShouldShowBirds(
+                true, false, false, -2, -2, 0), Is.False);
+            Assert.That(WofSurvivalAmbientBirdRules.ShouldShowBirds(
+                true, true, true, -2, -2, 0), Is.False);
+            Assert.That(WofSurvivalAmbientBirdRules.ShouldShowBirds(
+                true, true, false, -2, -2, 1), Is.False);
+            Assert.That(WofSurvivalAmbientBirdRules.ShouldShowBirds(
+                true, true, false, 0, 0, 0), Is.False);
+            Assert.That(WofSurvivalAmbientBirdRules.ShouldShowBirds(
+                true, true, false, WofLilyCoilLayout.ChunkX, WofLilyCoilLayout.ChunkZ, 0), Is.False);
+
+            Assert.That(WofSurvivalAmbientBirdRules.GetAmbientReadyDelaySeconds(-2, -2, false),
+                Is.EqualTo(0.3623308903823272f).Within(0.000001f));
+            Assert.That(WofSurvivalAmbientBirdRules.GetAmbientReadyDelaySeconds(-2, -2, true),
+                Is.EqualTo(0.5464836090203243f).Within(0.000001f));
+        }
+
+        [Test]
+        public void AmbientBirdOrbitAndVerticalDriftMatchReactAnimation()
+        {
+            var flock = WofSurvivalAmbientBirdRules.MakeFlock(-2, -2);
+            var bird = flock.Birds[0];
+            var initial = WofSurvivalAmbientBirdRules.GetBirdWorldPosition(flock, bird, 0d);
+            var later = WofSurvivalAmbientBirdRules.GetBirdWorldPosition(flock, bird, 5d);
+            Assert.That(WofSurvivalAmbientBirdRules.GetFlockRotationRadians(flock, 5d),
+                Is.EqualTo(flock.Seed * System.Math.PI * 2d + 0.6d).Within(0.000001d));
+            Assert.That(WofSurvivalAmbientBirdRules.GetFlockWorldY(flock, 5d),
+                Is.EqualTo(flock.BaseY +
+                    System.Math.Sin(5d * 0.45d + flock.Seed * 3d) * 8d).Within(0.00001d));
+            Assert.That(Vector3.Distance(initial, later), Is.GreaterThan(1f));
+
+            var desert = WofSurvivalAmbientBirdRules.MakeFlock(1, 0);
+            Assert.That(WofSurvivalAmbientBirdRules.GetFlockRotationRadians(desert, 5d),
+                Is.EqualTo(desert.Seed * System.Math.PI * 2d + 0.4d).Within(0.000001d));
+        }
+
+        [Test]
         public void InfiniteManaSourcesMatchReactLocationsRadiiAndTiming()
         {
             var baseSource = WofManaSourceRules.BaseSource;
@@ -145,6 +215,25 @@ namespace WOF.Tests.EditMode
                 source.Position + Vector3.right * (source.Radius - 0.001f), source), Is.True);
             Assert.That(WofManaSourceRules.IsWithinHorizontalRadius(
                 source.Position + Vector3.right * source.Radius, source), Is.False);
+        }
+
+        private static void AssertBird(
+            WofAmbientBirdRecord bird,
+            string species,
+            double x,
+            double y,
+            double z,
+            double scale,
+            double tilt,
+            double wingPhase)
+        {
+            Assert.That(bird.Species.Name, Is.EqualTo(species));
+            Assert.That(bird.LocalPosition.x, Is.EqualTo(x).Within(0.0001d));
+            Assert.That(bird.LocalPosition.y, Is.EqualTo(y).Within(0.0001d));
+            Assert.That(bird.LocalPosition.z, Is.EqualTo(z).Within(0.0001d));
+            Assert.That(bird.Scale, Is.EqualTo(scale).Within(0.000001d));
+            Assert.That(bird.Tilt, Is.EqualTo(tilt).Within(0.000001d));
+            Assert.That(bird.WingPhase, Is.EqualTo(wingPhase).Within(0.000001d));
         }
     }
 }
