@@ -1,23 +1,31 @@
-# Android v0.4.17 release gate
+# Android v0.4.18 release gate
 
 Verified on 2026-08-13 against the exact release APK at `Builds/Android/WizardsOnlyFools.apk`.
 
 ## Artifact identity
 
 - Package: `com.WizardsOnlyFools.WizardsOnlyFools`
-- Version: `0.4.17` (`versionCode` 20)
+- Version: `0.4.18` (`versionCode` 21)
 - Minimum/target Android API: 25/36
-- Size: 157,722,347 bytes
-- SHA-256: `84d3488b357537e71ba2de88d847329053bb9382fd3f68049299d42ca7c3ad15`
+- Size: 157,751,243 bytes
+- SHA-256: `43c238b63de54301934784e10df9d525a492557201a696ad57a3360f22e3aab7`
 - APK Signature Scheme v2: verified
 - Signing-certificate SHA-256: `844f6c9b6fa3d0cfd48febd45f0568e019ae9edca1f4dd039ab6131c5292f7eb`
-- Activity orientation: Android `userLandscape` in the packaged manifest; the runtime requested landscape and rendered at 2400 x 1080.
+- Activity orientation: Android `userLandscape` in the packaged manifest.
 
-## Runtime evidence
+## Current artifact and install evidence
 
-The exact ARM64 release APK was installed and launched on the D-hosted Android 15/API 35 Google APIs emulator. Android independently reported `versionName=0.4.17` and `versionCode=20`. The emulator ran the ARM64 player through Android's Berberis translation layer; this was not an Editor or mock runtime.
+The exact ARM64 v0.4.18 APK installed successfully on the D-hosted Android 15/API 35 Google APIs emulator. Android independently reported `versionName=0.4.18`, `versionCode=21`, and `primaryCpuAbi=arm64-v8a`. Its internal manifest and v2 signature independently pass the release validator.
 
-The v0.4.17 ambient-bird interaction executed inside the installed Android player:
+The full 581/581 Unity EditMode suite passes. Three willow fixtures lock React's exact six placement records plus branch/lobe/vine/particle structure, biome colors, particle movement, render/particle radii, grass-inspection suppression, and mobile 24 Hz cap. The final Windows executable passed receipt/payload/`SESSION_READY` validation and a two-frame 1280 x 720 willow probe: willow 4 appeared at the exact tallgrass record `(-694.19, 58.56, -1031.89)`, its particles moved 13.78 metres, and both frames were physically inspected with surrounding terrain, foliage, HUD, hands, and minimap intact.
+
+## Current emulator limitation
+
+A fresh v0.4.18 Android in-player willow frame is not claimed. During Unity startup, the Windows host process `qemu-system-x86_64-headless.exe` crashes with exception `0xc0000005`, disconnecting ADB before WOF runtime initialization. The failure repeats with automatic and software GPU backends. A cold-wiped AVD running the exact published v0.4.17 control APK (157,722,347 bytes, SHA-256 `84d3488b357537e71ba2de88d847329053bb9382fd3f68049299d42ca7c3ad15`) produces the same host crash, so the evidence does not identify a v0.4.18 gameplay regression. A real phone or repaired emulator host is required for the fresh mobile willow visual gate.
+
+## Preserved v0.4.17 runtime evidence
+
+Before the current QEMU host failure, the v0.4.17 ambient-bird interaction executed inside the installed Android player:
 
 1. A Solo session reached the jungle wilderness chunk `(-2,-2)` at 2400 x 1080.
 2. The exact React flock generated ten jungle birds and selected a parrot for the close visual probe.

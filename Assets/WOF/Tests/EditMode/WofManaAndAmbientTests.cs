@@ -131,6 +131,85 @@ namespace WOF.Tests.EditMode
         }
 
         [Test]
+        public void WorldWillowRecordsMatchExactReactOracle()
+        {
+            var willows = WofSurvivalWorldWillowRules.MakeWillows();
+            Assert.That(willows, Has.Length.EqualTo(6));
+            AssertWillow(willows[0], 2133.3244640358885d, 3.1386506266226393d, -377.9160702629584d,
+                4, -1, 1.8453690208391544d, 1.718482250538218d, WofSurvivalBiome.Plains,
+                0.7885268008540152d);
+            AssertWillow(willows[1], 1143.962640943835d, 49.84277119429964d, 2045.5625833451156d,
+                2, 4, 3.0344038667668074d, 1.2913091083783366d, WofSurvivalBiome.Swamp,
+                0.20540473375149304d);
+            AssertWillow(willows[2], -2001.4214840786742d, 12.391319742292685d, 1994.743619514932d,
+                -4, 4, 4.4029090882971875d, 1.212982402195339d, WofSurvivalBiome.Desert,
+                0.41880593575478997d);
+            AssertWillow(willows[3], -2007.6895932942919d, 30.483858035578738d, 220.41293651849176d,
+                -4, 0, 5.195444134409524d, 1.6245045663557538d, WofSurvivalBiome.Jungle,
+                0.2694741344166687d);
+            AssertWillow(willows[4], -694.1874635912268d, 58.55910411358743d, -1031.8880366642466d,
+                -1, -2, 7.070273907668422d, 1.722854681937715d, WofSurvivalBiome.Tallgrass,
+                0.18704176704704878d);
+            AssertWillow(willows[5], 594.7691439895705d, 26.76804391925288d, -1416.7618687335016d,
+                1, -3, 6.692001048512163d, 1.661983687061438d, WofSurvivalBiome.Swamp,
+                0.8794090552983107d);
+        }
+
+        [Test]
+        public void WorldWillowStructureAndParticlesMatchReactOracle()
+        {
+            var willow = WofSurvivalWorldWillowRules.MakeWillows()[4];
+            var branches = WofSurvivalWorldWillowRules.MakeBranches(willow);
+            var lobes = WofSurvivalWorldWillowRules.MakeLobes(willow);
+            var vines = WofSurvivalWorldWillowRules.MakeVines(willow);
+            var desktopParticles = WofSurvivalWorldWillowRules.MakeParticles(willow, false);
+            var mobileParticles = WofSurvivalWorldWillowRules.MakeParticles(willow, true);
+            Assert.That(branches, Has.Length.EqualTo(8));
+            Assert.That(lobes, Has.Length.EqualTo(11));
+            Assert.That(vines, Has.Length.EqualTo(14));
+            Assert.That(desktopParticles, Has.Length.EqualTo(72));
+            Assert.That(mobileParticles, Has.Length.EqualTo(36));
+            AssertVector(branches[0].Start, 0d, 56.302891005724526d, 0d);
+            AssertVector(branches[0].End, 16.449904650109445d, 83.01895344527847d, 37.694032801205395d);
+            Assert.That(branches[0].Radius, Is.EqualTo(2.6945447225505865d).Within(0.00001d));
+            AssertVector(lobes[1].Position, 24.417130819693565d, 160.26104496306363d, 25.33906529630326d);
+            Assert.That(lobes[1].Radius, Is.EqualTo(26.63784203240624d).Within(0.00001d));
+            AssertVector(lobes[1].Scale, 1.0081246270934208d, 0.8571537889855971d, 1.0188767975267545d);
+            Assert.That(vines[0].Length, Is.EqualTo(75.26526857376953d).Within(0.00001d));
+            Assert.That(vines[0].Sway, Is.EqualTo(2.4698991007404403d).Within(0.00001d));
+            AssertVector(vines[0].End, 28.19518994888654d, 104.31600678945028d, 17.705524348393883d);
+            var particle = desktopParticles[0];
+            Assert.That(particle.Angle, Is.EqualTo(5.398197128143956d).Within(0.00001d));
+            Assert.That(particle.Radius, Is.EqualTo(21.740102858932683d).Within(0.00001d));
+            Assert.That(particle.Height, Is.EqualTo(45.157954508993484d).Within(0.00001d));
+            Assert.That(particle.Speed, Is.EqualTo(0.48542671012204663d).Within(0.000001d));
+            Assert.That(particle.Size, Is.EqualTo(1.7433720085461935d).Within(0.000001d));
+            Assert.That(particle.Phase, Is.EqualTo(0.13289725346404382d).Within(0.000001d));
+            AssertVector(WofSurvivalWorldWillowRules.GetParticleLocalPosition(willow, particle, 0d),
+                -17.179984237105973d, 222.9774074536067d, 14.544934043745675d);
+            AssertVector(WofSurvivalWorldWillowRules.GetParticleLocalPosition(willow, particle, 5d),
+                -13.619770567252264d, 193.8518048462839d, 15.865679148206903d);
+            Assert.That(WofSurvivalWorldWillowRules.GetParticleScale(particle, 5d),
+                Is.EqualTo(1.0650370780126628d).Within(0.00001d));
+        }
+
+        [Test]
+        public void WorldWillowVisibilityMatchesReactRenderRadiusContract()
+        {
+            var willow = WofSurvivalWorldWillowRules.MakeWillows()[4];
+            Assert.That(WofSurvivalWorldWillowRules.ShouldShowWillows(true, false), Is.True);
+            Assert.That(WofSurvivalWorldWillowRules.ShouldShowWillows(false, false), Is.False);
+            Assert.That(WofSurvivalWorldWillowRules.ShouldShowWillows(true, true), Is.False);
+            Assert.That(WofSurvivalWorldWillowRules.IsVisible(willow, -1, -2, 3), Is.True);
+            Assert.That(WofSurvivalWorldWillowRules.ShouldShowParticles(willow, -1, -2, 3), Is.True);
+            Assert.That(WofSurvivalWorldWillowRules.IsVisible(willow, 3, -2, 3), Is.True);
+            Assert.That(WofSurvivalWorldWillowRules.ShouldShowParticles(willow, 3, -2, 3), Is.False);
+            Assert.That(WofSurvivalWorldWillowRules.IsVisible(willow, 4, -2, 3), Is.False);
+            Assert.That(WofSurvivalWorldWillowRules.MobileParticleUpdateInterval,
+                Is.EqualTo(1f / 24f).Within(0.000001f));
+        }
+
+        [Test]
         public void InfiniteManaSourcesMatchReactLocationsRadiiAndTiming()
         {
             var baseSource = WofManaSourceRules.BaseSource;
@@ -234,6 +313,34 @@ namespace WOF.Tests.EditMode
             Assert.That(bird.Scale, Is.EqualTo(scale).Within(0.000001d));
             Assert.That(bird.Tilt, Is.EqualTo(tilt).Within(0.000001d));
             Assert.That(bird.WingPhase, Is.EqualTo(wingPhase).Within(0.000001d));
+        }
+
+        private static void AssertWillow(
+            WofWorldWillowRecord willow,
+            double x,
+            double y,
+            double z,
+            int chunkX,
+            int chunkZ,
+            double yaw,
+            double scale,
+            WofSurvivalBiome biome,
+            double variant)
+        {
+            AssertVector(willow.Position, x, y, z);
+            Assert.That(willow.ChunkX, Is.EqualTo(chunkX));
+            Assert.That(willow.ChunkZ, Is.EqualTo(chunkZ));
+            Assert.That(willow.Yaw, Is.EqualTo(yaw).Within(0.000001d));
+            Assert.That(willow.Scale, Is.EqualTo(scale).Within(0.000001d));
+            Assert.That(willow.Biome, Is.EqualTo(biome));
+            Assert.That(willow.Variant, Is.EqualTo(variant).Within(0.000000000001d));
+        }
+
+        private static void AssertVector(Vector3 actual, double x, double y, double z)
+        {
+            Assert.That(actual.x, Is.EqualTo(x).Within(0.0001d));
+            Assert.That(actual.y, Is.EqualTo(y).Within(0.0001d));
+            Assert.That(actual.z, Is.EqualTo(z).Within(0.0001d));
         }
     }
 }

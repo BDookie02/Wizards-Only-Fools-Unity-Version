@@ -273,6 +273,11 @@ namespace WOF
             return GetWaterLevel(worldX, worldZ);
         }
 
+        internal static double GetRawTerrainHeightAtWorld(double worldX, double worldZ)
+        {
+            return GetRawTerrainHeight(worldX, worldZ);
+        }
+
         internal static bool IsWaterSuppressed(double worldX, double worldZ, double radius)
         {
             return IsRestoredMeadowWaterSuppressed(worldX, worldZ, radius);
