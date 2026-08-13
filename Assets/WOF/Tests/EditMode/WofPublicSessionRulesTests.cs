@@ -12,6 +12,19 @@ namespace WOF.Tests
             Assert.That(WofPublicSessionRules.NormalizeJoinCode(input), Is.EqualTo(expected));
         }
 
+        [TestCase("--wof-auth-profile=host_01", "host_01")]
+        [TestCase("--WOF-AUTH-PROFILE=client-02", "client-02")]
+        [TestCase("--wof-auth-profile=invalid profile", "")]
+        [TestCase("--wof-auth-profile=1234567890123456789012345678901", "")]
+        public void AuthenticationProfileAcceptsOnlyUnitySafeExplicitOverrides(
+            string argument,
+            string expected)
+        {
+            Assert.That(
+                WofPublicSessionRules.ResolveAuthenticationProfile(new[] { argument }),
+                Is.EqualTo(expected));
+        }
+
         [Test]
         public void Availability_FailsClosedWhenCloudProjectIsNotLinked()
         {

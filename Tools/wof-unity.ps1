@@ -1,6 +1,6 @@
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('bootstrap', 'test', 'build-windows', 'validate-windows', 'build-webgl', 'validate-webgl', 'build-android', 'validate-android', 'verify', 'rebuild-all', 'smoke-windows', 'capture-magic-glass-orb', 'open')]
+    [ValidateSet('bootstrap', 'sync-vivox', 'test', 'build-windows', 'validate-windows', 'build-webgl', 'validate-webgl', 'build-android', 'validate-android', 'verify', 'rebuild-all', 'smoke-windows', 'capture-magic-glass-orb', 'open')]
     [string]$Action = 'bootstrap'
 )
 
@@ -347,6 +347,18 @@ function Invoke-Bootstrap {
         '-executeMethod', 'WOF.Editor.WofProjectAutomation.BootstrapProject',
         '-quit'
     )
+}
+
+function Invoke-SyncVivox {
+    $logPath = Invoke-UnityBatch -Name 'sync-vivox' -Arguments @(
+        '-executeMethod', 'WOF.Editor.WofVivoxProjectSync.SyncProductionCredentialsBatch',
+        '-quit'
+    )
+    if (-not (Select-String -LiteralPath $logPath `
+        -SimpleMatch '[WOF-VIVOX] PRODUCTION_SETTINGS_READY testMode=false tokenKeyStored=false' `
+        -Quiet)) {
+        throw "Vivox settings sync did not emit its completion marker. Log: $logPath"
+    }
 }
 
 function Invoke-Tests {
@@ -1023,6 +1035,7 @@ catch {
 try {
     switch ($Action) {
         'bootstrap' { Invoke-Bootstrap }
+        'sync-vivox' { Invoke-SyncVivox }
         'test' { Invoke-Tests }
         'build-windows' { Invoke-BuildWindows }
         'validate-windows' { Assert-ExistingWindowsBuild }

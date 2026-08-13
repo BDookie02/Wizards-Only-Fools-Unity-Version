@@ -68,6 +68,26 @@ namespace WOF
             unityTransport.UseEncryption = false;
             unityTransport.SetConnectionData(address, port, isHost ? "0.0.0.0" : null);
         }
+
+        internal static void ConfigureRelayMultiplayer(
+            NetworkManager networkManager,
+            UnityTransport unityTransport,
+            bool useWebSockets)
+        {
+            if (networkManager == null)
+            {
+                throw new ArgumentNullException(nameof(networkManager));
+            }
+
+            if (unityTransport == null)
+            {
+                throw new ArgumentNullException(nameof(unityTransport));
+            }
+
+            networkManager.NetworkConfig ??= new NetworkConfig();
+            networkManager.NetworkConfig.NetworkTransport = unityTransport;
+            unityTransport.UseWebSockets = useWebSockets;
+        }
     }
 
     public sealed class WofBootstrap : MonoBehaviour
@@ -166,6 +186,19 @@ namespace WOF
             var args = Environment.GetCommandLineArgs();
             foreach (var arg in args)
             {
+                if (arg.Equals("--wof-public-host", StringComparison.OrdinalIgnoreCase))
+                {
+                    _ = StartPublicHostAutomationAsync();
+                    return;
+                }
+
+                const string publicClientPrefix = "--wof-public-client=";
+                if (arg.StartsWith(publicClientPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    _ = StartPublicClientAutomationAsync(arg.Substring(publicClientPrefix.Length));
+                    return;
+                }
+
                 if (arg == "--wof-solo")
                 {
                     StartSolo();
@@ -380,6 +413,30 @@ namespace WOF
             _roomCode = result.JoinCode;
             hud?.SetRoom(ResolveRoomLabel(Mode, string.Empty, _roomCode, WofGameConstants.DefaultPort, true));
             return true;
+        }
+
+        private async Task StartPublicHostAutomationAsync()
+        {
+            var joinCode = await StartPublicHostAsync();
+            if (string.IsNullOrEmpty(joinCode))
+            {
+                Debug.LogError("[WOF-AUTOMATION] PUBLIC_SESSION_HOST_FAILED");
+                return;
+            }
+
+            Debug.Log($"[WOF-AUTOMATION] PUBLIC_SESSION_HOST_READY joinCode={joinCode}");
+        }
+
+        private async Task StartPublicClientAutomationAsync(string joinCode)
+        {
+            var normalizedCode = WofPublicSessionRules.NormalizeJoinCode(joinCode);
+            if (!await StartPublicClientAsync(normalizedCode))
+            {
+                Debug.LogError($"[WOF-AUTOMATION] PUBLIC_SESSION_CLIENT_FAILED joinCode={normalizedCode}");
+                return;
+            }
+
+            Debug.Log($"[WOF-AUTOMATION] PUBLIC_SESSION_CLIENT_READY joinCode={normalizedCode}");
         }
 
         private void StartSelectedTransportAsHost(string label)

@@ -262,6 +262,21 @@ namespace WOF.Tests
         }
 
         [Test]
+        public void VoiceProbeOverrideIsRuntimeOnlyAndExplicit()
+        {
+            var settings = new WofUserSettings
+            {
+                voiceChatEnabled = false,
+                voiceInputMode = "pushToTalk"
+            };
+
+            WofUserSettingsRules.ApplyAutomationOverrides(settings, new[] { "--wof-voice-probe" });
+
+            Assert.That(settings.voiceChatEnabled, Is.True);
+            Assert.That(settings.voiceInputMode, Is.EqualTo("openMic"));
+        }
+
+        [Test]
         public void CharacterCustomizationNormalizationPortsEveryReactField()
         {
             var profile = new WofSurvivalProfile

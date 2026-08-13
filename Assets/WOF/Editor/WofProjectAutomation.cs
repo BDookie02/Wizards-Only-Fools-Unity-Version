@@ -117,6 +117,7 @@ namespace WOF.Editor
         [MenuItem("WOF/Automation/Bootstrap Project")]
         public static void BootstrapProject()
         {
+            WofVivoxProjectSync.SyncProductionCredentials();
             EnsureFolders();
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             ConfigureProjectSettings();
