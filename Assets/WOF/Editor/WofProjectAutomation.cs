@@ -238,6 +238,11 @@ namespace WOF.Editor
             PlayerSettings.defaultWebScreenHeight = 720;
             PlayerSettings.fullScreenMode = FullScreenMode.Windowed;
             PlayerSettings.resizableWindow = true;
+            PlayerSettings.defaultInterfaceOrientation = UIOrientation.AutoRotation;
+            PlayerSettings.allowedAutorotateToPortrait = false;
+            PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
+            PlayerSettings.allowedAutorotateToLandscapeLeft = true;
+            PlayerSettings.allowedAutorotateToLandscapeRight = true;
             Physics.gravity = new Vector3(0f, WofGameConstants.Gravity, 0f);
             Time.fixedDeltaTime = 1f / WofGameConstants.ServerTickRate;
         }
