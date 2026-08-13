@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -147,6 +148,10 @@ namespace WOF
             null,
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Server);
+        private readonly NetworkVariable<FixedString64Bytes> _voiceChannelName = new(
+            default,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
 
         private CharacterController _controller;
         private readonly HashSet<string> _activeMountainLadderZones = new();
@@ -215,6 +220,7 @@ namespace WOF
         private bool _meditationPresentationLogged;
         private double _nextManaDecayAt;
         private readonly Dictionary<string, double> _manaFlowerCooldowns = new();
+        private WofVoiceChatRuntime _voiceChatRuntime;
 
         public float Health => _health.Value;
         public float Armor => _armor.Value;
@@ -383,6 +389,7 @@ namespace WOF
             _isVClipEnabled.OnValueChanged += HandleVClipEnabledChanged;
             _leftEquippedSpell.OnValueChanged += HandleEquippedSpellChanged;
             _rightEquippedSpell.OnValueChanged += HandleEquippedSpellChanged;
+            _voiceChannelName.OnValueChanged += HandleVoiceChannelChanged;
 
             var hasLocalControl = IsServer || IsOwner;
             _controller.enabled = hasLocalControl && !_isDead.Value;
@@ -402,6 +409,10 @@ namespace WOF
 
             if (IsServer)
             {
+                var bootstrap = WofBootstrap.Instance;
+                SetServerVoiceChannel(bootstrap != null && bootstrap.Mode != WofSessionMode.Solo
+                    ? bootstrap.RoomCode
+                    : string.Empty);
                 var angle = OwnerClientId * 1.618f;
                 var spawnOffset = OwnerClientId == 0
                     ? Vector3.zero
@@ -477,6 +488,9 @@ namespace WOF
 
             if (IsOwner)
             {
+                _voiceChatRuntime = gameObject.GetComponent<WofVoiceChatRuntime>() ??
+                                    gameObject.AddComponent<WofVoiceChatRuntime>();
+                _voiceChatRuntime.Configure(this, _voiceChannelName.Value.ToString());
                 WofAstralMeditationRules.SetAuthoritativeActive(
                     ref _localMeditationState,
                     _isMeditating.Value);
@@ -554,13 +568,27 @@ namespace WOF
             _isVClipEnabled.OnValueChanged -= HandleVClipEnabledChanged;
             _leftEquippedSpell.OnValueChanged -= HandleEquippedSpellChanged;
             _rightEquippedSpell.OnValueChanged -= HandleEquippedSpellChanged;
+            _voiceChannelName.OnValueChanged -= HandleVoiceChannelChanged;
             if (IsOwner)
             {
+                if (_voiceChatRuntime != null) Destroy(_voiceChatRuntime);
+                _voiceChatRuntime = null;
                 WofAstralMeditationRules.SetAuthoritativeActive(ref _localMeditationState, false);
                 ClearOwnerCastPresentation();
                 WofHud.Instance?.SetMagicHandsVisible(true);
                 WofHud.Instance?.SetFlashbangOpacity(0f);
             }
+        }
+
+        internal void SetServerVoiceChannel(string sessionCode)
+        {
+            if (!IsServer) return;
+            _voiceChannelName.Value = new FixedString64Bytes(WofVoiceChatRules.CreateChannelName(sessionCode));
+        }
+
+        private void HandleVoiceChannelChanged(FixedString64Bytes previous, FixedString64Bytes current)
+        {
+            if (IsOwner) _voiceChatRuntime?.SetChannelName(current.ToString());
         }
 
         private void Update()

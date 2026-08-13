@@ -82,16 +82,17 @@ public static class WofPauseScoreCapture {
 New-Item -ItemType Directory -Force -Path $resolvedOutputRoot | Out-Null
 $executable = Join-Path $resolvedBuildRoot 'WizardsOnlyFools.exe'
 $logPath = Join-Path $resolvedOutputRoot 'runtime.log'
-$profileRoot = Join-Path $resolvedOutputRoot 'profile'
+$profileRoot = Join-Path $resolvedOutputRoot ('profile-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $profileRoot | Out-Null
 $handPath = Join-Path $resolvedOutputRoot 'idle-hands-frame.png'
 $pausePath = Join-Path $resolvedOutputRoot 'pause-menu.png'
 $settingsPath = Join-Path $resolvedOutputRoot 'settings-video.png'
 $keybindsPath = Join-Path $resolvedOutputRoot 'settings-keybinds.png'
 $voicePath = Join-Path $resolvedOutputRoot 'settings-voice.png'
+$voiceEnabledPath = Join-Path $resolvedOutputRoot 'settings-voice-enabled-remapped.png'
 $characterPath = Join-Path $resolvedOutputRoot 'settings-character.png'
 $scorePath = Join-Path $resolvedOutputRoot 'scoreboard-held.png'
-foreach ($target in @($logPath, $handPath, $pausePath, $settingsPath, $keybindsPath, $voicePath, $characterPath, $scorePath)) {
+foreach ($target in @($logPath, $handPath, $pausePath, $settingsPath, $keybindsPath, $voicePath, $voiceEnabledPath, $characterPath, $scorePath)) {
     if (Test-Path -LiteralPath $target -PathType Leaf) { Remove-Item -LiteralPath $target -Force }
 }
 
@@ -179,6 +180,26 @@ try {
     Save-WofWindow -Handle $handle -Path $voicePath
 
     Set-WofFocus -Handle $handle
+    [WofPauseScoreCapture]::TapExtended(0x28)
+    [WofPauseScoreCapture]::TapExtended(0x28)
+    [WofPauseScoreCapture]::Tap(0x0D)
+    if (-not (Wait-WofMarker -Pattern 'VOICE_ENABLED enabled=True' -Seconds 5)) { throw 'Physical Down/Enter did not enable voice.' }
+    if (-not (Wait-WofMarker -Pattern 'VOICE_STATUS STATUS: WAITING FOR MULTIPLAYER SESSION' -Seconds 5)) { throw 'Enabled solo voice did not fail closed while waiting for a multiplayer session.' }
+
+    [WofPauseScoreCapture]::TapExtended(0x28)
+    [WofPauseScoreCapture]::TapExtended(0x28)
+    [WofPauseScoreCapture]::Tap(0x0D)
+    Start-Sleep -Milliseconds 350
+    [WofPauseScoreCapture]::Tap(0x4E)
+    if (-not (Wait-WofMarker -Pattern 'VOICE_KEY_BINDING key=N' -Seconds 5)) { throw 'Physical keyboard remap did not bind voice push-to-talk to N.' }
+    Start-Sleep -Milliseconds 600
+    Set-WofFocus -Handle $handle
+    Save-WofWindow -Handle $handle -Path $voiceEnabledPath
+
+    Set-WofFocus -Handle $handle
+    1..4 | ForEach-Object { [WofPauseScoreCapture]::TapExtended(0x26) }
+
+    Set-WofFocus -Handle $handle
     [WofPauseScoreCapture]::TapExtended(0x27)
     if (-not (Wait-WofMarker -Pattern 'SETTINGS_PANE pane=Character' -Seconds 5)) { throw 'Physical Right did not open Character.' }
     Start-Sleep -Milliseconds 1200
@@ -215,6 +236,7 @@ try {
         SettingsVideo = $settingsPath
         SettingsKeybinds = $keybindsPath
         SettingsVoice = $voicePath
+        SettingsVoiceEnabledRemapped = $voiceEnabledPath
         SettingsCharacter = $characterPath
         ScoreboardHeld = $scorePath
         Log = $logPath

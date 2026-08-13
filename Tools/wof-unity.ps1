@@ -87,6 +87,7 @@ $requiredResolvedPackages = [ordered]@{
     'com.unity.inputsystem' = '1.20.0'
     'com.unity.multiplayer.center' = '1.0.1'
     'com.unity.netcode.gameobjects' = '2.13.1'
+    'com.unity.services.vivox' = '16.10.0'
     'com.unity.transport' = '2.7.4'
     'com.unity.render-pipelines.universal' = '17.3.0'
     'com.unity.test-framework' = '1.6.0'

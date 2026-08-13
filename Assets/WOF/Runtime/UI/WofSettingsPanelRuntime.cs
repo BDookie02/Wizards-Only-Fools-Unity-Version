@@ -63,6 +63,16 @@ namespace WOF
         private WofLaunchWizardPreviewRenderer _characterPreview;
         private string _remappingAction;
         private bool _remapWaitingForRelease;
+        private bool _remappingVoiceKey;
+        private bool _voiceKeyRemapWaitingForRelease;
+        private float _nextVoiceToggleAt;
+        private float _nextVoiceInputToggleAt;
+
+        private void Update()
+        {
+            if (_pane == Pane.Voice && _voiceStatus != null && _voiceStatus.gameObject.activeInHierarchy)
+                _voiceStatus.text = WofVoiceChatRuntime.StatusText;
+        }
 
         public void Configure(WofHud generatedHud, Font generatedFont, Action onBack)
         {
@@ -90,6 +100,43 @@ namespace WOF
         {
             var keyboard = Keyboard.current;
             var gamepad = Gamepad.current;
+            if (_remappingVoiceKey)
+            {
+                if (keyboard?.escapeKey.wasPressedThisFrame ?? false)
+                {
+                    _remappingVoiceKey = false;
+                    RefreshLabels();
+                    return;
+                }
+                if (_voiceKeyRemapWaitingForRelease)
+                {
+                    var anyKeyHeld = false;
+                    if (keyboard != null)
+                    {
+                        foreach (var key in keyboard.allKeys)
+                        {
+                            if (!key.isPressed) continue;
+                            anyKeyHeld = true;
+                            break;
+                        }
+                    }
+                    if (!anyKeyHeld) _voiceKeyRemapWaitingForRelease = false;
+                    return;
+                }
+                if (keyboard != null)
+                {
+                    foreach (var key in keyboard.allKeys)
+                    {
+                        if (!key.wasPressedThisFrame || key.keyCode == Key.Escape || key.keyCode == Key.None) continue;
+                        _settings.voicePushToTalkKey = key.keyCode.ToString().ToUpperInvariant();
+                        _remappingVoiceKey = false;
+                        SaveAndApplySettings();
+                        Debug.Log($"[WOF-AUTOMATION] VOICE_KEY_BINDING key={_settings.voicePushToTalkKey}");
+                        break;
+                    }
+                }
+                return;
+            }
             if (!string.IsNullOrEmpty(_remappingAction))
             {
                 if (keyboard?.escapeKey.wasPressedThisFrame ?? false)
@@ -276,8 +323,8 @@ namespace WOF
             CreateSectionTitle(parent, "PROXIMITY VOICE / MIC", VoiceAccent);
             var enabled = CreateSettingButton("VoiceEnabled", parent, "VOICE CHAT", out _voiceEnabledValue, VoiceAccent);
             SetRect(enabled.GetComponent<RectTransform>(), new Vector2(0f, 0.67f), new Vector2(0.49f, 0.84f));
-            enabled.onClick.AddListener(ReportVoiceUnavailable);
-            AddControl(Pane.Voice, enabled, _ => ReportVoiceUnavailable());
+            enabled.onClick.AddListener(ToggleVoiceEnabled);
+            AddControl(Pane.Voice, enabled, _ => ToggleVoiceEnabled());
 
             var input = CreateSettingButton("VoiceInput", parent, "INPUT MODE", out _voiceInputValue, VoiceAccent);
             SetRect(input.GetComponent<RectTransform>(), new Vector2(0.51f, 0.67f), new Vector2(1f, 0.84f));
@@ -286,8 +333,8 @@ namespace WOF
 
             var key = CreateSettingButton("VoiceKey", parent, "PRESS-TO-TALK KEY", out _voiceKeyValue, VoiceAccent);
             SetRect(key.GetComponent<RectTransform>(), new Vector2(0f, 0.46f), new Vector2(0.49f, 0.63f));
-            key.onClick.AddListener(ReportVoiceUnavailable);
-            AddControl(Pane.Voice, key, _ => ReportVoiceUnavailable());
+            key.onClick.AddListener(BeginVoiceKeyRemap);
+            AddControl(Pane.Voice, key, _ => BeginVoiceKeyRemap());
 
             var volume = CreateSettingButton("VoiceVolume", parent, "VOICE VOLUME", out _voiceVolumeValue, VoiceAccent);
             SetRect(volume.GetComponent<RectTransform>(), new Vector2(0.51f, 0.46f), new Vector2(1f, 0.63f));
@@ -302,7 +349,7 @@ namespace WOF
             var status = CreateCard(parent, "ACTIVITY / STATUS", VoiceAccent);
             SetRect(status.GetComponent<RectTransform>(), new Vector2(0.51f, 0.08f), new Vector2(1f, 0.42f));
             _voiceStatus = CreateText("Status", status.transform,
-                "STATUS: UNITY NETWORK VOICE TRANSPORT NOT PORTED\n\nVOICE REMAINS OFF; THESE SAVED VALUES DO NOT CLAIM A WORKING MICROPHONE SESSION.",
+                WofVoiceChatRuntime.StatusText,
                 14, TextAnchor.MiddleCenter, new Color32(253, 230, 138, 255));
             SetRect(_voiceStatus.rectTransform, new Vector2(0.04f, 0.05f), new Vector2(0.96f, 0.86f));
         }
@@ -469,17 +516,26 @@ namespace WOF
             SaveAndApplySettings();
         }
 
-        private void ReportVoiceUnavailable()
+        private void ToggleVoiceEnabled()
         {
-            _settings.voiceChatEnabled = false;
+            if (Time.unscaledTime < _nextVoiceToggleAt) return;
+            _nextVoiceToggleAt = Time.unscaledTime + 0.25f;
+            _settings.voiceChatEnabled = !_settings.voiceChatEnabled;
             SaveAndApplySettings();
-            if (_voiceStatus != null)
-                _voiceStatus.text = "STATUS: UNITY NETWORK VOICE TRANSPORT NOT PORTED\n\nVOICE WAS NOT ENABLED. NO MICROPHONE OR NEARBY-PLAYER AUDIO IS BEING FAKED.";
-            Debug.LogWarning("[WOF] Voice chat was not enabled because the Unity network voice transport has not been ported.");
+            Debug.Log($"[WOF-AUTOMATION] VOICE_ENABLED enabled={_settings.voiceChatEnabled}");
+        }
+
+        private void BeginVoiceKeyRemap()
+        {
+            _remappingVoiceKey = true;
+            _voiceKeyRemapWaitingForRelease = true;
+            RefreshLabels();
         }
 
         private void ToggleVoiceInputMode()
         {
+            if (Time.unscaledTime < _nextVoiceInputToggleAt) return;
+            _nextVoiceInputToggleAt = Time.unscaledTime + 0.25f;
             _settings.voiceInputMode = _settings.voiceInputMode == "pushToTalk" ? "openMic" : "pushToTalk";
             SaveAndApplySettings();
         }
@@ -511,6 +567,7 @@ namespace WOF
                 _settings.keyboardArrowLookEnabled);
             WofInputRouter.ConfigureControllerBindings(_settings.controllerBindings);
             _hud?.SetTextScale(_settings.hudTextScale);
+            WofVoiceChatRuntime.ApplySavedSettings();
         }
 
         private void BeginControllerRemap(string action)
@@ -588,11 +645,14 @@ namespace WOF
                     ? "PRESS BUTTON"
                     : WofControllerButtons.Label(WofControllerBindingRules.GetButton(_settings.controllerBindings, pair.Key));
             }
-            if (_voiceEnabledValue != null) _voiceEnabledValue.text = "UNAVAILABLE";
+            if (_voiceEnabledValue != null) _voiceEnabledValue.text = _settings.voiceChatEnabled ? "ON" : "OFF";
             if (_voiceInputValue != null) _voiceInputValue.text = _settings.voiceInputMode == "pushToTalk" ? "PRESS TO TALK" : "OPEN MIC";
-            if (_voiceKeyValue != null) _voiceKeyValue.text = _settings.voicePushToTalkKey;
+            if (_voiceKeyValue != null) _voiceKeyValue.text = _remappingVoiceKey
+                ? "PRESS KEY"
+                : $"{_settings.voicePushToTalkKey} / {WofControllerButtons.Label(WofControllerBindingRules.GetButton(_settings.controllerBindings, WofControllerActions.VoicePushToTalk))}";
             if (_voiceVolumeValue != null) _voiceVolumeValue.text = $"{Mathf.RoundToInt(_settings.voiceOutputVolume * 100f)}%";
             if (_voiceRangeValue != null) _voiceRangeValue.text = $"{Mathf.RoundToInt(_settings.voiceProximityRange)}m";
+            if (_voiceStatus != null) _voiceStatus.text = WofVoiceChatRuntime.StatusText;
             if (_profile == null) return;
             foreach (var pair in _characterValues)
             {

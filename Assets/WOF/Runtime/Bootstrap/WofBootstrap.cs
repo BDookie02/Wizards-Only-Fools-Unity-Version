@@ -353,6 +353,7 @@ namespace WOF
             }
 
             _roomCode = result.JoinCode;
+            PublishServerVoiceChannel();
             hud?.SetRoom(ResolveRoomLabel(Mode, string.Empty, _roomCode, WofGameConstants.DefaultPort, true));
             return _roomCode;
         }
@@ -389,6 +390,18 @@ namespace WOF
             {
                 SetLaunchStatus("Unable to start the host.");
                 Mode = WofSessionMode.None;
+            }
+        }
+
+        private void PublishServerVoiceChannel()
+        {
+            if (networkManager == null || !networkManager.IsServer) return;
+            foreach (var client in networkManager.ConnectedClientsList)
+            {
+                var player = client.PlayerObject == null
+                    ? null
+                    : client.PlayerObject.GetComponent<WofPlayerController>();
+                player?.SetServerVoiceChannel(_roomCode);
             }
         }
 

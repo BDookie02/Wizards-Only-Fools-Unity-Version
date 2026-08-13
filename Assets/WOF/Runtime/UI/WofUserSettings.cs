@@ -42,8 +42,6 @@ namespace WOF
             settings.voiceOutputVolume = ClampFinite(settings.voiceOutputVolume, 0f, 1f, DefaultVoiceOutputVolume);
             settings.voiceProximityRange = ClampFinite(settings.voiceProximityRange, 8f, 64f, DefaultVoiceProximityRange);
             settings.controllerBindings = WofControllerBindingRules.Normalize(settings.controllerBindings);
-            // Unity voice transport has not been ported. Never restore a stale UI-only enabled state.
-            settings.voiceChatEnabled = false;
         }
 
         private static float ClampFinite(float value, float minimum, float maximum, float fallback)

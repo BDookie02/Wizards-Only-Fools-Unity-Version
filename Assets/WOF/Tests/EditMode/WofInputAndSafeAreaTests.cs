@@ -230,7 +230,7 @@ namespace WOF.Tests
             Assert.That(settings.mouseSensitivity, Is.EqualTo(WofUserSettingsRules.DefaultMouseSensitivity));
             Assert.That(settings.controllerLookSensitivity, Is.EqualTo(6f));
             Assert.That(settings.hudTextScale, Is.EqualTo(0.75f));
-            Assert.That(settings.voiceChatEnabled, Is.False);
+            Assert.That(settings.voiceChatEnabled, Is.True);
             Assert.That(settings.voiceInputMode, Is.EqualTo("openMic"));
             Assert.That(settings.voicePushToTalkKey, Is.EqualTo("V"));
             Assert.That(settings.voiceOutputVolume, Is.Zero);
