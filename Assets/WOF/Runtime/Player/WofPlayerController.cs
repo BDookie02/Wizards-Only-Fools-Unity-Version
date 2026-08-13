@@ -220,6 +220,9 @@ namespace WOF
         private bool _meditationPresentationLogged;
         private double _nextManaDecayAt;
         private readonly Dictionary<string, double> _manaFlowerCooldowns = new();
+        private readonly Dictionary<WofManaSourceKind, double> _infiniteManaSourceDebounces = new();
+        private readonly HashSet<int> _collectedHutRunes = new();
+        private long _collectedHutRuneCycle = long.MinValue;
         private WofVoiceChatRuntime _voiceChatRuntime;
         private WofTreeHouseTraversalRuntime _treeHouseTraversalRuntime;
         private WofDesertTraversalRuntime _desertTraversalRuntime;
@@ -464,6 +467,9 @@ namespace WOF
                 _rightMana.Value = 0f;
                 _nextManaDecayAt = NetworkManager.ServerTime.Time + 1d;
                 _manaFlowerCooldowns.Clear();
+                _infiniteManaSourceDebounces.Clear();
+                _collectedHutRunes.Clear();
+                _collectedHutRuneCycle = long.MinValue;
                 _isDead.Value = false;
                 _isMeditating.Value = false;
                 _castingUntil.Value = 0d;
@@ -1744,6 +1750,7 @@ namespace WOF
             until = now + WofManaRules.FlowerRespawnSeconds;
             _manaFlowerCooldowns[flower.Id] = until;
             ConfirmManaFlowerCollectionOwnerRpc(chunkX, chunkZ, flowerIndex, until);
+            BroadcastManaPickupPulseRpc();
             Debug.Log($"[WOF-AUTOMATION] MANA_FLOWER_COLLECTED owner={OwnerClientId} id={flower.Id} hand={recharge.RechargedHand} until={until:F2}");
         }
 
@@ -1751,6 +1758,86 @@ namespace WOF
         private void ConfirmManaFlowerCollectionOwnerRpc(int chunkX, int chunkZ, int flowerIndex, double until)
         {
             WofSurvivalAmbientLifeRuntime.MarkFlowerCollected(chunkX, chunkZ, flowerIndex, until);
+        }
+
+        public bool RequestManaSourceCollection(WofManaSourceKind kind, int sourceIndex, long cycle)
+        {
+            if (!IsOwner || !IsSpawned || _isDead.Value || !CanRechargeMana ||
+                !System.Enum.IsDefined(typeof(WofManaSourceKind), kind)) return false;
+            if (IsServer) CollectManaSourceServer(kind, sourceIndex, cycle);
+            else RequestManaSourceCollectionRpc(kind, sourceIndex, cycle);
+            return true;
+        }
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+        private void RequestManaSourceCollectionRpc(WofManaSourceKind kind, int sourceIndex, long cycle)
+        {
+            CollectManaSourceServer(kind, sourceIndex, cycle);
+        }
+
+        private void CollectManaSourceServer(WofManaSourceKind kind, int sourceIndex, long requestedCycle)
+        {
+            if (!IsServer || _isDead.Value || NetworkManager == null ||
+                !System.Enum.IsDefined(typeof(WofManaSourceKind), kind)) return;
+            var now = NetworkManager.ServerTime.Time;
+            var survival = WofBootstrap.Instance == null || WofBootstrap.Instance.IsSurvivalSession;
+            var currentCycle = WofManaSourceRules.GetRuneCycle(now);
+            WofManaSourceRecord source;
+            switch (kind)
+            {
+                case WofManaSourceKind.BaseInfinite:
+                    source = WofManaSourceRules.BaseSource;
+                    if (!WofManaSourceRules.ShouldShowBaseSources(survival, transform.position) ||
+                        IsInfiniteManaSourceDebounced(kind, now)) return;
+                    break;
+                case WofManaSourceKind.DesertWell:
+                    source = WofManaSourceRules.DesertWell;
+                    if (!WofManaSourceRules.ShouldShowDesertWell(survival, transform.position) ||
+                        IsInfiniteManaSourceDebounced(kind, now)) return;
+                    break;
+                case WofManaSourceKind.HutRune:
+                    if (requestedCycle != currentCycle ||
+                        !WofManaSourceRules.ShouldShowBaseSources(survival, transform.position) ||
+                        !WofManaSourceRules.IsRuneActive(sourceIndex, currentCycle) ||
+                        !WofManaSourceRules.TryGetHutRune(sourceIndex, out source)) return;
+                    if (_collectedHutRuneCycle != currentCycle)
+                    {
+                        _collectedHutRuneCycle = currentCycle;
+                        _collectedHutRunes.Clear();
+                    }
+                    if (_collectedHutRunes.Contains(sourceIndex)) return;
+                    break;
+                default:
+                    return;
+            }
+
+            if (!WofManaSourceRules.IsWithinHorizontalRadius(transform.position, source)) return;
+            var recharge = WofManaRules.RechargeMostEmpty(_leftMana.Value, _rightMana.Value);
+            if (!recharge.Changed) return;
+            _leftMana.Value = recharge.Left;
+            _rightMana.Value = recharge.Right;
+            if (kind == WofManaSourceKind.HutRune) _collectedHutRunes.Add(sourceIndex);
+            else _infiniteManaSourceDebounces[kind] = now + WofManaSourceRules.InfiniteSourceDebounceSeconds;
+            ConfirmManaSourceCollectionOwnerRpc(kind, sourceIndex, currentCycle);
+            BroadcastManaPickupPulseRpc();
+            Debug.Log($"[WOF-AUTOMATION] MANA_SOURCE_COLLECTED owner={OwnerClientId} kind={kind} id={source.Id} hand={recharge.RechargedHand} cycle={currentCycle}");
+        }
+
+        private bool IsInfiniteManaSourceDebounced(WofManaSourceKind kind, double now)
+        {
+            return _infiniteManaSourceDebounces.TryGetValue(kind, out var until) && until > now;
+        }
+
+        [Rpc(SendTo.Owner)]
+        private void ConfirmManaSourceCollectionOwnerRpc(WofManaSourceKind kind, int sourceIndex, long cycle)
+        {
+            WofManaSourceRuntime.ConfirmCollection(kind, sourceIndex, cycle);
+        }
+
+        [Rpc(SendTo.ClientsAndHost)]
+        private void BroadcastManaPickupPulseRpc()
+        {
+            WofManaSourceRuntime.SpawnPickupPulse(this);
         }
 
         public bool RequestMapFastTravel(WofMapDestination destination)
