@@ -228,8 +228,8 @@ namespace WOF.Editor
         {
             PlayerSettings.companyName = "Wizards Only Fools";
             PlayerSettings.productName = "Wizards Only Fools";
-            PlayerSettings.bundleVersion = "0.4.20";
-            PlayerSettings.Android.bundleVersionCode = 23;
+            PlayerSettings.bundleVersion = "0.4.21";
+            PlayerSettings.Android.bundleVersionCode = 24;
             PlayerSettings.runInBackground = true;
             PlayerSettings.colorSpace = ColorSpace.Linear;
             PlayerSettings.defaultScreenWidth = 1280;

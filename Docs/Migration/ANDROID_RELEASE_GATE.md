@@ -1,27 +1,27 @@
-# Android v0.4.20 release gate
+# Android v0.4.21 release gate
 
-Verified on 2026-08-13 against the exact release APK at `Builds/Android/WizardsOnlyFools.apk`.
+Verified on 2026-08-14 against the exact release APK at `Builds/Android/WizardsOnlyFools.apk`.
 
 ## Artifact identity
 
 - Package: `com.WizardsOnlyFools.WizardsOnlyFools`
-- Version: `0.4.20` (`versionCode` 23)
+- Version: `0.4.21` (`versionCode` 24)
 - Minimum/target Android API: 25/36
-- Size: 157,912,785 bytes
-- SHA-256: `2c15c98b69d151e9d0695932b077600783826bba31a510f88f19b797edf17764`
+- Size: 157,962,981 bytes
+- SHA-256: `5ec27961a26785bf32c9493972a71a452e1101e006ccc3b06f107052b12ff760`
 - APK Signature Scheme v2: verified
 - Signing-certificate SHA-256: `844f6c9b6fa3d0cfd48febd45f0568e019ae9edca1f4dd039ab6131c5292f7eb`
 - Activity orientation: Android `userLandscape` in the packaged manifest.
 
 ## Current artifact and install evidence
 
-The exact ARM64 v0.4.20 APK passes the D-hosted release validator. Its archive was completely read; its internal manifest reports package `com.WizardsOnlyFools.WizardsOnlyFools`, `versionName=0.4.20`, `versionCode=23`, minimum API 25, target API 36, `userLandscape`, and only `arm64-v8a` native libraries. APK Signature Scheme v2 independently verifies with the expected single signing certificate.
+The exact ARM64 v0.4.21 APK passes the D-hosted release validator. Its archive was completely read; its internal manifest reports package `com.WizardsOnlyFools.WizardsOnlyFools`, `versionName=0.4.21`, `versionCode=24`, minimum API 25, target API 36, `userLandscape`, and only `arm64-v8a` native libraries. Nine packaged native libraries were found under that ABI. APK Signature Scheme v2 independently verifies with the expected single signing certificate.
 
-The full 588/588 Unity EditMode suite passes. Four focused underbrush fixtures lock React's exact near/mid/mobile counts, biome and authored/tallgrass/desert/water/route exclusions, deterministic positions, rendered-terrain heights, normal/range rejection, rotations, scales, palettes, 0.88 fern opacity, stage-two timing, non-indexed 108-vertex barycentric geometry, and overlapping-window retention. The final Windows executable passed receipt/payload/`SESSION_READY` validation plus physically inspected 1280 x 720 exact-sample bush and fern probes. Both frames retain the original hands, HUD, compass, flowers, trees, and terrain.
+The full 591/591 Unity EditMode suite passes. Three focused detail-scatter fixtures lock React's exact biome counts, deterministic records, rendered-terrain adaptation, route/surface/water filtering, visual and footprint scales, 3.6-second stage-five timing, distance/jitter delay, retained 37-chunk timers, dodecahedral topology, tumbleweed threshold, and the deliberate thick-cactus override. The final Windows executable passed receipt/payload/`SESSION_READY` validation plus physically inspected 1280 x 720 source-tree and tumbleweed probes. Both frames retain the original hands, HUD, compass, terrain, flowers, surrounding foliage, and the approved thick cactus layer.
 
 ## Current emulator limitation
 
-A fresh v0.4.20 Android in-player underbrush frame is not claimed. During Unity startup, the Windows host process `qemu-system-x86_64-headless.exe` crashes with exception `0xc0000005`, disconnecting ADB before WOF runtime initialization. The failure repeats with automatic and software GPU backends. A cold-wiped AVD running the exact published v0.4.17 control APK (157,722,347 bytes, SHA-256 `84d3488b357537e71ba2de88d847329053bb9382fd3f68049299d42ca7c3ad15`) produces the same host crash, so the evidence does not identify a v0.4.20 gameplay regression. A real phone or repaired emulator host is required for the fresh mobile underbrush visual gate.
+A fresh v0.4.21 Android in-player detail-scatter frame is not claimed. During Unity startup, the Windows host process `qemu-system-x86_64-headless.exe` crashes with exception `0xc0000005`, disconnecting ADB before WOF runtime initialization. The failure repeats with automatic and software GPU backends. A cold-wiped AVD running the exact published v0.4.17 control APK (157,722,347 bytes, SHA-256 `84d3488b357537e71ba2de88d847329053bb9382fd3f68049299d42ca7c3ad15`) produces the same host crash, so the evidence does not identify a v0.4.21 gameplay regression. A real phone or repaired emulator host is required for the fresh mobile detail-scatter visual gate.
 
 ## Preserved v0.4.17 runtime evidence
 

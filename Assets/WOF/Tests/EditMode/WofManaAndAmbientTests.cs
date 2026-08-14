@@ -461,6 +461,113 @@ namespace WOF.Tests.EditMode
         }
 
         [Test]
+        public void DetailScatterRecordsMatchIndependentReactOracle()
+        {
+            var plains = WofSurvivalDetailScatterRules.MakeChunk(-1, -1);
+            Assert.That(plains, Has.Length.EqualTo(4));
+            AssertDetail(plains[0], 0, WofSurvivalDetailScatterKind.Tree, WofSurvivalBiome.Plains,
+                -676.3834219428338d, 66.58193218213847d, -546.5675836268556d,
+                3.3226080804823144d, 0.15171720300713787d);
+            AssertDetail(plains[3], 5, WofSurvivalDetailScatterKind.Tree, WofSurvivalBiome.Plains,
+                -464.5536900033057d, 52.45128294630732d, -435.85430162956936d,
+                2.690502712875241d, 0.6550689798168605d);
+
+            var jungle = WofSurvivalDetailScatterRules.MakeChunk(-4, 0);
+            Assert.That(jungle, Has.Length.EqualTo(5));
+            AssertDetail(jungle[0], 1, WofSurvivalDetailScatterKind.Tree, WofSurvivalBiome.Jungle,
+                -1903.4202450914681d, 29.627371801790204d, -84.57465503543615d,
+                3.8591589127437147d, 0.9073762310872553d);
+            AssertDetail(jungle[4], 9, WofSurvivalDetailScatterKind.Tree, WofSurvivalBiome.Jungle,
+                -1996.5095991875976d, 37.39285346726079d, 186.38972910672427d,
+                4.256907378554024d, 0.5963996467617108d);
+
+            var desert = WofSurvivalDetailScatterRules.MakeChunk(4, -3);
+            Assert.That(desert, Has.Length.EqualTo(9));
+            foreach (var record in desert)
+                Assert.That(record.Kind, Is.EqualTo(record.Variant > 0.56f
+                    ? WofSurvivalDetailScatterKind.Tumbleweed
+                    : WofSurvivalDetailScatterKind.Cactus));
+            var sourceTumbleweed = System.Array.Find(desert, record => record.SourceIndex == 1);
+            var sourceCactus = System.Array.Find(desert, record => record.SourceIndex == 9);
+            // X/Z, indices, scale, and variants come from React; Y is the exact
+            // approved smoothed-desert surface rather than React's former seam.
+            AssertDetail(sourceTumbleweed, 1, WofSurvivalDetailScatterKind.Tumbleweed, WofSurvivalBiome.Desert,
+                2077.793862410486d, 21.9626694d, -1629.0929528412223d,
+                1.4915801306155119d, 0.8757774386685924d);
+            AssertDetail(sourceCactus, 9, WofSurvivalDetailScatterKind.Cactus, WofSurvivalBiome.Desert,
+                2061.353465262279d, 29.3072872d, -1537.0753559077532d,
+                2.3722367013164334d, 0.22846357117668958d);
+        }
+
+        [Test]
+        public void DetailScatterStagingVisualScaleAndCactusOverrideMatchSourceContract()
+        {
+            Assert.That(WofSurvivalDetailScatterRules.ShouldShowRuntime(true, false, false), Is.True);
+            Assert.That(WofSurvivalDetailScatterRules.ShouldShowRuntime(true, true, false), Is.False);
+            Assert.That(WofSurvivalDetailScatterRules.ShouldShowRuntime(true, false, true), Is.False);
+            Assert.That(WofSurvivalDetailScatterRules.ShouldShowRuntime(false, false, false), Is.False);
+            var ready = WofSurvivalDetailScatterRules.GetReadyDelaySeconds(-1, -1, 0);
+            Assert.That(ready, Is.InRange(3.6f, 4.12f));
+            Assert.That(WofSurvivalDetailScatterRules.GetReadyDelaySeconds(-1, -1, 3) - ready,
+                Is.EqualTo(0.84f).Within(0.00001f));
+            Assert.That(WofSurvivalDetailScatterRules.GetTreeVisualScale(
+                WofSurvivalBiome.Jungle, 3.8591588f), Is.EqualTo(18.163393f).Within(0.0001f));
+            Assert.That(WofSurvivalDetailScatterRules.GetTreeFootprintScale(
+                WofSurvivalBiome.Jungle, 18.163393f), Is.EqualTo(4.359214f).Within(0.0001f));
+            Assert.That(WofSurvivalDetailScatterRules.TumbleweedThreshold, Is.EqualTo(0.56f));
+            Assert.That(WofSurvivalDesertCactusRuntime.TotalCactusCount, Is.EqualTo(30),
+                "The approved thick-cactus runtime must remain the rendered cactus layer.");
+        }
+
+        [Test]
+        public void DetailScatterWindowRetainsReactStageTimersAndUsesExactDodecaTopology()
+        {
+            var gameObject = new GameObject("DetailScatterWindowRetentionTest");
+            try
+            {
+                var runtime = gameObject.AddComponent<WofSurvivalDetailScatterRuntime>();
+                var runtimeType = typeof(WofSurvivalDetailScatterRuntime);
+                var awake = runtimeType.GetMethod("Awake",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                var rebuild = runtimeType.GetMethod("RebuildStageWindow",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                var stagesField = runtimeType.GetField("_visibleStages",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                var solidField = runtimeType.GetField("_dodecaMesh",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                var wireField = runtimeType.GetField("_dodecaWireMesh",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                Assert.That(awake, Is.Not.Null);
+                awake.Invoke(runtime, null);
+                Assert.That(rebuild, Is.Not.Null);
+                Assert.That(stagesField, Is.Not.Null);
+                rebuild.Invoke(runtime, new object[] { 0, 0 });
+                var stages = (System.Collections.IDictionary)stagesField.GetValue(runtime);
+                Assert.That(stages.Count, Is.EqualTo(37));
+                var retainedKey = ((long)0 << 32) ^ (uint)0;
+                var retained = stages[retainedKey];
+                var readyAt = (float)retained.GetType().GetProperty("ReadyAt").GetValue(retained);
+                rebuild.Invoke(runtime, new object[] { 1, 0 });
+                stages = (System.Collections.IDictionary)stagesField.GetValue(runtime);
+                Assert.That(stages.Count, Is.EqualTo(37));
+                var retainedAfter = stages[retainedKey];
+                Assert.That((float)retainedAfter.GetType().GetProperty("ReadyAt").GetValue(retainedAfter),
+                    Is.EqualTo(readyAt), "Moving the player must not restart an overlapping chunk's timer.");
+
+                var solid = (Mesh)solidField.GetValue(runtime);
+                var wire = (Mesh)wireField.GetValue(runtime);
+                Assert.That(solid.name, Is.EqualTo("ReactDetailScatterDodeca"));
+                Assert.That(solid.triangles, Has.Length.EqualTo(108));
+                Assert.That(wire.name, Is.EqualTo("ReactDetailScatterDodecaWire"));
+                Assert.That(wire.GetIndexCount(0), Is.EqualTo(216));
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+            }
+        }
+
+        [Test]
         public void InfiniteManaSourcesMatchReactLocationsRadiiAndTiming()
         {
             var baseSource = WofManaSourceRules.BaseSource;
@@ -658,6 +765,27 @@ namespace WOF.Tests.EditMode
             Assert.That(fern.Scale.x, Is.EqualTo(width).Within(0.00001d));
             Assert.That(fern.Scale.y, Is.EqualTo(height).Within(0.00001d));
             Assert.That(fern.ColorIndex, Is.EqualTo(colorIndex));
+        }
+
+        private static void AssertDetail(
+            WofSurvivalDetailScatterRecord record,
+            int sourceIndex,
+            WofSurvivalDetailScatterKind kind,
+            WofSurvivalBiome biome,
+            double x,
+            double y,
+            double z,
+            double scale,
+            double variant)
+        {
+            Assert.That(record.SourceIndex, Is.EqualTo(sourceIndex));
+            Assert.That(record.Kind, Is.EqualTo(kind));
+            Assert.That(record.Biome, Is.EqualTo(biome));
+            Assert.That(record.Position.x, Is.EqualTo(x).Within(0.001d));
+            Assert.That(record.Position.y, Is.EqualTo(y).Within(0.001d));
+            Assert.That(record.Position.z, Is.EqualTo(z).Within(0.001d));
+            Assert.That(record.Scale, Is.EqualTo(scale).Within(0.00001d));
+            Assert.That(record.Variant, Is.EqualTo(variant).Within(0.00001d));
         }
 
         private static void AssertVector(Vector3 actual, double x, double y, double z)
