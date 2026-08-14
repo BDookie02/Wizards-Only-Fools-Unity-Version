@@ -274,6 +274,193 @@ namespace WOF.Tests.EditMode
         }
 
         [Test]
+        public void UnderbrushRecordsMatchExactReactOracle()
+        {
+            var plains = WofSurvivalUnderbrushRules.MakeChunk(-1, -1, 0, false);
+            Assert.That(plains.BushClusterCount, Is.EqualTo(17));
+            Assert.That(plains.BushLobes, Has.Length.EqualTo(72));
+            Assert.That(plains.Ferns, Has.Length.EqualTo(53));
+            AssertBush(plains.BushLobes[0], 0, 0,
+                -703.9989589073432d, 65.27536534413332d, -357.19027570288875d,
+                3.7688444992766614d, 0.08864323878369759d, 0.015896436681614435d,
+                2.30856181748631d, 4.302213309332986d, 2.6500302616447953d, 0);
+            AssertFern(plains.Ferns[0], 0,
+                -630.7097423482873d, 64.5828686664674d, -520.9502058040723d,
+                5.970936545839625d, 0.23242924419158956d,
+                0.6695338278047276d, 3.591826583499788d, 0);
+
+            var jungle = WofSurvivalUnderbrushRules.MakeChunk(-4, 0, 0, false);
+            Assert.That(jungle.BushClusterCount, Is.EqualTo(21));
+            Assert.That(jungle.BushLobes, Has.Length.EqualTo(87));
+            Assert.That(jungle.Ferns, Has.Length.EqualTo(70));
+            Assert.That(jungle.BushLobes[0].Position.x, Is.EqualTo(-2028.1840203509864d).Within(0.001d));
+            Assert.That(jungle.Ferns[0].Position.y, Is.EqualTo(20.731329037414273d).Within(0.001d));
+
+            var swamp = WofSurvivalUnderbrushRules.MakeChunk(7, 4, 0, false);
+            Assert.That(swamp.BushClusterCount, Is.EqualTo(18));
+            Assert.That(swamp.BushLobes, Has.Length.EqualTo(76));
+            Assert.That(swamp.Ferns, Has.Length.EqualTo(53));
+            Assert.That(swamp.BushLobes[0].ColorIndex, Is.EqualTo(2));
+            Assert.That(swamp.Ferns[0].SourceIndex, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void UnderbrushLodMobileAndOwnershipGatesMatchReact()
+        {
+            var mid = WofSurvivalUnderbrushRules.MakeChunk(-1, -1, 1, false);
+            Assert.That(mid.BushClusterCount, Is.EqualTo(5));
+            Assert.That(mid.BushLobes, Has.Length.EqualTo(23));
+            Assert.That(mid.Ferns, Has.Length.EqualTo(10));
+            var mobile = WofSurvivalUnderbrushRules.MakeChunk(-1, -1, 0, true);
+            Assert.That(mobile.BushClusterCount, Is.EqualTo(10));
+            Assert.That(mobile.BushLobes, Has.Length.EqualTo(44));
+            Assert.That(mobile.Ferns, Has.Length.EqualTo(30));
+            var desert = WofSurvivalUnderbrushRules.MakeChunk(1, 0, 0, false);
+            Assert.That(desert.BushClusterCount, Is.EqualTo(11));
+            Assert.That(desert.BushLobes, Has.Length.EqualTo(51));
+            Assert.That(desert.Ferns, Is.Empty);
+            Assert.That(WofSurvivalUnderbrushRules.MakeChunk(-1, -1, 2, false).BushLobes, Is.Empty);
+            Assert.That(WofSurvivalUnderbrushRules.MakeChunk(6, -3, 0, false).BushLobes, Is.Empty,
+                "React gives tallgrass/restored-meadow underbrush ownership to local grass.");
+            Assert.That(WofSurvivalUnderbrushRules.MakeChunk(0, 0, 0, false).BushLobes, Is.Empty,
+                "Authored villages own their complete decoration layers.");
+            Assert.That(WofSurvivalUnderbrushRules.ShouldGenerateChunk(false, false, -1, -1, 0), Is.False);
+            Assert.That(WofSurvivalUnderbrushRules.ShouldGenerateChunk(true, true, -1, -1, 0), Is.False,
+                "React hides underbrush in grass-inspection view.");
+            Assert.That(WofSurvivalUnderbrushRules.ShouldGenerateChunk(true, false, -1, -1, 0), Is.True);
+        }
+
+        [Test]
+        public void UnderbrushStagingPaletteAndGeometryMatchReactContract()
+        {
+            var desktopNear = WofSurvivalUnderbrushRules.GetReadyDelaySeconds(-1, -1, 0, false);
+            var desktopMid = WofSurvivalUnderbrushRules.GetReadyDelaySeconds(-1, -1, 1, false);
+            var mobileNear = WofSurvivalUnderbrushRules.GetReadyDelaySeconds(-1, -1, 0, true);
+            Assert.That(desktopMid - desktopNear, Is.EqualTo(0.28f).Within(0.000001f));
+            Assert.That(mobileNear, Is.GreaterThan(desktopNear));
+            Assert.That(WofSurvivalUnderbrushRules.BushMinimumNormalY, Is.EqualTo(0.68f));
+            Assert.That(WofSurvivalUnderbrushRules.BushMaximumHeightRange, Is.EqualTo(7.4f));
+            Assert.That(WofSurvivalUnderbrushRules.FernMinimumNormalY, Is.EqualTo(0.78f));
+            Assert.That(WofSurvivalUnderbrushRules.FernMaximumHeightRange, Is.EqualTo(2.4f));
+            Assert.That(WofSurvivalUnderbrushRules.FernRouteMaskMaximum, Is.EqualTo(0.12f));
+            Assert.That(WofSurvivalUnderbrushRules.FernOpacity, Is.EqualTo(0.88f));
+            Assert.That(WofSurvivalUnderbrushRules.GetBushColor(WofSurvivalBiome.Plains, 0),
+                Is.EqualTo(new Color32(0x41, 0x6f, 0x2f, 0xff)));
+            Assert.That(WofSurvivalUnderbrushRules.GetFernColor(WofSurvivalBiome.Swamp, 2),
+                Is.EqualTo(new Color32(0x6d, 0x79, 0x3a, 0xff)));
+
+            var lobe = WofSurvivalUnderbrushRules.MakeChunk(-1, -1, 0, false).BushLobes[0];
+            Assert.That(lobe.Matrix.GetColumn(3).x, Is.EqualTo(lobe.Position.x).Within(0.0001f));
+            Assert.That(lobe.Matrix.GetColumn(3).y, Is.EqualTo(lobe.Position.y).Within(0.0001f));
+            var fern = WofSurvivalUnderbrushRules.MakeChunk(-1, -1, 0, false).Ferns[0];
+            Assert.That(fern.Matrix.GetColumn(3).y,
+                Is.EqualTo(fern.Position.y + fern.Scale.y * 0.5f).Within(0.0001f));
+
+            var shader = Resources.Load<Shader>("Shaders/WofUnderbrushFaceted");
+            Assert.That(shader, Is.Not.Null, "The build must retain the underbrush-only faceted shader.");
+            Assert.That(shader.name, Is.EqualTo("WOF/Underbrush Faceted"));
+            var meshFactory = typeof(WofSurvivalUnderbrushRuntime).GetMethod(
+                "CreateDodecaMesh",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            Assert.That(meshFactory, Is.Not.Null);
+            var mesh = (Mesh)meshFactory.Invoke(null, new object[] { 0.5f, "UnderbrushContractProbe" });
+            try
+            {
+                Assert.That(mesh.vertexCount, Is.EqualTo(108),
+                    "Three.js toNonIndexed emits one barycentric triplet per triangle vertex.");
+                var barycentric = new List<Vector3>();
+                mesh.GetUVs(1, barycentric);
+                Assert.That(barycentric, Has.Count.EqualTo(108));
+                Assert.That(barycentric[0], Is.EqualTo(new Vector3(1f, 0f, 0f)));
+                Assert.That(barycentric[1], Is.EqualTo(new Vector3(0f, 1f, 0f)));
+                Assert.That(barycentric[2], Is.EqualTo(new Vector3(0f, 0f, 1f)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(mesh);
+            }
+        }
+
+        [Test]
+        public void UnderbrushWindowRetainsOverlappingReadyChunksAndStagesOnlyNewFringe()
+        {
+            var gameObject = new GameObject("UnderbrushWindowRetentionTest");
+            try
+            {
+                var runtime = gameObject.AddComponent<WofSurvivalUnderbrushRuntime>();
+                var runtimeType = typeof(WofSurvivalUnderbrushRuntime);
+                var activeType = runtimeType.GetNestedType(
+                    "ActiveChunk", System.Reflection.BindingFlags.NonPublic);
+                var activeField = runtimeType.GetField(
+                    "_activeChunks", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                var pendingField = runtimeType.GetField(
+                    "_pendingChunks", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                var awake = runtimeType.GetMethod(
+                    "Awake", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                var rebuildWindow = runtimeType.GetMethod(
+                    "RebuildWindow", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                Assert.That(activeType, Is.Not.Null);
+                Assert.That(activeField, Is.Not.Null);
+                Assert.That(pendingField, Is.Not.Null);
+                Assert.That(awake, Is.Not.Null);
+                Assert.That(rebuildWindow, Is.Not.Null);
+                awake.Invoke(runtime, null);
+
+                const int previousCenterX = -10;
+                const int previousCenterZ = -10;
+                const int nextCenterX = -9;
+                const int nextCenterZ = -10;
+                var previousKeys = new HashSet<long>();
+                var nextKeys = new HashSet<long>();
+                var active = (System.Collections.IDictionary)activeField.GetValue(runtime);
+                for (var dz = -1; dz <= 1; dz++)
+                for (var dx = -1; dx <= 1; dx++)
+                {
+                    var chunkX = previousCenterX + dx;
+                    var chunkZ = previousCenterZ + dz;
+                    var distance = System.Math.Max(System.Math.Abs(dx), System.Math.Abs(dz));
+                    if (!WofSurvivalUnderbrushRules.ShouldGenerateChunk(true, false, chunkX, chunkZ, distance))
+                        continue;
+                    var key = ((long)chunkX << 32) | (uint)chunkZ;
+                    previousKeys.Add(key);
+                    var chunk = WofSurvivalUnderbrushRules.MakeChunk(chunkX, chunkZ, distance, false);
+                    var activeValue = System.Activator.CreateInstance(
+                        activeType,
+                        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public |
+                        System.Reflection.BindingFlags.NonPublic,
+                        null,
+                        new object[] { chunkX, chunkZ, distance, chunk },
+                        null);
+                    active.Add(key, activeValue);
+                }
+                for (var dz = -1; dz <= 1; dz++)
+                for (var dx = -1; dx <= 1; dx++)
+                {
+                    var chunkX = nextCenterX + dx;
+                    var chunkZ = nextCenterZ + dz;
+                    var distance = System.Math.Max(System.Math.Abs(dx), System.Math.Abs(dz));
+                    if (WofSurvivalUnderbrushRules.ShouldGenerateChunk(true, false, chunkX, chunkZ, distance))
+                        nextKeys.Add(((long)chunkX << 32) | (uint)chunkZ);
+                }
+
+                var expectedRetained = 0;
+                foreach (var key in previousKeys)
+                    if (nextKeys.Contains(key)) expectedRetained++;
+                rebuildWindow.Invoke(runtime, new object[] { nextCenterX, nextCenterZ });
+
+                Assert.That(active.Count, Is.EqualTo(expectedRetained));
+                var pending = (System.Collections.IList)pendingField.GetValue(runtime);
+                Assert.That(pending.Count, Is.EqualTo(nextKeys.Count - expectedRetained));
+                foreach (var key in previousKeys)
+                    Assert.That(active.Contains(key), Is.EqualTo(nextKeys.Contains(key)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+            }
+        }
+
+        [Test]
         public void InfiniteManaSourcesMatchReactLocationsRadiiAndTiming()
         {
             var baseSource = WofManaSourceRules.BaseSource;
@@ -419,6 +606,58 @@ namespace WOF.Tests.EditMode
             Assert.That(rock.Yaw, Is.EqualTo(yaw).Within(0.00001d));
             Assert.That(rock.PaletteIndex, Is.EqualTo(paletteIndex));
             Assert.That(rock.Spire, Is.EqualTo(spire));
+        }
+
+        private static void AssertBush(
+            WofSurvivalBushLobeRecord bush,
+            int sourceIndex,
+            int lobeIndex,
+            double x,
+            double y,
+            double z,
+            double yaw,
+            double pitch,
+            double roll,
+            double width,
+            double height,
+            double depth,
+            int colorIndex)
+        {
+            Assert.That(bush.SourceIndex, Is.EqualTo(sourceIndex));
+            Assert.That(bush.LobeIndex, Is.EqualTo(lobeIndex));
+            Assert.That(bush.Position.x, Is.EqualTo(x).Within(0.001d));
+            Assert.That(bush.Position.y, Is.EqualTo(y).Within(0.001d));
+            Assert.That(bush.Position.z, Is.EqualTo(z).Within(0.001d));
+            Assert.That(bush.RotationRadians.y, Is.EqualTo(yaw).Within(0.00001d));
+            Assert.That(bush.RotationRadians.x, Is.EqualTo(pitch).Within(0.00001d));
+            Assert.That(bush.RotationRadians.z, Is.EqualTo(roll).Within(0.00001d));
+            Assert.That(bush.Scale.x, Is.EqualTo(width).Within(0.00001d));
+            Assert.That(bush.Scale.y, Is.EqualTo(height).Within(0.00001d));
+            Assert.That(bush.Scale.z, Is.EqualTo(depth).Within(0.00001d));
+            Assert.That(bush.ColorIndex, Is.EqualTo(colorIndex));
+        }
+
+        private static void AssertFern(
+            WofSurvivalFernRecord fern,
+            int sourceIndex,
+            double x,
+            double y,
+            double z,
+            double yaw,
+            double tilt,
+            double width,
+            double height,
+            int colorIndex)
+        {
+            Assert.That(fern.SourceIndex, Is.EqualTo(sourceIndex));
+            Assert.That(fern.Position.x, Is.EqualTo(x).Within(0.001d));
+            Assert.That(fern.Position.y, Is.EqualTo(y).Within(0.001d));
+            Assert.That(fern.Position.z, Is.EqualTo(z).Within(0.001d));
+            Assert.That(fern.RotationRadians.y, Is.EqualTo(yaw).Within(0.00001d));
+            Assert.That(fern.RotationRadians.x, Is.EqualTo(tilt).Within(0.00001d));
+            Assert.That(fern.Scale.x, Is.EqualTo(width).Within(0.00001d));
+            Assert.That(fern.Scale.y, Is.EqualTo(height).Within(0.00001d));
+            Assert.That(fern.ColorIndex, Is.EqualTo(colorIndex));
         }
 
         private static void AssertVector(Vector3 actual, double x, double y, double z)

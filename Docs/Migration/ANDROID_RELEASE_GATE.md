@@ -1,27 +1,27 @@
-# Android v0.4.19 release gate
+# Android v0.4.20 release gate
 
 Verified on 2026-08-13 against the exact release APK at `Builds/Android/WizardsOnlyFools.apk`.
 
 ## Artifact identity
 
 - Package: `com.WizardsOnlyFools.WizardsOnlyFools`
-- Version: `0.4.19` (`versionCode` 22)
+- Version: `0.4.20` (`versionCode` 23)
 - Minimum/target Android API: 25/36
-- Size: 157,800,571 bytes
-- SHA-256: `c8b49c3d135be3a658a4ad9a5cc728be39f2e34c842e0f276c262ac7b0e64dd4`
+- Size: 157,912,785 bytes
+- SHA-256: `2c15c98b69d151e9d0695932b077600783826bba31a510f88f19b797edf17764`
 - APK Signature Scheme v2: verified
 - Signing-certificate SHA-256: `844f6c9b6fa3d0cfd48febd45f0568e019ae9edca1f4dd039ab6131c5292f7eb`
 - Activity orientation: Android `userLandscape` in the packaged manifest.
 
 ## Current artifact and install evidence
 
-The exact ARM64 v0.4.19 APK passes the D-hosted release validator. Its archive was completely read; its internal manifest reports package `com.WizardsOnlyFools.WizardsOnlyFools`, `versionName=0.4.19`, `versionCode=22`, minimum API 25, target API 36, `userLandscape`, and only `arm64-v8a` native libraries. APK Signature Scheme v2 independently verifies with the expected single signing certificate.
+The exact ARM64 v0.4.20 APK passes the D-hosted release validator. Its archive was completely read; its internal manifest reports package `com.WizardsOnlyFools.WizardsOnlyFools`, `versionName=0.4.20`, `versionCode=23`, minimum API 25, target API 36, `userLandscape`, and only `arm64-v8a` native libraries. APK Signature Scheme v2 independently verifies with the expected single signing certificate.
 
-The full 584/584 Unity EditMode suite passes. Three focused rock-outcrop fixtures lock React's exact near/mid/far counts, biome and authored/tallgrass/desert/water exclusions, deterministic positions, rendered-terrain heights, normal/range rejection, variants, scales, yaw, palettes, stage-one timing, and runtime visibility rules. The final Windows executable passed receipt/payload/`SESSION_READY` validation and a 1280 x 720 exact-sample probe: the source spire at chunk `(-1,-1)` appeared at `(-451.35, 54.66, -492.63)` with scale `4.630492`, palette index 2, and the original hands, HUD, compass, flowers, trees, and terrain intact. The frame was physically inspected.
+The full 588/588 Unity EditMode suite passes. Four focused underbrush fixtures lock React's exact near/mid/mobile counts, biome and authored/tallgrass/desert/water/route exclusions, deterministic positions, rendered-terrain heights, normal/range rejection, rotations, scales, palettes, 0.88 fern opacity, stage-two timing, non-indexed 108-vertex barycentric geometry, and overlapping-window retention. The final Windows executable passed receipt/payload/`SESSION_READY` validation plus physically inspected 1280 x 720 exact-sample bush and fern probes. Both frames retain the original hands, HUD, compass, flowers, trees, and terrain.
 
 ## Current emulator limitation
 
-A fresh v0.4.19 Android in-player rock-outcrop frame is not claimed. During Unity startup, the Windows host process `qemu-system-x86_64-headless.exe` crashes with exception `0xc0000005`, disconnecting ADB before WOF runtime initialization. The failure repeats with automatic and software GPU backends. A cold-wiped AVD running the exact published v0.4.17 control APK (157,722,347 bytes, SHA-256 `84d3488b357537e71ba2de88d847329053bb9382fd3f68049299d42ca7c3ad15`) produces the same host crash, so the evidence does not identify a v0.4.19 gameplay regression. A real phone or repaired emulator host is required for the fresh mobile rock-outcrop visual gate.
+A fresh v0.4.20 Android in-player underbrush frame is not claimed. During Unity startup, the Windows host process `qemu-system-x86_64-headless.exe` crashes with exception `0xc0000005`, disconnecting ADB before WOF runtime initialization. The failure repeats with automatic and software GPU backends. A cold-wiped AVD running the exact published v0.4.17 control APK (157,722,347 bytes, SHA-256 `84d3488b357537e71ba2de88d847329053bb9382fd3f68049299d42ca7c3ad15`) produces the same host crash, so the evidence does not identify a v0.4.20 gameplay regression. A real phone or repaired emulator host is required for the fresh mobile underbrush visual gate.
 
 ## Preserved v0.4.17 runtime evidence
 
