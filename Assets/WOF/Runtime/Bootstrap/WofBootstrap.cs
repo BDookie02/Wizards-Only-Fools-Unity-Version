@@ -211,6 +211,13 @@ namespace WOF
                     return;
                 }
 
+                if (arg == "--wof-custom-host")
+                {
+                    SetSurvivalSession(false);
+                    StartHost();
+                    return;
+                }
+
                 const string clientPrefix = "--wof-client=";
                 if (arg.StartsWith(clientPrefix, StringComparison.OrdinalIgnoreCase))
                 {

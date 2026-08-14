@@ -46,6 +46,54 @@ namespace WOF.Tests.EditMode
         }
 
         [Test]
+        public void ReactCustomLobbyUsesTheSeparateClassicSkyContract()
+        {
+            var desktop = WofSurvivalSkyRuntime.ResolvePresentationLayout(false, false);
+            Assert.That(desktop.HorizonRadius, Is.EqualTo(400f));
+            Assert.That(desktop.HorizonHeight, Is.EqualTo(250f));
+            Assert.That(desktop.HorizonY, Is.EqualTo(40f));
+            Assert.That(desktop.HorizonSegments, Is.EqualTo(64));
+            Assert.That(desktop.FollowsCamera, Is.False);
+            Assert.That(desktop.FogEnabled, Is.False);
+            Assert.That(desktop.SurvivalSpritesVisible, Is.False);
+            Assert.That(desktop.ClassicAtmosphereVisible, Is.True);
+
+            var mobile = WofSurvivalSkyRuntime.ResolvePresentationLayout(false, true);
+            Assert.That(mobile.ClassicAtmosphereVisible, Is.False);
+
+            var survival = WofSurvivalSkyRuntime.ResolvePresentationLayout(true, false);
+            Assert.That(survival.HorizonRadius, Is.EqualTo(2816f));
+            Assert.That(survival.HorizonHeight, Is.EqualTo(2200f));
+            Assert.That(survival.HorizonY, Is.EqualTo(330f));
+            Assert.That(survival.HorizonSegments, Is.EqualTo(96));
+            Assert.That(survival.FollowsCamera, Is.True);
+            Assert.That(survival.FogEnabled, Is.True);
+            Assert.That(survival.SurvivalSpritesVisible, Is.True);
+            Assert.That(survival.ClassicAtmosphereVisible, Is.False);
+        }
+
+        [Test]
+        public void ClassicSkyShaderRetainsTheExactReactAtmosphereInputs()
+        {
+            const string shaderPath = "Assets/WOF/Shaders/WofSkyUnlit.shader";
+            var source = File.ReadAllText(shaderPath);
+            StringAssert.Contains("_UseClassicAtmosphere", source);
+            StringAssert.Contains("_ClassicTurbidity", source);
+            StringAssert.Contains("_ClassicRayleigh", source);
+            StringAssert.Contains("_ClassicMieCoefficient", source);
+            StringAssert.Contains("_ClassicMieDirectionalG", source);
+            StringAssert.Contains("0.9999566769464484", source);
+
+            const string runtimePath = "Assets/WOF/Runtime/World/WofSurvivalSkyRuntime.cs";
+            var runtime = File.ReadAllText(runtimePath);
+            StringAssert.Contains("SetFloat(\"_ClassicTurbidity\", 0.3f)", runtime);
+            StringAssert.Contains("SetFloat(\"_ClassicRayleigh\", 0.5f)", runtime);
+            StringAssert.Contains("SetFloat(\"_ClassicMieCoefficient\", 0.005f)", runtime);
+            StringAssert.Contains("SetFloat(\"_ClassicMieDirectionalG\", 0.8f)", runtime);
+            StringAssert.Contains("new Vector4(50f, 20f, 50f, 0f)", runtime);
+        }
+
+        [Test]
         public void ReactHorizonTextureRetainsSeededLayersTreesAndWrapping()
         {
             var texture = WofSurvivalSkyTextures.CreateHorizonHills();

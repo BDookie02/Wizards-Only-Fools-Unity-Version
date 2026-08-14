@@ -26,6 +26,38 @@ namespace WOF
         public float DuskAmount { get; }
     }
 
+    public readonly struct WofSkyPresentationLayout
+    {
+        public WofSkyPresentationLayout(
+            float horizonRadius,
+            float horizonHeight,
+            float horizonY,
+            int horizonSegments,
+            bool followsCamera,
+            bool fogEnabled,
+            bool survivalSpritesVisible,
+            bool classicAtmosphereVisible)
+        {
+            HorizonRadius = horizonRadius;
+            HorizonHeight = horizonHeight;
+            HorizonY = horizonY;
+            HorizonSegments = horizonSegments;
+            FollowsCamera = followsCamera;
+            FogEnabled = fogEnabled;
+            SurvivalSpritesVisible = survivalSpritesVisible;
+            ClassicAtmosphereVisible = classicAtmosphereVisible;
+        }
+
+        public float HorizonRadius { get; }
+        public float HorizonHeight { get; }
+        public float HorizonY { get; }
+        public int HorizonSegments { get; }
+        public bool FollowsCamera { get; }
+        public bool FogEnabled { get; }
+        public bool SurvivalSpritesVisible { get; }
+        public bool ClassicAtmosphereVisible { get; }
+    }
+
     [DisallowMultipleComponent]
     public sealed class WofSurvivalSkyRuntime : MonoBehaviour
     {
@@ -36,6 +68,10 @@ namespace WOF
         public const float HorizonHeight = 2200f;
         public const float HorizonY = 330f;
         public const int HorizonSegments = 96;
+        public const float ClassicHorizonRadius = 400f;
+        public const float ClassicHorizonHeight = 250f;
+        public const float ClassicHorizonY = 40f;
+        public const int ClassicHorizonSegments = 64;
         private const float VisualScale = 0.38f;
         private const float SkyRadius = 512f * 2.85f * VisualScale;
         private const float StarRadius = 585f;
@@ -71,9 +107,13 @@ namespace WOF
         private Transform _starSphere;
         private Material _starMaterial;
         private Transform _horizonCylinder;
+        private MeshFilter _horizonMeshFilter;
         private Material _horizonMaterial;
         private Mesh _horizonMesh;
+        private Mesh _classicHorizonMesh;
         private Texture2D _horizonTexture;
+        private Transform _classicAtmosphere;
+        private Material _classicAtmosphereMaterial;
         private Texture2D[] _moonTextures;
         private Camera _camera;
         private WofPlayerController _localPlayer;
@@ -83,6 +123,7 @@ namespace WOF
         private float _astralStartedAt;
         private bool _astralWasActive;
         private bool _astralPresentationLogged;
+        private bool? _lastSurvivalPresentation;
 
         public float? ForcedElapsedSeconds => _forcedElapsed.HasValue ? (float)_forcedElapsed.Value : null;
 
@@ -118,11 +159,113 @@ namespace WOF
         private void LateUpdate()
         {
             ResolveCamera();
+            var survivalPresentation = WofBootstrap.Instance == null || WofBootstrap.Instance.IsSurvivalSession;
+            ApplyPresentationMode(survivalPresentation);
+            if (!survivalPresentation)
+            {
+                var classicAstral = ResolveAstralPresentation();
+                ApplyClassicLighting();
+                if (_camera != null) ApplyClassicVisuals(classicAstral);
+                return;
+            }
+
             var elapsed = _forcedElapsed ?? ResolveSynchronizedElapsed();
             var cycle = Evaluate((float)elapsed);
             var astral = ResolveAstralPresentation();
             ApplyLighting(cycle, astral.SkyStrength);
             if (_camera != null) ApplyVisuals(cycle, (float)elapsed, astral);
+        }
+
+        public static WofSkyPresentationLayout ResolvePresentationLayout(
+            bool survivalSession,
+            bool mobilePerformanceMode)
+        {
+            return survivalSession
+                ? new WofSkyPresentationLayout(
+                    HorizonRadius,
+                    HorizonHeight,
+                    HorizonY,
+                    HorizonSegments,
+                    true,
+                    true,
+                    true,
+                    false)
+                : new WofSkyPresentationLayout(
+                    ClassicHorizonRadius,
+                    ClassicHorizonHeight,
+                    ClassicHorizonY,
+                    ClassicHorizonSegments,
+                    false,
+                    false,
+                    false,
+                    !mobilePerformanceMode);
+        }
+
+        private void ApplyPresentationMode(bool survivalPresentation)
+        {
+            if (_lastSurvivalPresentation == survivalPresentation) return;
+            _lastSurvivalPresentation = survivalPresentation;
+            var layout = ResolvePresentationLayout(
+                survivalPresentation,
+                WofPerformanceModeRuntime.IsMobilePerformanceMode);
+            if (_horizonMeshFilter != null)
+                _horizonMeshFilter.sharedMesh = survivalPresentation ? _horizonMesh : _classicHorizonMesh;
+            RenderSettings.fog = layout.FogEnabled;
+            if (_classicAtmosphere != null)
+                _classicAtmosphere.gameObject.SetActive(layout.ClassicAtmosphereVisible);
+            SetSurvivalSpriteVisibility(layout.SurvivalSpritesVisible);
+            Debug.Log(
+                $"[WOF-AUTOMATION] SKY_PRESENTATION mode={(survivalPresentation ? "survival" : "classic")} " +
+                $"horizon={layout.HorizonRadius:F0}x{layout.HorizonHeight:F0}@{layout.HorizonY:F0} " +
+                $"segments={layout.HorizonSegments} followCamera={layout.FollowsCamera} fog={layout.FogEnabled}");
+        }
+
+        private void SetSurvivalSpriteVisibility(bool visible)
+        {
+            _sun.Transform.gameObject.SetActive(visible);
+            if (_starSphere != null) _starSphere.gameObject.SetActive(visible);
+            foreach (var moon in _moons) moon.Transform.gameObject.SetActive(visible);
+            foreach (var cloud in _clouds) cloud.Transform.gameObject.SetActive(visible);
+        }
+
+        private void ApplyClassicLighting()
+        {
+            var mobile = WofPerformanceModeRuntime.IsMobilePerformanceMode;
+            RenderSettings.fog = false;
+            RenderSettings.ambientMode = AmbientMode.Trilight;
+            if (mobile)
+            {
+                RenderSettings.ambientSkyColor = WofGameWorldLightingLayout.GetMobileAmbientSkyColor();
+                RenderSettings.ambientGroundColor = WofGameWorldLightingLayout.GetMobileAmbientGroundColor();
+                RenderSettings.ambientEquatorColor = WofGameWorldLightingLayout.GetMobileAmbientEquatorColor();
+            }
+            else
+            {
+                var ambient = WofGameWorldLightingLayout.GetClassicAmbientColor();
+                RenderSettings.ambientSkyColor = ambient;
+                RenderSettings.ambientGroundColor = ambient;
+                RenderSettings.ambientEquatorColor = ambient;
+            }
+            Shader.SetGlobalColor(TerrainTintProperty, TerrainDayTint);
+            if (_camera != null)
+            {
+                _camera.clearFlags = CameraClearFlags.SolidColor;
+                _camera.backgroundColor = mobile ? Hex("#9bdcff") : Hex("#000000");
+            }
+            if (_directionalLight == null) return;
+            _directionalLight.transform.rotation = WofGameWorldLightingLayout.GetDirectionalLightRotation();
+            _directionalLight.intensity = mobile
+                ? WofGameWorldLightingLayout.MobileDirectionalIntensity
+                : WofGameWorldLightingLayout.ClassicDirectionalIntensity;
+            _directionalLight.color = Color.white;
+        }
+
+        private void ApplyClassicVisuals(WofAstralPresentationFrame astral)
+        {
+            _horizonCylinder.position = new Vector3(0f, ClassicHorizonY, 0f);
+            _horizonMaterial.color = HorizonDayTint;
+            if (_classicAtmosphere != null) _classicAtmosphere.position = Vector3.zero;
+            ApplyAstralVeil(astral);
         }
 
         private void ResolveCamera()
@@ -354,8 +497,13 @@ namespace WOF
             horizon.transform.SetParent(root, false);
             horizon.transform.localPosition = new Vector3(0f, HorizonY, 0f);
             _horizonMesh = CreateHorizonCylinderMesh(HorizonRadius, HorizonHeight, HorizonSegments);
+            _classicHorizonMesh = CreateHorizonCylinderMesh(
+                ClassicHorizonRadius,
+                ClassicHorizonHeight,
+                ClassicHorizonSegments);
             _horizonTexture = WofSurvivalSkyTextures.CreateHorizonHills();
-            horizon.AddComponent<MeshFilter>().sharedMesh = _horizonMesh;
+            _horizonMeshFilter = horizon.AddComponent<MeshFilter>();
+            _horizonMeshFilter.sharedMesh = _horizonMesh;
             _horizonMaterial = new Material(shader)
             {
                 name = "ReactHorizonCylinderMaterial",
@@ -367,6 +515,29 @@ namespace WOF
             _horizonMaterial.SetFloat("_UseFog", 1f);
             horizon.AddComponent<MeshRenderer>().sharedMaterial = _horizonMaterial;
             _horizonCylinder = horizon.transform;
+
+            var classicAtmosphere = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            classicAtmosphere.name = "ReactClassicSkyEnvironment";
+            classicAtmosphere.transform.SetParent(root, false);
+            DisableAndDestroyCollider(classicAtmosphere);
+            classicAtmosphere.transform.localScale = Vector3.one * 1000f;
+            _classicAtmosphereMaterial = new Material(shader)
+            {
+                name = "ReactClassicSkyEnvironmentMaterial",
+                mainTexture = Texture2D.whiteTexture,
+                color = Color.white,
+                renderQueue = 2870
+            };
+            _classicAtmosphereMaterial.SetFloat("_Cull", 1f);
+            _classicAtmosphereMaterial.SetFloat("_UseClassicAtmosphere", 1f);
+            _classicAtmosphereMaterial.SetFloat("_ClassicTurbidity", 0.3f);
+            _classicAtmosphereMaterial.SetFloat("_ClassicRayleigh", 0.5f);
+            _classicAtmosphereMaterial.SetFloat("_ClassicMieCoefficient", 0.005f);
+            _classicAtmosphereMaterial.SetFloat("_ClassicMieDirectionalG", 0.8f);
+            _classicAtmosphereMaterial.SetVector("_ClassicSunPosition", new Vector4(50f, 20f, 50f, 0f));
+            classicAtmosphere.GetComponent<MeshRenderer>().sharedMaterial = _classicAtmosphereMaterial;
+            _classicAtmosphere = classicAtmosphere.transform;
+            _classicAtmosphere.gameObject.SetActive(false);
             _sun = MakeBillboard(root, "ReactSurvivalSun", shader, WofSurvivalSkyTextures.CreateSun());
             _astralVeil = MakeBillboard(
                 root,
@@ -510,7 +681,9 @@ namespace WOF
         {
             Shader.SetGlobalColor(TerrainTintProperty, TerrainDayTint);
             if (_horizonMesh != null) Destroy(_horizonMesh);
+            if (_classicHorizonMesh != null) Destroy(_classicHorizonMesh);
             if (_horizonMaterial != null) Destroy(_horizonMaterial);
+            if (_classicAtmosphereMaterial != null) Destroy(_classicAtmosphereMaterial);
             if (_horizonTexture != null) Destroy(_horizonTexture);
         }
 
