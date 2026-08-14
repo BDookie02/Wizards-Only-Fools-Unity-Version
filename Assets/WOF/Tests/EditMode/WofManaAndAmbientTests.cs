@@ -210,6 +210,70 @@ namespace WOF.Tests.EditMode
         }
 
         [Test]
+        public void RockOutcropRecordsMatchExactReactOracle()
+        {
+            var plains = WofSurvivalRockOutcropRules.MakeChunk(-1, -1, 0);
+            Assert.That(plains, Has.Length.EqualTo(4));
+            AssertRock(plains[0], "-1:-1-rock-0", -433.95021008990705d, 45.00388116110742d,
+                -357.94758341805078d, 3.673254155478207d, 5.4334731618066385d, 1, false);
+            AssertRock(plains[1], "-1:-1-rock-1", -451.35406307548285d, 54.66388811320902d,
+                -492.6342642901838d, 4.630492193603277d, 1.7388210708427787d, 2, true);
+            AssertRock(plains[2], "-1:-1-rock-2", -577.5918675721437d, 62.232763933622145d,
+                -307.75246151454746d, 3.9979437456800957d, 0.3388028972777374d, 1, false);
+            AssertRock(plains[3], "-1:-1-rock-3", -325.2709291406721d, 31.726573805034345d,
+                -636.2882562758774d, 4.913873229679303d, 4.688349526816385d, 2, true);
+
+            var jungle = WofSurvivalRockOutcropRules.MakeChunk(-4, 0, 0);
+            Assert.That(jungle, Has.Length.EqualTo(5));
+            AssertRock(jungle[0], "-4:0-rock-0", -1903.6356101697125d, 29.872904708853333d,
+                -72.0592223785445d, 5.299054981542577d, 2.296501136753142d, 2, true);
+
+            var swamp = WofSurvivalRockOutcropRules.MakeChunk(7, 4, 0);
+            Assert.That(swamp, Has.Length.EqualTo(4));
+            AssertRock(swamp[0], "7:4-rock-0", 3712.664902947657d, 75.01392288285268d,
+                2169.727358831838d, 5.26654601755763d, 0.07871350264190505d, 5, true);
+        }
+
+        [Test]
+        public void RockOutcropLodBiomeAndOwnershipGatesMatchReact()
+        {
+            Assert.That(WofSurvivalRockOutcropRules.MakeChunk(-1, -1, 1), Has.Length.EqualTo(1));
+            Assert.That(WofSurvivalRockOutcropRules.MakeChunk(-1, -1, 2), Is.Empty);
+            Assert.That(WofSurvivalRockOutcropRules.MakeChunk(1, 0, 0), Is.Empty,
+                "React excludes every desert rock outcrop.");
+            Assert.That(WofSurvivalRockOutcropRules.MakeChunk(6, -3, 0), Is.Empty,
+                "React gives tallgrass/restored-meadow detail ownership to the grass system.");
+            Assert.That(WofSurvivalRockOutcropRules.MakeChunk(0, 0, 0), Is.Empty,
+                "Authored villages own their complete decoration layers.");
+            Assert.That(WofSurvivalRockOutcropRules.ShouldGenerateChunk(false, -1, -1, 0), Is.False);
+            Assert.That(WofSurvivalRockOutcropRules.ShouldGenerateChunk(true, -1, -1, 0), Is.True);
+            Assert.That(WofSurvivalRockOutcropRules.ShouldGenerateChunk(true, -1, -1, 2), Is.False);
+            Assert.That(WofSurvivalRockOutcropRules.ShouldShowRuntime(true), Is.True,
+                "React leaves rock outcrops visible during its grass-inspection view.");
+            Assert.That(WofSurvivalRockOutcropRules.ShouldShowRuntime(false), Is.False);
+        }
+
+        [Test]
+        public void RockOutcropStagingAndGeometryMatchReactContract()
+        {
+            var desktopNear = WofSurvivalRockOutcropRules.GetReadyDelaySeconds(-1, -1, 0, false);
+            var desktopMid = WofSurvivalRockOutcropRules.GetReadyDelaySeconds(-1, -1, 1, false);
+            var mobileNear = WofSurvivalRockOutcropRules.GetReadyDelaySeconds(-1, -1, 0, true);
+            Assert.That(desktopMid - desktopNear, Is.EqualTo(0.28f).Within(0.000001f));
+            Assert.That(mobileNear, Is.GreaterThan(desktopNear));
+            Assert.That(WofSurvivalRockOutcropRules.MinimumNormalY, Is.EqualTo(0.62f));
+            Assert.That(WofSurvivalRockOutcropRules.MaximumHeightRange, Is.EqualTo(7.8f));
+            Assert.That(WofSurvivalRockOutcropRules.WaterClearance, Is.EqualTo(0.24f));
+
+            var boulder = WofSurvivalRockOutcropRules.MakeChunk(-1, -1, 0)[0];
+            var boulderScale = boulder.Matrix.lossyScale;
+            Assert.That(boulderScale.x, Is.EqualTo(boulder.Scale * 1.35f).Within(0.0001f));
+            Assert.That(boulderScale.y, Is.EqualTo(boulder.Scale * 0.75f).Within(0.0001f));
+            var spire = WofSurvivalRockOutcropRules.MakeChunk(-1, -1, 0)[1];
+            Assert.That(spire.Matrix.lossyScale.y, Is.EqualTo(spire.Scale * 1.95f).Within(0.0001f));
+        }
+
+        [Test]
         public void InfiniteManaSourcesMatchReactLocationsRadiiAndTiming()
         {
             var baseSource = WofManaSourceRules.BaseSource;
@@ -334,6 +398,27 @@ namespace WOF.Tests.EditMode
             Assert.That(willow.Scale, Is.EqualTo(scale).Within(0.000001d));
             Assert.That(willow.Biome, Is.EqualTo(biome));
             Assert.That(willow.Variant, Is.EqualTo(variant).Within(0.000000000001d));
+        }
+
+        private static void AssertRock(
+            WofSurvivalRockOutcropRecord rock,
+            string key,
+            double x,
+            double y,
+            double z,
+            double scale,
+            double yaw,
+            int paletteIndex,
+            bool spire)
+        {
+            Assert.That(rock.Key, Is.EqualTo(key));
+            Assert.That(rock.Position.x, Is.EqualTo(x).Within(0.001d));
+            Assert.That(rock.Position.y, Is.EqualTo(y).Within(0.001d));
+            Assert.That(rock.Position.z, Is.EqualTo(z).Within(0.001d));
+            Assert.That(rock.Scale, Is.EqualTo(scale).Within(0.00001d));
+            Assert.That(rock.Yaw, Is.EqualTo(yaw).Within(0.00001d));
+            Assert.That(rock.PaletteIndex, Is.EqualTo(paletteIndex));
+            Assert.That(rock.Spire, Is.EqualTo(spire));
         }
 
         private static void AssertVector(Vector3 actual, double x, double y, double z)
