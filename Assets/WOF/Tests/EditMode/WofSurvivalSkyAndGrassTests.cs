@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -40,6 +41,22 @@ namespace WOF.Tests.EditMode
             Assert.That(night.r, Is.EqualTo(0x3f / 255f).Within(0.001f));
             Assert.That(night.g, Is.EqualTo(0x4f / 255f).Within(0.001f));
             Assert.That(night.b, Is.EqualTo(0x45 / 255f).Within(0.001f));
+        }
+
+        [Test]
+        public void BotwGrassShaderAppliesTheSynchronizedSurvivalCycleTint()
+        {
+            const string shaderPath = "Assets/WOF/Shaders/WofBotwGrass.shader";
+            var source = File.ReadAllText(shaderPath);
+            StringAssert.Contains("half4 _WofSurvivalTerrainTint;", source);
+            StringAssert.Contains("* cycleTint", source);
+
+            var day = WofSurvivalSkyRuntime.EvaluateTerrainTint(
+                WofSurvivalSkyRuntime.Evaluate(WofSurvivalSkyRuntime.ForcedDaySeconds));
+            var night = WofSurvivalSkyRuntime.EvaluateTerrainTint(
+                WofSurvivalSkyRuntime.Evaluate(WofSurvivalSkyRuntime.ForcedNightSeconds));
+            Assert.That(day.maxColorComponent, Is.EqualTo(1f).Within(0.001f));
+            Assert.That(night.maxColorComponent, Is.LessThan(0.35f));
         }
 
         [Test]

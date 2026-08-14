@@ -58,6 +58,7 @@ Shader "WOF/BOTW Grass"
             float _Cutoff;
             float _TextureInfluence;
             float _SlopeUprightBlend;
+            half4 _WofSurvivalTerrainTint;
 
             UNITY_INSTANCING_BUFFER_START(GrassInstances)
                 UNITY_DEFINE_INSTANCED_PROP(float4, _InstanceColor)
@@ -101,7 +102,14 @@ Shader "WOF/BOTW Grass"
                 half alpha = lerp(1.0h, blade.a, textureInfluence) * _Color.a * edgeFade;
                 clip(alpha - _Cutoff);
                 half3 textureColor = lerp(half3(1.0h, 1.0h, 1.0h), blade.rgb, textureInfluence);
-                return half4(textureColor * input.color.rgb * _Color.rgb, alpha);
+                // React's standard grass material follows the survival world's
+                // day/night lighting. This procedural shader is intentionally
+                // unlit for its stable pixel treatment, so apply the same
+                // synchronized world tint that the terrain receives. Day is
+                // white (unchanged); dusk and night darken the blades without
+                // changing density, placement, alpha, or wind motion.
+                half3 cycleTint = max(_WofSurvivalTerrainTint.rgb, half3(0.001h, 0.001h, 0.001h));
+                return half4(textureColor * input.color.rgb * _Color.rgb * cycleTint, alpha);
             }
             ENDHLSL
         }
