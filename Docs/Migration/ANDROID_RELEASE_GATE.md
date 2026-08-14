@@ -1,27 +1,27 @@
-# Android v0.4.25 release gate
+# Android v0.4.26 release gate
 
 Verified on 2026-08-14 against the exact release APK at `Builds/Android/WizardsOnlyFools.apk`.
 
 ## Artifact identity
 
 - Package: `com.WizardsOnlyFools.WizardsOnlyFools`
-- Version: `0.4.25` (`versionCode` 28)
+- Version: `0.4.26` (`versionCode` 29)
 - Minimum/target Android API: 25/36
-- Size: 158,142,361 bytes
-- SHA-256: `5a860ff54a3954f1d48c5e86e7ba12650a37b089f96e2f85302306417d4d013f`
+- Size: 158,133,141 bytes
+- SHA-256: `f6a273ff04e96a7d129bd69bcdb839fa0aba3bb91c350d43b5f740432d3e96af`
 - APK Signature Scheme v2: verified
 - Signing-certificate SHA-256: `844f6c9b6fa3d0cfd48febd45f0568e019ae9edca1f4dd039ab6131c5292f7eb`
 - Activity orientation: Android `userLandscape` in the packaged manifest.
 
 ## Current artifact and install evidence
 
-The exact ARM64 v0.4.25 APK passes the D-hosted release validator. All 1,389 archive entries and 813,737,589 uncompressed bytes were read completely; its internal manifest reports package `com.WizardsOnlyFools.WizardsOnlyFools`, `versionName=0.4.25`, `versionCode=28`, minimum API 25, target API 36, `userLandscape`, and only `arm64-v8a` native libraries. Nine packaged native libraries were found under that ABI. APK Signature Scheme v2 independently verifies with the expected single signing certificate.
+The exact ARM64 v0.4.26 APK passes the D-hosted release validator. All 1,389 archive entries and 813,749,449 uncompressed bytes were read completely; its internal manifest reports package `com.WizardsOnlyFools.WizardsOnlyFools`, `versionName=0.4.26`, `versionCode=29`, minimum API 25, target API 36, `userLandscape`, and only `arm64-v8a` native libraries. Nine packaged native libraries were found under that ABI. APK Signature Scheme v2 independently verifies with the expected single signing certificate.
 
-The full 603/603 Unity EditMode suite passes. The new focused shader fixture locks the synchronized survival-cycle grass tint while the existing tests retain the 56,000-blade/760-flower scatter, placement, slope, wind, and presentation contracts. The final Windows executable passed receipt/payload/`SESSION_READY` validation plus physically inspected 1280 x 720 day and night grass captures. Day presentation remains unchanged; nighttime blades now follow the dark terrain and sky instead of remaining neon-bright, while the original hands, HUD, compass, flowers, terrain, and trees remain intact.
+The full 607/607 Unity EditMode suite passes. The new focused fixtures lock React's exact open-cylinder geometry, seeded horizon texture, cycle tint, and isolated fog contract while the existing tests retain the 56,000-blade/760-flower scatter, placement, slope, wind, and presentation contracts. The final Windows executable passed receipt/payload/`SESSION_READY` validation plus physically inspected 1280 x 720 day, night, and desert captures. The horizon fills the formerly blank distance using React's source silhouette and fog behavior while the original hands, HUD, compass, grass, flowers, terrain, trees, stars, moons, and cycle contrast remain intact.
 
 ## Current emulator limitation
 
-A fresh v0.4.25 Android in-player grass-cycle frame is not claimed. During Unity startup, the Windows host process `qemu-system-x86_64-headless.exe` crashes with exception `0xc0000005`, disconnecting ADB before WOF runtime initialization. The failure repeats with automatic and software GPU backends. A cold-wiped AVD running the exact published v0.4.17 control APK (157,722,347 bytes, SHA-256 `84d3488b357537e71ba2de88d847329053bb9382fd3f68049299d42ca7c3ad15`) produces the same host crash, so the evidence does not identify a v0.4.25 gameplay regression. A real phone or repaired emulator host is required for the fresh mobile grass-cycle visual gate.
+A fresh v0.4.26 Android in-player horizon frame is not claimed. During Unity startup, the Windows host process `qemu-system-x86_64-headless.exe` crashes with exception `0xc0000005`, disconnecting ADB before WOF runtime initialization. The failure repeats with automatic and software GPU backends. A cold-wiped AVD running the exact published v0.4.17 control APK (157,722,347 bytes, SHA-256 `84d3488b357537e71ba2de88d847329053bb9382fd3f68049299d42ca7c3ad15`) produces the same host crash, so the evidence does not identify a v0.4.26 gameplay regression. A real phone or repaired emulator host is required for the fresh mobile horizon visual gate.
 
 ## Preserved v0.4.17 runtime evidence
 

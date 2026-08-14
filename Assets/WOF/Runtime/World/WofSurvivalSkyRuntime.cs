@@ -32,6 +32,10 @@ namespace WOF
         public const float CycleSeconds = 600f;
         public const float ForcedDaySeconds = CycleSeconds * 0.07f;
         public const float ForcedNightSeconds = CycleSeconds * 0.57f;
+        public const float HorizonRadius = 512f * 5.5f;
+        public const float HorizonHeight = 2200f;
+        public const float HorizonY = 330f;
+        public const int HorizonSegments = 96;
         private const float VisualScale = 0.38f;
         private const float SkyRadius = 512f * 2.85f * VisualScale;
         private const float StarRadius = 585f;
@@ -53,6 +57,9 @@ namespace WOF
         private static readonly Color TerrainDayTint = Color.white;
         private static readonly Color TerrainNightTint = Hex("#3f4f45");
         private static readonly Color TerrainDuskTint = Hex("#c4ae72");
+        private static readonly Color HorizonDayTint = Color.white;
+        private static readonly Color HorizonDuskTint = Hex("#ffd09a");
+        private static readonly Color HorizonNightTint = Hex("#4b547c");
         private static readonly int TerrainTintProperty = Shader.PropertyToID("_WofSurvivalTerrainTint");
 
         private readonly List<SkyBillboard> _clouds = new();
@@ -63,6 +70,10 @@ namespace WOF
         private SkyBillboard _astralBlink;
         private Transform _starSphere;
         private Material _starMaterial;
+        private Transform _horizonCylinder;
+        private Material _horizonMaterial;
+        private Mesh _horizonMesh;
+        private Texture2D _horizonTexture;
         private Texture2D[] _moonTextures;
         private Camera _camera;
         private WofPlayerController _localPlayer;
@@ -132,7 +143,7 @@ namespace WOF
             if (_camera != null)
             {
                 _camera.clearFlags = CameraClearFlags.SolidColor;
-                _camera.farClipPlane = Mathf.Max(_camera.farClipPlane, 600f);
+                _camera.farClipPlane = Mathf.Max(_camera.farClipPlane, HorizonRadius + 512f);
             }
         }
 
@@ -219,6 +230,8 @@ namespace WOF
             WofAstralPresentationFrame astral)
         {
             var cameraPosition = _camera.transform.position;
+            _horizonCylinder.position = new Vector3(cameraPosition.x, HorizonY, cameraPosition.z);
+            _horizonMaterial.color = EvaluateHorizonTint(cycle);
             var sunVector = new Vector3(Mathf.Cos(cycle.SunAngle) * 0.82f, Mathf.Sin(cycle.SunAngle) * 0.96f, -0.38f).normalized;
             _sun.Transform.position = cameraPosition + sunVector * SkyRadius;
             _sun.Transform.localScale = Vector3.one * ((280f + cycle.DuskAmount * 42f) * VisualScale);
@@ -337,6 +350,23 @@ namespace WOF
 
             var root = new GameObject("ReactSurvivalSkyVisuals").transform;
             root.SetParent(transform, false);
+            var horizon = new GameObject("ReactHorizonCylinder");
+            horizon.transform.SetParent(root, false);
+            horizon.transform.localPosition = new Vector3(0f, HorizonY, 0f);
+            _horizonMesh = CreateHorizonCylinderMesh(HorizonRadius, HorizonHeight, HorizonSegments);
+            _horizonTexture = WofSurvivalSkyTextures.CreateHorizonHills();
+            horizon.AddComponent<MeshFilter>().sharedMesh = _horizonMesh;
+            _horizonMaterial = new Material(shader)
+            {
+                name = "ReactHorizonCylinderMaterial",
+                mainTexture = _horizonTexture,
+                color = HorizonDayTint,
+                renderQueue = 2880
+            };
+            _horizonMaterial.SetFloat("_Cull", 0f);
+            _horizonMaterial.SetFloat("_UseFog", 1f);
+            horizon.AddComponent<MeshRenderer>().sharedMaterial = _horizonMaterial;
+            _horizonCylinder = horizon.transform;
             _sun = MakeBillboard(root, "ReactSurvivalSun", shader, WofSurvivalSkyTextures.CreateSun());
             _astralVeil = MakeBillboard(
                 root,
@@ -372,7 +402,46 @@ namespace WOF
             _starMaterial.SetFloat("_Cull", 1f);
             stars.GetComponent<MeshRenderer>().sharedMaterial = _starMaterial;
             _starSphere = stars.transform;
-            Debug.Log($"[WOF-AUTOMATION] SURVIVAL_SKY_READY cycleSeconds={CycleSeconds:F0} moons={_moons.Count} clouds={_clouds.Count} stars=520");
+            Debug.Log($"[WOF-AUTOMATION] SURVIVAL_SKY_READY cycleSeconds={CycleSeconds:F0} moons={_moons.Count} clouds={_clouds.Count} stars=520 horizonSegments={HorizonSegments}");
+        }
+
+        internal static Mesh CreateHorizonCylinderMesh(float radius, float height, int segments)
+        {
+            if (radius <= 0f) throw new ArgumentOutOfRangeException(nameof(radius));
+            if (height <= 0f) throw new ArgumentOutOfRangeException(nameof(height));
+            if (segments < 3) throw new ArgumentOutOfRangeException(nameof(segments));
+            var vertices = new Vector3[(segments + 1) * 2];
+            var uvs = new Vector2[vertices.Length];
+            var triangles = new int[segments * 6];
+            var halfHeight = height * 0.5f;
+            for (var index = 0; index <= segments; index++)
+            {
+                var amount = index / (float)segments;
+                var angle = amount * Mathf.PI * 2f;
+                var x = Mathf.Sin(angle) * radius;
+                var z = Mathf.Cos(angle) * radius;
+                var vertex = index * 2;
+                vertices[vertex] = new Vector3(x, -halfHeight, z);
+                vertices[vertex + 1] = new Vector3(x, halfHeight, z);
+                uvs[vertex] = new Vector2(amount, 0f);
+                uvs[vertex + 1] = new Vector2(amount, 1f);
+                if (index == segments) continue;
+                var triangle = index * 6;
+                triangles[triangle] = vertex;
+                triangles[triangle + 1] = vertex + 1;
+                triangles[triangle + 2] = vertex + 2;
+                triangles[triangle + 3] = vertex + 1;
+                triangles[triangle + 4] = vertex + 3;
+                triangles[triangle + 5] = vertex + 2;
+            }
+
+            var mesh = new Mesh { name = "ReactHorizonCylinderMesh" };
+            mesh.vertices = vertices;
+            mesh.uv = uvs;
+            mesh.triangles = triangles;
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
         }
 
         private static SkyBillboard MakeBillboard(Transform parent, string name, Shader shader, Texture texture)
@@ -431,9 +500,18 @@ namespace WOF
             return Color.Lerp(tint, TerrainDuskTint, cycle.DuskAmount * 0.16f);
         }
 
+        public static Color EvaluateHorizonTint(WofSurvivalSkyCycle cycle)
+        {
+            var tint = Color.Lerp(HorizonNightTint, HorizonDayTint, cycle.DayAmount);
+            return Color.Lerp(tint, HorizonDuskTint, cycle.DuskAmount * 0.32f);
+        }
+
         private void OnDestroy()
         {
             Shader.SetGlobalColor(TerrainTintProperty, TerrainDayTint);
+            if (_horizonMesh != null) Destroy(_horizonMesh);
+            if (_horizonMaterial != null) Destroy(_horizonMaterial);
+            if (_horizonTexture != null) Destroy(_horizonTexture);
         }
 
         private static Color WithAlpha(Color color, float alpha)

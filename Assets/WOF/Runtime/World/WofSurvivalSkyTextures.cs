@@ -4,6 +4,9 @@ namespace WOF
 {
     internal static class WofSurvivalSkyTextures
     {
+        internal const int HorizonWidth = 2048;
+        internal const int HorizonHeight = 1024;
+
         private static readonly Vector3[] MoonCraters =
         {
             new(-8f, -7f, 5f), new(7f, 4f, 4f), new(-2f, 11f, 3f), new(9f, -11f, 3f)
@@ -163,6 +166,34 @@ namespace WOF
             return MakeTexture("ReactSurvivalStars", width, height, pixels, TextureWrapMode.Repeat);
         }
 
+        public static Texture2D CreateHorizonHills()
+        {
+            var pixels = new Color32[HorizonWidth * HorizonHeight];
+            DrawHorizonLayer(pixels, new Color32(79, 150, 49, 255), 450f,
+                2f, 60f, 1f, 80f, 4f, 20f, 0.2f, new Color32(67, 132, 43, 255), 381u);
+            DrawHorizonLayer(pixels, new Color32(79, 150, 49, 255), 600f,
+                3f, 50f, 2f, 70f, 5f, 15f, 0.3f, new Color32(63, 125, 40, 255), 727u);
+            DrawHorizonLayer(pixels, new Color32(71, 137, 45, 255), 750f,
+                2f, 80f, 4f, 40f, 6f, 25f, 0.4f, new Color32(53, 111, 34, 255), 1091u);
+
+            var texture = new Texture2D(
+                HorizonWidth,
+                HorizonHeight,
+                TextureFormat.RGBA32,
+                true,
+                false)
+            {
+                name = "ReactHorizonHills",
+                filterMode = FilterMode.Trilinear,
+                wrapModeU = TextureWrapMode.Repeat,
+                wrapModeV = TextureWrapMode.Clamp,
+                anisoLevel = 0
+            };
+            texture.SetPixels32(pixels);
+            texture.Apply(true, false);
+            return texture;
+        }
+
         public static Texture2D CreateAstralVeil()
         {
             const int width = 192;
@@ -269,6 +300,84 @@ namespace WOF
             }
         }
 
+        private static void DrawHorizonLayer(
+            Color32[] pixels,
+            Color32 hillColor,
+            float baseHeight,
+            float frequency1,
+            float amplitude1,
+            float frequency2,
+            float amplitude2,
+            float frequency3,
+            float amplitude3,
+            float treeDensity,
+            Color32 treeColor,
+            uint randomSeed)
+        {
+            var heights = new float[HorizonWidth];
+            for (var x = 0; x < HorizonWidth; x++)
+            {
+                var phase = x / (float)HorizonWidth * Mathf.PI * 2f;
+                var height = baseHeight + Mathf.Sin(phase * frequency1) * amplitude1 +
+                             Mathf.Cos(phase * frequency2) * amplitude2 +
+                             Mathf.Sin(phase * frequency3) * amplitude3;
+                heights[x] = height;
+                var firstCanvasY = Mathf.Clamp(Mathf.CeilToInt(height), 0, HorizonHeight);
+                for (var canvasY = firstCanvasY; canvasY < HorizonHeight; canvasY++)
+                    pixels[CanvasPixelIndex(x, canvasY)] = hillColor;
+            }
+
+            var random = new HorizonSeededRandom(randomSeed);
+            for (var x = 0; x < HorizonWidth; x += 8)
+            {
+                if (random.Next() >= treeDensity) continue;
+                var treeHeight = 15f + random.Next() * 15f;
+                var treeWidth = 8f + random.Next() * 6f;
+                FillCanvasTriangle(
+                    pixels,
+                    new Vector2(x - treeWidth * 0.5f, heights[x] + 2f),
+                    new Vector2(x, heights[x] - treeHeight),
+                    new Vector2(x + treeWidth * 0.5f, heights[x] + 2f),
+                    treeColor);
+            }
+        }
+
+        private static void FillCanvasTriangle(
+            Color32[] pixels,
+            Vector2 a,
+            Vector2 b,
+            Vector2 c,
+            Color32 color)
+        {
+            var minX = Mathf.Max(0, Mathf.FloorToInt(Mathf.Min(a.x, Mathf.Min(b.x, c.x))));
+            var maxX = Mathf.Min(HorizonWidth - 1, Mathf.CeilToInt(Mathf.Max(a.x, Mathf.Max(b.x, c.x))));
+            var minY = Mathf.Max(0, Mathf.FloorToInt(Mathf.Min(a.y, Mathf.Min(b.y, c.y))));
+            var maxY = Mathf.Min(HorizonHeight - 1, Mathf.CeilToInt(Mathf.Max(a.y, Mathf.Max(b.y, c.y))));
+            var area = Edge(a, b, c);
+            if (Mathf.Abs(area) <= 0.0001f) return;
+            for (var y = minY; y <= maxY; y++)
+            for (var x = minX; x <= maxX; x++)
+            {
+                var point = new Vector2(x + 0.5f, y + 0.5f);
+                var first = Edge(a, b, point);
+                var second = Edge(b, c, point);
+                var third = Edge(c, a, point);
+                if (area > 0f ? first < 0f || second < 0f || third < 0f : first > 0f || second > 0f || third > 0f)
+                    continue;
+                pixels[CanvasPixelIndex(x, y)] = color;
+            }
+        }
+
+        private static float Edge(Vector2 a, Vector2 b, Vector2 point)
+        {
+            return (point.x - a.x) * (b.y - a.y) - (point.y - a.y) * (b.x - a.x);
+        }
+
+        private static int CanvasPixelIndex(int x, int canvasY)
+        {
+            return (HorizonHeight - 1 - canvasY) * HorizonWidth + x;
+        }
+
         private static Color AlphaOver(Color bottom, Color top)
         {
             var alpha = top.a + bottom.a * (1f - top.a);
@@ -292,6 +401,22 @@ namespace WOF
             texture.SetPixels(pixels);
             texture.Apply(false, false);
             return texture;
+        }
+
+        private struct HorizonSeededRandom
+        {
+            private uint _seed;
+
+            public HorizonSeededRandom(uint seed)
+            {
+                _seed = seed;
+            }
+
+            public float Next()
+            {
+                _seed = unchecked(_seed * 1664525u + 1013904223u);
+                return (float)(_seed / 4294967296d);
+            }
         }
     }
 }
