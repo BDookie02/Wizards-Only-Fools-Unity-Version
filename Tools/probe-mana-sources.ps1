@@ -3,6 +3,8 @@ param(
     [string]$OutputRoot = 'D:\tmp\wof-unity\mana-source-probes',
     [ValidateSet('base', 'well', 'rune')]
     [string]$Kind = 'base',
+    [ValidateSet('quality', 'mobile')]
+    [string]$PerformanceMode = 'quality',
     [ValidateRange(640, 3840)]
     [int]$Width = 1280,
     [ValidateRange(360, 2160)]
@@ -19,7 +21,7 @@ if (-not $resolvedBuildRoot.StartsWith('D:\', [System.StringComparison]::Ordinal
     throw 'Mana-source probe requires an existing Windows build and D:-drive output paths.'
 }
 
-$probeRoot = Join-Path $resolvedOutputRoot $Kind
+$probeRoot = Join-Path $resolvedOutputRoot (Join-Path $PerformanceMode $Kind)
 $profileRoot = Join-Path $probeRoot ('profile-' + [Guid]::NewGuid().ToString('N'))
 $tempRoot = Join-Path $probeRoot 'temp'
 foreach ($path in @($probeRoot, $profileRoot, $tempRoot)) {
@@ -44,9 +46,30 @@ public static class WofManaSourceCapture {
   [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern IntPtr SetFocus(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr processId);
+  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint attach, uint attachTo, bool value);
+  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int command);
   [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
   [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
+  public static bool Focus(IntPtr hWnd) {
+    ShowWindowAsync(hWnd, 9);
+    IntPtr foreground = GetForegroundWindow();
+    uint currentThread = GetCurrentThreadId();
+    uint targetThread = GetWindowThreadProcessId(hWnd, IntPtr.Zero);
+    uint foregroundThread = foreground == IntPtr.Zero ? 0 : GetWindowThreadProcessId(foreground, IntPtr.Zero);
+    if (foregroundThread != 0 && foregroundThread != currentThread) AttachThreadInput(currentThread, foregroundThread, true);
+    if (targetThread != 0 && targetThread != currentThread) AttachThreadInput(currentThread, targetThread, true);
+    BringWindowToTop(hWnd);
+    SetForegroundWindow(hWnd);
+    SetFocus(hWnd);
+    if (targetThread != 0 && targetThread != currentThread) AttachThreadInput(currentThread, targetThread, false);
+    if (foregroundThread != 0 && foregroundThread != currentThread) AttachThreadInput(currentThread, foregroundThread, false);
+    return GetForegroundWindow() == hWnd;
+  }
 }
 '@
 [WofManaSourceCapture]::SetProcessDPIAware() | Out-Null
@@ -56,6 +79,11 @@ $arguments = @(
     '--wof-solo', "--wof-mana-source-probe=$Kind", '--wof-auto-exit=90',
     "--wof-profile-root=$profileRoot", '-logFile', $logPath
 )
+if ($PerformanceMode -eq 'mobile') {
+    $arguments += @('--wof-mobile-performance', '--wof-mobile-ui')
+} else {
+    $arguments += '--wof-quality-performance'
+}
 $previousTemp = $env:TEMP
 $previousTmp = $env:TMP
 $env:TEMP = $tempRoot
@@ -84,8 +112,9 @@ try {
              [DateTime]::UtcNow -lt $windowDeadline)
     $handle = $process.MainWindowHandle
     if ($handle -eq [IntPtr]::Zero) { throw 'Mana-source player has no main window.' }
-    [WofManaSourceCapture]::ShowWindowAsync($handle, 9) | Out-Null
-    [WofManaSourceCapture]::SetForegroundWindow($handle) | Out-Null
+    if (-not [WofManaSourceCapture]::Focus($handle)) {
+        throw 'Could not foreground the mana-source player.'
+    }
     $rect = New-Object WofManaSourceCapture+RECT
     $point = New-Object WofManaSourceCapture+POINT
     if (-not [WofManaSourceCapture]::GetClientRect($handle, [ref]$rect) -or
@@ -99,6 +128,10 @@ try {
     }
 
     function Save-ClientCapture([string]$Path) {
+        if (-not [WofManaSourceCapture]::Focus($handle)) {
+            throw 'Lost the mana-source player foreground before capture.'
+        }
+        Start-Sleep -Milliseconds 250
         $bitmap = New-Object System.Drawing.Bitmap $capturedWidth, $capturedHeight
         $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
         try {
@@ -119,6 +152,7 @@ try {
     Save-ClientCapture $afterPath
     [PSCustomObject]@{
         Kind = $Kind
+        PerformanceMode = $PerformanceMode
         Before = $beforePath
         After = $afterPath
         Log = $logPath

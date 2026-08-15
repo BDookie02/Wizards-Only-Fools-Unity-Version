@@ -228,8 +228,8 @@ namespace WOF.Editor
         {
             PlayerSettings.companyName = "Wizards Only Fools";
             PlayerSettings.productName = "Wizards Only Fools";
-            PlayerSettings.bundleVersion = "0.4.27";
-            PlayerSettings.Android.bundleVersionCode = 30;
+            PlayerSettings.bundleVersion = "0.4.28";
+            PlayerSettings.Android.bundleVersionCode = 31;
             PlayerSettings.runInBackground = true;
             PlayerSettings.colorSpace = ColorSpace.Linear;
             PlayerSettings.defaultScreenWidth = 1280;
@@ -2119,6 +2119,12 @@ namespace WOF.Editor
             leftSpellImage.raycastTarget = false;
             var spellImage = CreateImage("RightHeldFireball", gameplaySafeArea.transform, rightSpellFrames.FirstOrDefault(), Color.white);
             spellImage.raycastTarget = false;
+            var leftSpellIcon = CreateImage("LeftHeldSpellSprite", leftSpellImage.transform, null, Color.white);
+            leftSpellIcon.preserveAspect = true;
+            leftSpellIcon.raycastTarget = false;
+            var rightSpellIcon = CreateImage("RightHeldSpellSprite", spellImage.transform, null, Color.white);
+            rightSpellIcon.preserveAspect = true;
+            rightSpellIcon.raycastTarget = false;
             var magicHandsLayout = gameplaySafeArea.gameObject.AddComponent<WofMagicHandsLayout>();
             SetObjectReference(magicHandsLayout, "leftHandFrame", leftHandImage.rectTransform);
             SetObjectReference(magicHandsLayout, "rightHandFrame", rightHandImage.rectTransform);
@@ -2150,6 +2156,8 @@ namespace WOF.Editor
             SetObjectReference(hud, "rightHandImage", rightHandImage);
             SetObjectReference(hud, "leftHeldSpellImage", leftSpellImage);
             SetObjectReference(hud, "heldSpellImage", spellImage);
+            SetObjectReference(hud, "leftHeldSpellIcon", leftSpellIcon);
+            SetObjectReference(hud, "rightHeldSpellIcon", rightSpellIcon);
             SetObjectReference(hud, "magicHandsLayout", magicHandsLayout);
             SetObjectReferenceArray(hud, "leftHandFrames", leftHandFrames);
             SetObjectReferenceArray(hud, "rightHandFrames", rightHandFrames);
@@ -2157,6 +2165,13 @@ namespace WOF.Editor
             SetObjectReferenceArray(hud, "rightFiringHandFrames", rightFiringHandFrames);
             SetObjectReferenceArray(hud, "leftHeldSpellFrames", leftSpellFrames);
             SetObjectReferenceArray(hud, "rightHeldSpellFrames", rightSpellFrames);
+            SetObjectReferenceArray(
+                hud,
+                "heldSpellIcons",
+                WofSpellLoadout.PlayableSpells
+                    .Select(spell => LoadRequiredAsset<Sprite>(
+                        $"Assets/WOF/Art/Generated/React/HUD/SpellMenu/{WofSpellLoadout.GetReactId(spell)}.png"))
+                    .ToArray());
 
             // Construct the dialog hierarchy after scene load. Serializing the complete modal
             // object graph makes Unity 6 emit an unreadable level0 player payload.

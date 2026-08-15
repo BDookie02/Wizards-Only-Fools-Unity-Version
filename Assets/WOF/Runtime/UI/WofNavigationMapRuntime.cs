@@ -358,7 +358,7 @@ namespace WOF
             foreach (var record in WofMapFastTravel.MenuDestinations)
             {
                 var capturedDestination = record.Destination;
-                var isDimension = capturedDestination == WofMapDestination.LilyCoil;
+                var isDimension = WofMapFastTravel.IsRemoteRealm(capturedDestination);
                 var button = CreateButton(
                     $"Travel{record.Destination}",
                     destinations.transform,

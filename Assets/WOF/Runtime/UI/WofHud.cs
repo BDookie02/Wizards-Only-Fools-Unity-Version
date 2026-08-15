@@ -26,12 +26,15 @@ namespace WOF
         [SerializeField] private Image rightHandImage;
         [SerializeField] private Image leftHeldSpellImage;
         [SerializeField] private Image heldSpellImage;
+        [SerializeField] private Image leftHeldSpellIcon;
+        [SerializeField] private Image rightHeldSpellIcon;
         [SerializeField] private Sprite[] leftHandFrames;
         [SerializeField] private Sprite[] rightHandFrames;
         [SerializeField] private Sprite[] leftFiringHandFrames;
         [SerializeField] private Sprite[] rightFiringHandFrames;
         [SerializeField] private Sprite[] leftHeldSpellFrames;
         [SerializeField] private Sprite[] rightHeldSpellFrames;
+        [SerializeField] private Sprite[] heldSpellIcons;
         [SerializeField] private WofMagicHandsLayout magicHandsLayout;
 
         private float _handClock;
@@ -59,6 +62,8 @@ namespace WOF
         private WofMagicGlassOrbGraphic _rightMagicGlassOrb;
         private WofPlayerController _magicGlassOrbOwner;
         private float _nextMagicGlassOrbSignalAt;
+        private WofSpellId _leftPresentedSpell = WofSpellLoadout.ReactDefaultLeft;
+        private WofSpellId _rightPresentedSpell = WofSpellLoadout.ReactDefaultRight;
 
         public static WofHud Instance { get; private set; }
         public bool IsGameplayVisible => _gameplayVisible && !_gameplaySurfaceBlocked;
@@ -120,6 +125,8 @@ namespace WOF
                     _handIdleProbe = true;
                 }
             }
+            EnsureHandOccludesHeldSpell(leftHeldSpellImage, leftHandImage);
+            EnsureHandOccludesHeldSpell(heldSpellImage, rightHandImage);
             CreateFlashbangOverlay();
             CreateMagicGlassOrbEffects();
             SetGameplayVisible(false);
@@ -180,6 +187,8 @@ namespace WOF
             magicHandsLayout?.SetFiringPose(_magicArmed, _magicArmed);
             AnimateFrames(leftHeldSpellImage, leftHeldSpellFrames, ref _spellClock, ref _spellFrame, 0.1f);
             SyncFrame(heldSpellImage, rightHeldSpellFrames, _spellFrame);
+            UpdateHeldSpellIconPose(leftHeldSpellIcon, _leftPresentedSpell, false, leftFiring);
+            UpdateHeldSpellIconPose(rightHeldSpellIcon, _rightPresentedSpell, true, rightFiring);
         }
 
         public void PlayFiringPose(WofHandSide hand, float holdSeconds = 0.14f)
@@ -387,10 +396,12 @@ namespace WOF
             WofSpellId rightSpell,
             WofPlayerController owner)
         {
+            _leftPresentedSpell = leftSpell;
+            _rightPresentedSpell = rightSpell;
             _magicGlassOrbOwner = owner;
             CreateMagicGlassOrbEffects();
-            ApplyHeldSpellPresentation(leftHeldSpellImage, _leftMagicGlassOrb, leftSpell);
-            ApplyHeldSpellPresentation(heldSpellImage, _rightMagicGlassOrb, rightSpell);
+            ApplyHeldSpellPresentation(leftHeldSpellImage, leftHeldSpellIcon, _leftMagicGlassOrb, leftSpell, false);
+            ApplyHeldSpellPresentation(heldSpellImage, rightHeldSpellIcon, _rightMagicGlassOrb, rightSpell, true);
             _nextMagicGlassOrbSignalAt = 0f;
         }
 
@@ -405,6 +416,21 @@ namespace WOF
                 if (heldSpellImage != null) heldSpellImage.gameObject.SetActive(false);
                 _leftFiringUntil = 0f;
                 _rightFiringUntil = 0f;
+            }
+            else
+            {
+                ApplyHeldSpellPresentation(
+                    leftHeldSpellImage,
+                    leftHeldSpellIcon,
+                    _leftMagicGlassOrb,
+                    _leftPresentedSpell,
+                    false);
+                ApplyHeldSpellPresentation(
+                    heldSpellImage,
+                    rightHeldSpellIcon,
+                    _rightMagicGlassOrb,
+                    _rightPresentedSpell,
+                    true);
             }
         }
 
@@ -472,15 +498,69 @@ namespace WOF
 
         private void ApplyHeldSpellPresentation(
             Image parentImage,
+            Image spellIcon,
             WofMagicGlassOrbGraphic magicGlassOrb,
-            WofSpellId spell)
+            WofSpellId spell,
+            bool right)
         {
             if (parentImage == null) return;
-            var showFireball = _magicHandsVisible && spell == WofSpellId.Fireball;
-            var showMagicGlassOrb = _magicHandsVisible && spell == WofSpellId.MagicGlassOrb;
-            parentImage.gameObject.SetActive(showFireball || showMagicGlassOrb);
+            var spec = WofHeldSpellPresentationRules.Get(spell);
+            var showFireball = _magicHandsVisible && spec.Kind == WofHeldSpellVisualKind.AnimatedFireball;
+            var showMagicGlassOrb = _magicHandsVisible && spec.Kind == WofHeldSpellVisualKind.MagicGlassOrb;
+            var showIcon = _magicHandsVisible && spec.Kind == WofHeldSpellVisualKind.ReactSprite;
+            parentImage.gameObject.SetActive(_magicHandsVisible);
             parentImage.enabled = showFireball;
+            if (spellIcon != null)
+            {
+                spellIcon.gameObject.SetActive(showIcon);
+                if (showIcon)
+                {
+                    var spriteIndex = WofHeldSpellPresentationRules.GetSpriteIndex(spell);
+                    spellIcon.sprite = heldSpellIcons != null && spriteIndex >= 0 && spriteIndex < heldSpellIcons.Length
+                        ? heldSpellIcons[spriteIndex]
+                        : null;
+                    spellIcon.enabled = spellIcon.sprite != null;
+                    ConfigureHeldSpellIcon(spellIcon.rectTransform, spec, right);
+                }
+            }
             magicGlassOrb?.gameObject.SetActive(showMagicGlassOrb);
+        }
+
+        private void ConfigureHeldSpellIcon(RectTransform rect, WofHeldSpellVisualSpec spec, bool right)
+        {
+            if (rect == null) return;
+            var anchor = right
+                ? new Vector2(358f / 859f, (495f - 224f) / 495f)
+                : new Vector2(338f / 859f, (495f - 218f) / 495f);
+            rect.anchorMin = anchor;
+            rect.anchorMax = anchor;
+            rect.pivot = new Vector2(0.5f, 0f);
+            rect.anchoredPosition = Vector2.zero;
+            var canvas = GetComponentInParent<Canvas>();
+            var scaleFactor = canvas != null ? Mathf.Max(0.0001f, canvas.scaleFactor) : 1f;
+            var size = spec.ResolveSizePixels(Screen.height) / scaleFactor;
+            rect.sizeDelta = Vector2.one * size;
+            UpdateHeldSpellIconPose(rect.GetComponent<Image>(), right ? _rightPresentedSpell : _leftPresentedSpell, right, false);
+        }
+
+        private static void UpdateHeldSpellIconPose(Image icon, WofSpellId spell, bool right, bool firing)
+        {
+            if (icon == null || !icon.gameObject.activeSelf) return;
+            var spec = WofHeldSpellPresentationRules.Get(spell);
+            var pulse = firing ? 1.08f + Mathf.Sin(Time.unscaledTime * 18f) * 0.025f : 1f;
+            icon.rectTransform.localScale = new Vector3(right ? -pulse : pulse, pulse, 1f);
+            icon.rectTransform.localEulerAngles = new Vector3(
+                0f,
+                0f,
+                right ? -spec.RotationDegrees : spec.RotationDegrees);
+        }
+
+        internal static void EnsureHandOccludesHeldSpell(Image spell, Image hand)
+        {
+            if (spell == null || hand == null || spell.transform.parent != hand.transform.parent) return;
+            var firstIndex = Mathf.Min(spell.transform.GetSiblingIndex(), hand.transform.GetSiblingIndex());
+            spell.transform.SetSiblingIndex(firstIndex);
+            hand.transform.SetSiblingIndex(firstIndex + 1);
         }
 
         private void UpdateMagicGlassOrbEffects()

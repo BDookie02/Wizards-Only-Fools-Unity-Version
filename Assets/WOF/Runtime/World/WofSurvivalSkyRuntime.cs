@@ -255,7 +255,7 @@ namespace WOF
             if (_directionalLight == null) return;
             _directionalLight.transform.rotation = WofGameWorldLightingLayout.GetDirectionalLightRotation();
             _directionalLight.intensity = mobile
-                ? WofGameWorldLightingLayout.MobileDirectionalIntensity
+                ? WofGameWorldLightingLayout.UnityMobileDirectionalIntensity
                 : WofGameWorldLightingLayout.ClassicDirectionalIntensity;
             _directionalLight.color = Color.white;
         }
@@ -344,14 +344,12 @@ namespace WOF
             RenderSettings.fogEndDistance = 512f * (10.5f + cycle.DayAmount * 4.2f - astralStrength * 2.2f);
             if (_camera != null) _camera.backgroundColor = sky;
 
-            var mobile = WofPerformanceModeRuntime.IsMobilePerformanceMode;
-            var ambient = mobile
-                ? 0.86f + cycle.DayAmount * 0.58f + cycle.NightAmount * 0.1f
-                : 0.34f + cycle.DayAmount * 0.44f + cycle.NightAmount * 0.08f;
+            // Mobile uses the same visual exposure as quality mode. The stronger
+            // raw React mobile lights compensated for a different renderer and DPR;
+            // in Unity those values were additive and clipped the base village.
+            var ambient = 0.34f + cycle.DayAmount * 0.44f + cycle.NightAmount * 0.08f;
             ambient += astralStrength * 0.18f;
-            var hemisphere = mobile
-                ? 0.78f + cycle.DayAmount * 0.52f
-                : 0.34f + cycle.DayAmount * 0.28f;
+            var hemisphere = 0.34f + cycle.DayAmount * 0.28f;
             RenderSettings.ambientSkyColor = Color.white * (ambient + hemisphere);
             RenderSettings.ambientGroundColor = Color.white * ambient + HemisphereGround * hemisphere;
             RenderSettings.ambientEquatorColor = Color.Lerp(RenderSettings.ambientGroundColor, RenderSettings.ambientSkyColor, 0.5f);
@@ -360,9 +358,7 @@ namespace WOF
             if (_directionalLight == null) return;
             var sunVector = new Vector3(Mathf.Cos(cycle.SunAngle) * 0.82f, Mathf.Sin(cycle.SunAngle) * 0.96f, -0.38f).normalized;
             _directionalLight.transform.rotation = Quaternion.LookRotation(-sunVector, Vector3.up);
-            _directionalLight.intensity = mobile
-                ? 1.55f + cycle.DayAmount * 1.05f + cycle.DuskAmount * 0.34f
-                : 0.56f + cycle.DayAmount * 1.46f + cycle.DuskAmount * 0.22f;
+            _directionalLight.intensity = 0.56f + cycle.DayAmount * 1.46f + cycle.DuskAmount * 0.22f;
             _directionalLight.color = Color.Lerp(SunDay, SunDusk, cycle.DuskAmount * 0.55f);
             _directionalLight.color = Color.Lerp(_directionalLight.color, AstralSky, astralStrength * 0.35f);
         }

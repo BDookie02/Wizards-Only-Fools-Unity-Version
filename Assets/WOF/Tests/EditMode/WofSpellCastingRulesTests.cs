@@ -1,4 +1,6 @@
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.UI;
 
 namespace WOF.Tests
 {
@@ -44,6 +46,60 @@ namespace WOF.Tests
                 {
                     Assert.That(consumesOnRelease, Is.True, spell.ToString());
                 }
+            }
+        }
+
+        [Test]
+        public void EveryPlayableSpellHasAStableEquippedHandVisual()
+        {
+            Assert.That(WofSpellLoadout.PlayableSpells, Has.Length.EqualTo(26));
+            foreach (var spell in WofSpellLoadout.PlayableSpells)
+            {
+                var spec = WofHeldSpellPresentationRules.Get(spell);
+                Assert.That(WofHeldSpellPresentationRules.GetSpriteIndex(spell), Is.EqualTo((int)spell), spell.ToString());
+                if (spell == WofSpellId.ArcaneBeam)
+                {
+                    Assert.That(spec.Kind, Is.EqualTo(WofHeldSpellVisualKind.HandPoseOnly));
+                    Assert.That(spec.ResolveSizePixels(720f), Is.Zero);
+                }
+                else
+                {
+                    Assert.That(spec.ResolveSizePixels(720f), Is.GreaterThan(0f), spell.ToString());
+                }
+            }
+
+            Assert.That(
+                WofHeldSpellPresentationRules.Get(WofSpellId.Fireball).Kind,
+                Is.EqualTo(WofHeldSpellVisualKind.AnimatedFireball));
+            Assert.That(
+                WofHeldSpellPresentationRules.Get(WofSpellId.Flamethrower).Kind,
+                Is.EqualTo(WofHeldSpellVisualKind.AnimatedFireball));
+            Assert.That(
+                WofHeldSpellPresentationRules.Get(WofSpellId.MagicGlassOrb).Kind,
+                Is.EqualTo(WofHeldSpellVisualKind.MagicGlassOrb));
+        }
+
+        [Test]
+        public void HeldSpellLayerIsAlwaysBehindItsHand()
+        {
+            var root = new GameObject("HeldSpellOcclusionRoot", typeof(RectTransform));
+            try
+            {
+                var handObject = new GameObject("Hand", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+                handObject.transform.SetParent(root.transform, false);
+                var spellObject = new GameObject("Spell", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+                spellObject.transform.SetParent(root.transform, false);
+                Assert.That(spellObject.transform.GetSiblingIndex(), Is.GreaterThan(handObject.transform.GetSiblingIndex()));
+
+                WofHud.EnsureHandOccludesHeldSpell(
+                    spellObject.GetComponent<Image>(),
+                    handObject.GetComponent<Image>());
+
+                Assert.That(spellObject.transform.GetSiblingIndex(), Is.LessThan(handObject.transform.GetSiblingIndex()));
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
             }
         }
 

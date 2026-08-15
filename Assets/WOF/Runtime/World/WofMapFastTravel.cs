@@ -11,7 +11,8 @@ namespace WOF
         Desert = 3,
         Mountain = 4,
         Graveyard = 5,
-        LilyCoil = 6
+        LilyCoil = 6,
+        PeacefulSanctuary = 7
     }
 
     public readonly struct WofMapDestinationRecord
@@ -53,7 +54,8 @@ namespace WOF
             new(WofMapDestination.Desert, "DESERT", new Vector3(2048f, 140f, -1834f)),
             new(WofMapDestination.Mountain, "MOUNTAIN", new Vector3(1536f, 270f, 62f)),
             new(WofMapDestination.Graveyard, "GRAVEYARD", new Vector3(2560f, 92f, 1156f)),
-            new(WofMapDestination.LilyCoil, "LILY COIL DIMENSION", WofLilyCoilLayout.PlayableSpawnPosition, false)
+            new(WofMapDestination.LilyCoil, "LILY COIL DIMENSION", WofLilyCoilLayout.PlayableSpawnPosition, false),
+            new(WofMapDestination.PeacefulSanctuary, "PEACEFUL SANCTUARY", WofDarrelGroveLayout.SpawnPosition, false)
         };
 
         // Remote realms are intentionally first in the player-facing menu so they
@@ -61,6 +63,7 @@ namespace WOF
         private static readonly WofMapDestinationRecord[] MenuDestinationRecords =
         {
             DestinationRecords[6],
+            DestinationRecords[7],
             DestinationRecords[0],
             DestinationRecords[1],
             DestinationRecords[2],
@@ -89,6 +92,11 @@ namespace WOF
         public static bool IsValid(int destinationValue)
         {
             return destinationValue >= 0 && destinationValue < DestinationRecords.Length;
+        }
+
+        public static bool IsRemoteRealm(WofMapDestination destination)
+        {
+            return destination is WofMapDestination.LilyCoil or WofMapDestination.PeacefulSanctuary;
         }
     }
 }

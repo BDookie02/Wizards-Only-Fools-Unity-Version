@@ -34,6 +34,104 @@ namespace WOF
         MagicGlassOrb = 25
     }
 
+    public enum WofHeldSpellVisualKind
+    {
+        HandPoseOnly = 0,
+        ReactSprite = 1,
+        AnimatedFireball = 2,
+        MagicGlassOrb = 3
+    }
+
+    public readonly struct WofHeldSpellVisualSpec
+    {
+        public WofHeldSpellVisualSpec(
+            WofHeldSpellVisualKind kind,
+            float maximumSizePixels,
+            float viewportHeightRatio,
+            float minimumSizePixels,
+            float rotationDegrees = 0f)
+        {
+            Kind = kind;
+            MaximumSizePixels = maximumSizePixels;
+            ViewportHeightRatio = viewportHeightRatio;
+            MinimumSizePixels = minimumSizePixels;
+            RotationDegrees = rotationDegrees;
+        }
+
+        public WofHeldSpellVisualKind Kind { get; }
+        public float MaximumSizePixels { get; }
+        public float ViewportHeightRatio { get; }
+        public float MinimumSizePixels { get; }
+        public float RotationDegrees { get; }
+
+        public float ResolveSizePixels(float viewportHeight)
+        {
+            return Math.Clamp(
+                viewportHeight * ViewportHeightRatio,
+                MinimumSizePixels,
+                MaximumSizePixels);
+        }
+    }
+
+    /// <summary>
+    /// The equipped-hand visual contract from the React magic-hand renderers. The
+    /// React size helper multiplies its base values by 1.72 before clamping; keeping
+    /// that conversion here makes every spell share the same palm anchor and scale.
+    /// </summary>
+    public static class WofHeldSpellPresentationRules
+    {
+        private const float ReactHeldSpriteScale = 1.72f;
+
+        public static WofHeldSpellVisualSpec Get(WofSpellId spell)
+        {
+            if (!WofSpellLoadout.IsValid((int)spell))
+            {
+                throw new ArgumentOutOfRangeException(nameof(spell), spell, null);
+            }
+
+            return spell switch
+            {
+                // React's "Hands" spell intentionally uses the magic-hand pose itself and
+                // suppresses a second held overlay (magicHandsPoseRuntime.ts).
+                WofSpellId.ArcaneBeam => new WofHeldSpellVisualSpec(
+                    WofHeldSpellVisualKind.HandPoseOnly, 0f, 0f, 0f),
+                WofSpellId.Fireball or WofSpellId.Flamethrower =>
+                    SpriteSpec(WofHeldSpellVisualKind.AnimatedFireball, 160f, 0.24f, 92f),
+                WofSpellId.MagicGlassOrb =>
+                    SpriteSpec(WofHeldSpellVisualKind.MagicGlassOrb, 184f, 0.27f, 98f),
+                WofSpellId.Tornado => SpriteSpec(WofHeldSpellVisualKind.ReactSprite, 178f, 0.26f, 102f),
+                WofSpellId.MeteorShower => SpriteSpec(WofHeldSpellVisualKind.ReactSprite, 170f, 0.25f, 98f),
+                WofSpellId.DiscShield or WofSpellId.OrbShield =>
+                    SpriteSpec(WofHeldSpellVisualKind.ReactSprite, 192f, 0.28f, 108f),
+                WofSpellId.Grab => SpriteSpec(WofHeldSpellVisualKind.ReactSprite, 190f, 0.28f, 108f, -2f),
+                WofSpellId.MagicArmor or WofSpellId.JumpBoost or WofSpellId.SpeedBoost or
+                    WofSpellId.TungstonBallsack or WofSpellId.Sleep or WofSpellId.Poison or WofSpellId.Acid =>
+                    SpriteSpec(WofHeldSpellVisualKind.ReactSprite, 165f, 0.25f, 96f),
+                _ => SpriteSpec(WofHeldSpellVisualKind.ReactSprite, 160f, 0.24f, 92f)
+            };
+        }
+
+        public static int GetSpriteIndex(WofSpellId spell)
+        {
+            return WofSpellLoadout.IsValid((int)spell) ? (int)spell : -1;
+        }
+
+        private static WofHeldSpellVisualSpec SpriteSpec(
+            WofHeldSpellVisualKind kind,
+            float baseSize,
+            float heightRatio,
+            float minimumSize,
+            float rotationDegrees = 0f)
+        {
+            return new WofHeldSpellVisualSpec(
+                kind,
+                baseSize * ReactHeldSpriteScale,
+                heightRatio * ReactHeldSpriteScale,
+                minimumSize * ReactHeldSpriteScale,
+                rotationDegrees);
+        }
+    }
+
     public static class WofSpellLoadout
     {
         public const WofSpellId ReactDefaultLeft = WofSpellId.SpeedBoost;

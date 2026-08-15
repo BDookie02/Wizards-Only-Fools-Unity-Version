@@ -1,27 +1,27 @@
-# Android v0.4.27 release gate
+# Android v0.4.28 release gate
 
 Verified on 2026-08-14 against the exact release APK at `Builds/Android/WizardsOnlyFools.apk`.
 
 ## Artifact identity
 
 - Package: `com.WizardsOnlyFools.WizardsOnlyFools`
-- Version: `0.4.27` (`versionCode` 30)
+- Version: `0.4.28` (`versionCode` 31)
 - Minimum/target Android API: 25/36
-- Size: 158,147,801 bytes
-- SHA-256: `8dca26c7dfe1e314c6645206cd8052fdc8024c276065599939102e3bc8eda7d5`
+- Size: 158,153,105 bytes
+- SHA-256: `c415a34e7d8ef39723963f303af88a6dce5009d1cb1df0c810abc0faeef49120`
 - APK Signature Scheme v2: verified
 - Signing-certificate SHA-256: `844f6c9b6fa3d0cfd48febd45f0568e019ae9edca1f4dd039ab6131c5292f7eb`
 - Activity orientation: Android `userLandscape` in the packaged manifest.
 
 ## Current artifact and install evidence
 
-The exact ARM64 v0.4.27 APK passes the D-hosted release validator. All 1,389 archive entries and 813,773,113 uncompressed bytes were read completely; its internal manifest reports package `com.WizardsOnlyFools.WizardsOnlyFools`, `versionName=0.4.27`, `versionCode=30`, minimum API 25, target API 36, `userLandscape`, and only `arm64-v8a` native libraries. Nine packaged native libraries were found under that ABI. APK Signature Scheme v2 independently verifies with the expected single signing certificate.
+The exact ARM64 v0.4.28 APK passes the D-hosted release validator. All 1,389 archive entries and 813,787,341 uncompressed bytes were read completely; its internal manifest reports package `com.WizardsOnlyFools.WizardsOnlyFools`, `versionName=0.4.28`, `versionCode=31`, minimum API 25, target API 36, `userLandscape`, and only `arm64-v8a` native libraries. Nine packaged native libraries were found under that ABI. APK Signature Scheme v2 independently verifies with the expected single signing certificate.
 
-The full 610/610 Unity EditMode suite passes. The new focused fixtures lock React's separate desktop/mobile custom-lobby presentation contract: fixed 400 x 250 horizon at y 40 with 64 segments, no fog or survival celestial sprites, exact classic/mobile lighting, desktop Preetham atmosphere inputs, and mobile `#9bdcff` background. Existing fixtures retain the survival 2,816 x 2,200 camera-following horizon, scene fog, seeded texture, 600-second cycle, and 56,000-blade/760-flower contracts. The final Windows executable passed receipt/payload/`SESSION_READY` validation plus physically inspected 1280 x 720 custom-lobby, survival-day, and survival-night captures. Hands, HUD, compass, terrain, trees, and the correct mode-specific sky layers remain intact.
+The full 612/612 Unity EditMode suite passes. The new focused fixtures lock the eight-destination fast-travel registry and React-derived hand-presentation contract: Peaceful Sanctuary uses the existing Darrel Grove transition and spawn; all 26 spells resolve to a stable equipped state; React's “Hands” spell uses the hand pose alone; and spell render layers stay behind the hand. Existing fixtures retain the survival 2,816 x 2,200 camera-following horizon, scene fog, seeded texture, 600-second cycle, 56,000-blade/760-flower contracts, and separate custom-lobby presentation. The final Windows executable passed receipt/payload/`SESSION_READY` validation. A native-controller probe physically opened the map, selected Base, Lily Coil, and Peaceful Sanctuary, and arrived inside the dojo realm. A separate physical mouse probe equipped and fired all 26 spells while capturing both states. The final mobile-performance base frame was physically inspected at 1,280 x 720 and retains terrain, wood, foliage, and hand contrast instead of the prior white washout.
 
 ## Current emulator limitation
 
-A fresh v0.4.27 Android in-player custom-sky frame is not claimed. During Unity startup, the Windows host process `qemu-system-x86_64-headless.exe` crashes with exception `0xc0000005`, disconnecting ADB before WOF runtime initialization. The failure repeats with automatic and software GPU backends. A cold-wiped AVD running the exact published v0.4.17 control APK (157,722,347 bytes, SHA-256 `84d3488b357537e71ba2de88d847329053bb9382fd3f68049299d42ca7c3ad15`) produces the same host crash, so the evidence does not identify a v0.4.27 gameplay regression. A real phone or repaired emulator host is required for the fresh mobile custom-sky visual gate.
+A fresh v0.4.28 Android in-player base-lighting frame is not claimed because ADB reported no attached device during this release. The existing Windows QEMU host limitation also remains: `qemu-system-x86_64-headless.exe` crashes with exception `0xc0000005` during Unity startup, disconnecting ADB before WOF runtime initialization. The failure repeats with automatic and software GPU backends. A cold-wiped AVD running the exact published v0.4.17 control APK (157,722,347 bytes, SHA-256 `84d3488b357537e71ba2de88d847329053bb9382fd3f68049299d42ca7c3ad15`) produces the same host crash, so the evidence does not identify a v0.4.28 gameplay regression. The exact mobile-performance lighting branch was physically inspected in the final Windows player, but a real phone or repaired emulator host is still required for the Android hardware/runtime gate.
 
 ## Preserved v0.4.17 runtime evidence
 

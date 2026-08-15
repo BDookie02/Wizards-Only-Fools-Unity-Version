@@ -74,6 +74,7 @@ foreach ($marker in @(
     'CONTROLLER_NAVIGATION_MAP_PASS',
     'CONTROLLER_FAST_TRAVEL_PASS',
     'CONTROLLER_LILY_COIL_FAST_TRAVEL_PASS',
+    'CONTROLLER_PEACEFUL_SANCTUARY_FAST_TRAVEL_PASS',
     'NORTH_GATE_TRAVERSAL_PASS',
     'JUMP_THRUSTER_PASS',
     'URGENT_PLAYABLE_PROBE_PASS')) {
@@ -87,6 +88,7 @@ $screenshots = @(
     'controller-spell-menu.png',
     'controller-navigation-map.png',
     'controller-lily-coil-fast-travel.png',
+    'controller-peaceful-sanctuary-fast-travel.png',
     'north-gate-traversed.png',
     'controller-thruster.png'
 ) | ForEach-Object {

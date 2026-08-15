@@ -14,6 +14,12 @@ namespace WOF
         public const float MobileAmbientIntensity = 1.25f;
         public const float MobileDirectionalIntensity = 2.55f;
         public const float MobileHemisphereIntensity = 1.18f;
+        // Three.js evaluates its ambient and hemisphere lights as separate terms.
+        // Feeding their raw sum into Unity's HDR ambient color double-lights white
+        // materials, which is what made the mobile village appear washed out.
+        public const float UnityMobileAmbientIntensity = 0.28f;
+        public const float UnityMobileHemisphereIntensity = 0.18f;
+        public const float UnityMobileDirectionalIntensity = ClassicDirectionalIntensity;
         public static readonly Color MobileHemisphereSkyColor = Color.white;
         public static readonly Color MobileHemisphereGroundColor = new Color32(163, 125, 82, 255);
 
@@ -30,15 +36,15 @@ namespace WOF
         public static Color GetMobileAmbientSkyColor()
         {
             return AddRgb(
-                ScaleRgb(Color.white, MobileAmbientIntensity),
-                ScaleRgb(MobileHemisphereSkyColor, MobileHemisphereIntensity));
+                ScaleRgb(Color.white, UnityMobileAmbientIntensity),
+                ScaleRgb(MobileHemisphereSkyColor, UnityMobileHemisphereIntensity));
         }
 
         public static Color GetMobileAmbientGroundColor()
         {
             return AddRgb(
-                ScaleRgb(Color.white, MobileAmbientIntensity),
-                ScaleRgb(MobileHemisphereGroundColor, MobileHemisphereIntensity));
+                ScaleRgb(Color.white, UnityMobileAmbientIntensity),
+                ScaleRgb(MobileHemisphereGroundColor, UnityMobileHemisphereIntensity));
         }
 
         public static Color GetMobileAmbientEquatorColor()

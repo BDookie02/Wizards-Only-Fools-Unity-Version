@@ -66,12 +66,17 @@ public static class WofSpellRosterInput {
     keybd_event(key, scan, 2, UIntPtr.Zero);
   }
   public static void ClickClient(IntPtr handle, int x, int y) {
+    PressClient(handle, x, y);
+    System.Threading.Thread.Sleep(750);
+    ReleaseClient();
+  }
+  public static void PressClient(IntPtr handle, int x, int y) {
     POINT point = new POINT { X = x, Y = y };
     if (!ClientToScreen(handle, ref point)) throw new InvalidOperationException("ClientToScreen failed.");
     SetCursorPos(point.X, point.Y);
     mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
-    // Keep both UI and gameplay presses visible across additive-scene frame spikes.
-    System.Threading.Thread.Sleep(750);
+  }
+  public static void ReleaseClient() {
     mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
   }
   public static void SetClientSize(IntPtr handle, int width, int height) {
@@ -176,11 +181,20 @@ try {
 
         [WofSpellRosterInput]::Tap(0x45)
         Start-Sleep -Milliseconds 350
+        $safeSpell = $spell.ToLowerInvariant()
+        Save-WofWindowCapture -Handle $handle -Path (
+            Join-Path $resolvedOutputRoot ('held-{0:D2}-{1}.png' -f $index, $safeSpell))
 
         $castPattern = "\[(?:WOF-AUTOMATION|WOF)\] (?:SPELL_CAST|SELF_SPELL_CAST|HITSCAN_SPELL_CAST|AREA_SPELL_CAST|CHANNEL_SPELL_TICK) owner=0 hand=Left spell=$([regex]::Escape($spell))(?:\s|$)"
         $cast = $false
         for ($attempt = 1; $attempt -le 3 -and -not $cast; $attempt++) {
-            [WofSpellRosterInput]::ClickClient($handle, 640, 120)
+            [WofSpellRosterInput]::PressClient($handle, 640, 120)
+            Start-Sleep -Milliseconds 140
+            if ($attempt -eq 1) {
+                Save-WofWindowCapture -Handle $handle -Path (
+                    Join-Path $resolvedOutputRoot ('firing-{0:D2}-{1}.png' -f $index, $safeSpell))
+            }
+            [WofSpellRosterInput]::ReleaseClient()
             $cast = Wait-WofLog -Pattern $castPattern -Seconds 1
             if (-not $cast) { Start-Sleep -Milliseconds 250 }
         }
@@ -204,6 +218,7 @@ try {
     "[WOF-AUTOMATION] SPELL_ROSTER_PHYSICAL_PASS equipped=$($spells.Count) cast=$($spells.Count) log=$logPath"
 }
 finally {
+    [WofSpellRosterInput]::ReleaseClient()
     if (-not $process.HasExited) {
         $process.CloseMainWindow() | Out-Null
         if (-not $process.WaitForExit(3000)) { Stop-Process -Id $process.Id -Force }

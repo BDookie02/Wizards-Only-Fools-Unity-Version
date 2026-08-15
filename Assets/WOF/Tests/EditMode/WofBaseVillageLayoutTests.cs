@@ -19,7 +19,7 @@ namespace WOF.Tests
         }
 
         [Test]
-        public void MobileClassicWorldLightsMatchReactConfiguration()
+        public void MobileClassicWorldLightsUseUnityExposureCompensation()
         {
             Assert.That(WofGameWorldLightingLayout.MobileAmbientIntensity, Is.EqualTo(1.25f));
             Assert.That(WofGameWorldLightingLayout.MobileDirectionalIntensity, Is.EqualTo(2.55f));
@@ -30,16 +30,23 @@ namespace WOF.Tests
                     new Color32(163, 125, 82, 255)),
                 Is.LessThan(0.00001f));
 
-            var expectedSky = new Color(2.43f, 2.43f, 2.43f, 1f);
+            Assert.That(WofGameWorldLightingLayout.UnityMobileDirectionalIntensity,
+                Is.EqualTo(WofGameWorldLightingLayout.ClassicDirectionalIntensity));
+            var expectedSkyIntensity =
+                WofGameWorldLightingLayout.UnityMobileAmbientIntensity +
+                WofGameWorldLightingLayout.UnityMobileHemisphereIntensity;
+            var expectedSky = new Color(expectedSkyIntensity, expectedSkyIntensity, expectedSkyIntensity, 1f);
             var expectedGround = new Color(
-                1.25f + 163f / 255f * 1.18f,
-                1.25f + 125f / 255f * 1.18f,
-                1.25f + 82f / 255f * 1.18f,
+                WofGameWorldLightingLayout.UnityMobileAmbientIntensity + 163f / 255f * WofGameWorldLightingLayout.UnityMobileHemisphereIntensity,
+                WofGameWorldLightingLayout.UnityMobileAmbientIntensity + 125f / 255f * WofGameWorldLightingLayout.UnityMobileHemisphereIntensity,
+                WofGameWorldLightingLayout.UnityMobileAmbientIntensity + 82f / 255f * WofGameWorldLightingLayout.UnityMobileHemisphereIntensity,
                 1f);
             Assert.That(ColorDistance(WofGameWorldLightingLayout.GetMobileAmbientSkyColor(), expectedSky),
                 Is.LessThan(0.00001f));
             Assert.That(ColorDistance(WofGameWorldLightingLayout.GetMobileAmbientGroundColor(), expectedGround),
                 Is.LessThan(0.00001f));
+            Assert.That(WofGameWorldLightingLayout.GetMobileAmbientSkyColor().maxColorComponent, Is.LessThan(0.5f),
+                "The mobile Unity conversion must never reintroduce the >2 HDR ambient washout.");
         }
 
         [TestCase(0, 0, -0.5f)]

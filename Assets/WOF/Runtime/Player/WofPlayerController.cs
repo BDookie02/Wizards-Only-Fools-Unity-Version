@@ -1847,6 +1847,14 @@ namespace WOF
                 return false;
             }
 
+            // Peaceful Sanctuary is the existing Darrel Grove alternate realm. Route it
+            // through the realm transition so the player's return position and return
+            // gate are armed exactly as they are when the quest sends the player there.
+            if (destination == WofMapDestination.PeacefulSanctuary)
+            {
+                return RequestDarrelGroveTeleport();
+            }
+
             if (IsServer)
             {
                 ApplyMapFastTravelServer(destination);
