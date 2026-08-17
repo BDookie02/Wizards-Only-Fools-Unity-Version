@@ -26,6 +26,7 @@ namespace WOF
     public static class WofEnginePlaceableStorage
     {
         internal const string StorageFileName = "engine-placeables-v1.json";
+        internal const string WebGlPlayerPrefsKey = "wizards-only-fools-unity-engine-placeables";
 
         public static string GetStorageDirectory()
         {
@@ -36,9 +37,14 @@ namespace WOF
         {
             try
             {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                var json = PlayerPrefs.GetString(WebGlPlayerPrefsKey, string.Empty);
+                return Deserialize(json);
+#else
                 var path = Path.Combine(GetStorageDirectory(), StorageFileName);
                 if (!File.Exists(path)) return new WofEnginePlaceableStorageDocument();
-                return Sanitize(JsonUtility.FromJson<WofEnginePlaceableStorageDocument>(File.ReadAllText(path)));
+                return Deserialize(File.ReadAllText(path));
+#endif
             }
             catch (Exception exception)
             {
@@ -51,11 +57,16 @@ namespace WOF
         {
             try
             {
+                var json = Serialize(document);
+#if UNITY_WEBGL && !UNITY_EDITOR
+                PlayerPrefs.SetString(WebGlPlayerPrefsKey, json);
+                PlayerPrefs.Save();
+#else
                 Directory.CreateDirectory(GetStorageDirectory());
-                var sanitized = Sanitize(document);
                 File.WriteAllText(
                     Path.Combine(GetStorageDirectory(), StorageFileName),
-                    JsonUtility.ToJson(sanitized, true));
+                    json);
+#endif
                 return true;
             }
             catch (Exception exception)
@@ -63,6 +74,17 @@ namespace WOF
                 Debug.LogWarning($"[WOF-AUTOMATION] ENGINE_STORAGE_SAVE_WARNING error=\"{exception.Message}\"");
                 return false;
             }
+        }
+
+        internal static WofEnginePlaceableStorageDocument Deserialize(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return new WofEnginePlaceableStorageDocument();
+            return Sanitize(JsonUtility.FromJson<WofEnginePlaceableStorageDocument>(json));
+        }
+
+        internal static string Serialize(WofEnginePlaceableStorageDocument document)
+        {
+            return JsonUtility.ToJson(Sanitize(document), true);
         }
 
         public static string SanitizeSlotId(string value)

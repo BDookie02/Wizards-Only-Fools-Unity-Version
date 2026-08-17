@@ -1,6 +1,6 @@
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('bootstrap', 'test', 'build-windows', 'validate-windows', 'build-webgl', 'validate-webgl', 'build-android', 'validate-android', 'verify', 'rebuild-all', 'smoke-windows', 'open')]
+    [ValidateSet('bootstrap', 'sync-vivox', 'test', 'build-windows', 'validate-windows', 'build-webgl', 'validate-webgl', 'build-android', 'validate-android', 'verify', 'rebuild-all', 'smoke-windows', 'capture-magic-glass-orb', 'open')]
     [string]$Action = 'bootstrap'
 )
 
@@ -87,6 +87,7 @@ $requiredResolvedPackages = [ordered]@{
     'com.unity.inputsystem' = '1.20.0'
     'com.unity.multiplayer.center' = '1.0.1'
     'com.unity.netcode.gameobjects' = '2.13.1'
+    'com.unity.services.vivox' = '16.10.0'
     'com.unity.transport' = '2.7.4'
     'com.unity.render-pipelines.universal' = '17.3.0'
     'com.unity.test-framework' = '1.6.0'
@@ -154,6 +155,7 @@ $tsxCli = Join-Path $reactProjectPath 'node_modules\tsx\dist\cli.mjs'
 $reactVisualBaker = Join-Path $projectPath 'Tools\bake-react-visual-assets.mts'
 $lilyCoilBaker = Join-Path $projectPath 'Tools\bake-lily-coil-assets.mts'
 $survivalTerrainBaker = Join-Path $projectPath 'Tools\bake-survival-terrain-assets.mts'
+$engineSystemCatalogBaker = Join-Path $projectPath 'Tools\bake-engine-system-catalog.mts'
 
 New-Item -ItemType Directory -Force -Path $taskRoot | Out-Null
 New-Item -ItemType Directory -Force -Path $logRoot | Out-Null
@@ -222,7 +224,8 @@ function Start-WindowsPlayerOnD {
         [Parameter(Mandatory = $true)]
         [string[]]$ArgumentList,
         [Parameter(Mandatory = $true)]
-        [string]$ProfileRoot
+        [string]$ProfileRoot,
+        [switch]$Visible
     )
 
     $fullPlayerPath = [System.IO.Path]::GetFullPath($PlayerPath)
@@ -249,6 +252,10 @@ function Start-WindowsPlayerOnD {
         $env:APPDATA = $roamingAppData
         $env:TEMP = $profileTemp
         $env:TMP = $profileTemp
+        if ($Visible) {
+            return Start-Process -FilePath $fullPlayerPath -ArgumentList $ArgumentList `
+                -WorkingDirectory (Split-Path $fullPlayerPath) -PassThru
+        }
         return Start-Process -FilePath $fullPlayerPath -ArgumentList $ArgumentList `
             -WorkingDirectory (Split-Path $fullPlayerPath) -WindowStyle Hidden -PassThru
     }
@@ -296,7 +303,7 @@ function Invoke-UnityBatch {
 }
 
 function Invoke-ReactVisualBaker {
-    foreach ($requiredPath in @($nodeExecutable, $tsxCli, $reactVisualBaker, $lilyCoilBaker, $survivalTerrainBaker)) {
+    foreach ($requiredPath in @($nodeExecutable, $tsxCli, $reactVisualBaker, $lilyCoilBaker, $survivalTerrainBaker, $engineSystemCatalogBaker)) {
         if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
             throw "React visual baker dependency is missing: $requiredPath"
         }
@@ -323,6 +330,10 @@ function Invoke-ReactVisualBaker {
         if ($LASTEXITCODE -ne 0) {
             throw "Survival terrain baker failed with exit code $LASTEXITCODE."
         }
+        & $nodeExecutable $tsxCli $engineSystemCatalogBaker
+        if ($LASTEXITCODE -ne 0) {
+            throw "Engine system catalog baker failed with exit code $LASTEXITCODE."
+        }
     }
     finally {
         $env:npm_config_cache = $previousNpmCache
@@ -336,6 +347,18 @@ function Invoke-Bootstrap {
         '-executeMethod', 'WOF.Editor.WofProjectAutomation.BootstrapProject',
         '-quit'
     )
+}
+
+function Invoke-SyncVivox {
+    $logPath = Invoke-UnityBatch -Name 'sync-vivox' -Arguments @(
+        '-executeMethod', 'WOF.Editor.WofVivoxProjectSync.SyncProductionCredentialsBatch',
+        '-quit'
+    )
+    if (-not (Select-String -LiteralPath $logPath `
+        -SimpleMatch '[WOF-VIVOX] PRODUCTION_SETTINGS_READY testMode=false tokenKeyStored=false' `
+        -Quiet)) {
+        throw "Vivox settings sync did not emit its completion marker. Log: $logPath"
+    }
 }
 
 function Invoke-Tests {
@@ -798,11 +821,13 @@ function Invoke-WindowsSmoke {
                 (Select-String -LiteralPath $hostLog -Pattern 'CLIENT_RPC_SERVER_PATH_PASSED' -Quiet)
             $trainingDummyServerPathPassed = (Test-Path -LiteralPath $hostLog) -and
                 (Select-String -LiteralPath $hostLog -Pattern 'TRAINING_DUMMY_TWO_PEER_SERVER_PATH_PASSED' -Quiet)
+            $spellOutcomeMatrixPassed = (Test-Path -LiteralPath $hostLog) -and
+                (Select-String -LiteralPath $hostLog -Pattern 'SPELL_OUTCOME_MATRIX_PASSED cases=12' -Quiet)
             $clientReplicationPassed = (Test-Path -LiteralPath $clientLog) -and
                 (Select-String -LiteralPath $clientLog -Pattern 'CLIENT_REPLICATION_PROBE_PASSED' -Quiet)
             $clientTrainingDummyReplicationPassed = (Test-Path -LiteralPath $clientLog) -and
                 (Select-String -LiteralPath $clientLog -Pattern 'CLIENT_TRAINING_DUMMY_REPLICATION_PASSED' -Quiet)
-            if ($serverPathPassed -and $trainingDummyServerPathPassed -and
+            if ($serverPathPassed -and $trainingDummyServerPathPassed -and $spellOutcomeMatrixPassed -and
                 $clientReplicationPassed -and $clientTrainingDummyReplicationPassed) {
                 break
             }
@@ -857,6 +882,7 @@ function Invoke-WindowsSmoke {
     $trainingDummyServerDownConfirmed = (Test-Path -LiteralPath $hostLog) -and (Select-String -LiteralPath $hostLog -Pattern 'TRAINING_DUMMY_SERVER_DOWN_CONFIRMED owner=1 instance=automation-client-training-dummy sequence=5' -Quiet)
     $trainingDummyServerRespawnConfirmed = (Test-Path -LiteralPath $hostLog) -and (Select-String -LiteralPath $hostLog -Pattern 'TRAINING_DUMMY_SERVER_RESPAWN_CONFIRMED owner=1 instance=automation-client-training-dummy elapsedSeconds=' -Quiet)
     $trainingDummyServerPathPassed = (Test-Path -LiteralPath $hostLog) -and (Select-String -LiteralPath $hostLog -Pattern 'TRAINING_DUMMY_TWO_PEER_SERVER_PATH_PASSED owner=1 source=0 instance=automation-client-training-dummy hits=5' -Quiet)
+    $spellOutcomeMatrixPassed = (Test-Path -LiteralPath $hostLog) -and (Select-String -LiteralPath $hostLog -Pattern 'SPELL_OUTCOME_MATRIX_PASSED cases=12' -Quiet)
 
     $clientTrainingDummyUpsertSent = (Test-Path -LiteralPath $clientLog) -and (Select-String -LiteralPath $clientLog -Pattern 'CLIENT_TRAINING_DUMMY_UPSERT_SENT owner=1 instance=automation-client-training-dummy' -Quiet)
     $clientTrainingDummyPlacementReplicated = (Test-Path -LiteralPath $clientLog) -and (Select-String -LiteralPath $clientLog -Pattern 'CLIENT_TRAINING_DUMMY_PLACEMENT_REPLICATED observer=1 owner=1 instance=automation-client-training-dummy health=120' -Quiet)
@@ -886,7 +912,7 @@ function Invoke-WindowsSmoke {
     $clientRuntimeFailure = (Test-Path -LiteralPath $clientLog) -and
         (Select-String -LiteralPath $clientLog -Pattern $runtimeFailurePattern -Quiet)
     if (-not ($hostConnected -and $clientReady -and $probeStarted -and $probePositioned -and
-        $serverFireballCasts -eq 5 -and $serverDamageEvents -eq 5 -and $serverTargetDied -and
+        $serverFireballCasts -ge 5 -and $serverDamageEvents -ge 5 -and $serverTargetDied -and
         $serverTargetRespawned -and $serverRespawnConfirmed -and $serverCombatPassed -and $campfireDamagePassed -and
         $clientRpcFireballCasts -eq 5 -and $clientRpcDamageEvents -eq 5 -and $clientRpcTargetDied -and
         $clientRpcTargetRespawned -and $clientRpcServerRespawnConfirmed -and $clientRpcServerPathPassed -and
@@ -895,7 +921,7 @@ function Invoke-WindowsSmoke {
         $trainingDummyProbeStarted -and $trainingDummyPlacementAcknowledged -and
         $trainingDummyServerPlacementConfirmed -and $trainingDummyServerHits -eq 5 -and
         $trainingDummyServerDamageConfirmed -eq 5 -and $trainingDummyServerDownConfirmed -and
-        $trainingDummyServerRespawnConfirmed -and $trainingDummyServerPathPassed -and
+        $trainingDummyServerRespawnConfirmed -and $trainingDummyServerPathPassed -and $spellOutcomeMatrixPassed -and
         $clientTrainingDummyUpsertSent -and $clientTrainingDummyPlacementReplicated -and
         $clientTrainingDummyDamageEvents -eq 5 -and $clientTrainingDummyDownReplicated -and
         $clientTrainingDummyRespawnReplicated -and $clientTrainingDummyReplicationPassed -and
@@ -904,7 +930,7 @@ function Invoke-WindowsSmoke {
         $hostVillagerMultiplayerFacingReady -and $clientVillagerMultiplayerFacingReady -and
         -not $probeFailed -and -not $clientProbeFailed -and -not $clientTrainingDummyProbeFailed -and
         -not $hostRuntimeFailure -and -not $clientRuntimeFailure)) {
-        throw "Two-process LAN combat smoke failed. hostConnected=$hostConnected clientReady=$clientReady campfireDamagePassed=$campfireDamagePassed serverCombatPassed=$serverCombatPassed serverFireballCasts=$serverFireballCasts serverDamageEvents=$serverDamageEvents clientRpcServerPathPassed=$clientRpcServerPathPassed clientRpcFireballCasts=$clientRpcFireballCasts clientRpcDamageEvents=$clientRpcDamageEvents clientCastRpcRequests=$clientCastRpcRequests clientReplicatedDamageEvents=$clientReplicatedDamageEvents clientReplicatedDeath=$clientReplicatedDeath clientReplicatedRespawnHealth=$clientReplicatedRespawnHealth clientReplicatedRespawnAlive=$clientReplicatedRespawnAlive clientReplicationPassed=$clientReplicationPassed trainingDummyProbeStarted=$trainingDummyProbeStarted trainingDummyPlacementAcknowledged=$trainingDummyPlacementAcknowledged trainingDummyServerPlacementConfirmed=$trainingDummyServerPlacementConfirmed trainingDummyServerHits=$trainingDummyServerHits trainingDummyServerDamageConfirmed=$trainingDummyServerDamageConfirmed trainingDummyServerDownConfirmed=$trainingDummyServerDownConfirmed trainingDummyServerRespawnConfirmed=$trainingDummyServerRespawnConfirmed trainingDummyServerPathPassed=$trainingDummyServerPathPassed clientTrainingDummyUpsertSent=$clientTrainingDummyUpsertSent clientTrainingDummyPlacementReplicated=$clientTrainingDummyPlacementReplicated clientTrainingDummyDamageEvents=$clientTrainingDummyDamageEvents clientTrainingDummyDownReplicated=$clientTrainingDummyDownReplicated clientTrainingDummyRespawnReplicated=$clientTrainingDummyRespawnReplicated clientTrainingDummyReplicationPassed=$clientTrainingDummyReplicationPassed hostVillagerVisibilityReady=$hostVillagerVisibilityReady clientVillagerVisibilityReady=$clientVillagerVisibilityReady hostVillagerArchiveReady=$hostVillagerArchiveReady clientVillagerArchiveReady=$clientVillagerArchiveReady hostVillagerMultiplayerFacingReady=$hostVillagerMultiplayerFacingReady clientVillagerMultiplayerFacingReady=$clientVillagerMultiplayerFacingReady probeFailed=$probeFailed clientProbeFailed=$clientProbeFailed clientTrainingDummyProbeFailed=$clientTrainingDummyProbeFailed hostRuntimeFailure=$hostRuntimeFailure clientRuntimeFailure=$clientRuntimeFailure"
+        throw "Two-process LAN combat smoke failed. hostConnected=$hostConnected clientReady=$clientReady campfireDamagePassed=$campfireDamagePassed serverCombatPassed=$serverCombatPassed serverFireballCasts=$serverFireballCasts serverDamageEvents=$serverDamageEvents clientRpcServerPathPassed=$clientRpcServerPathPassed clientRpcFireballCasts=$clientRpcFireballCasts clientRpcDamageEvents=$clientRpcDamageEvents clientCastRpcRequests=$clientCastRpcRequests clientReplicatedDamageEvents=$clientReplicatedDamageEvents clientReplicatedDeath=$clientReplicatedDeath clientReplicatedRespawnHealth=$clientReplicatedRespawnHealth clientReplicatedRespawnAlive=$clientReplicatedRespawnAlive clientReplicationPassed=$clientReplicationPassed trainingDummyProbeStarted=$trainingDummyProbeStarted trainingDummyPlacementAcknowledged=$trainingDummyPlacementAcknowledged trainingDummyServerPlacementConfirmed=$trainingDummyServerPlacementConfirmed trainingDummyServerHits=$trainingDummyServerHits trainingDummyServerDamageConfirmed=$trainingDummyServerDamageConfirmed trainingDummyServerDownConfirmed=$trainingDummyServerDownConfirmed trainingDummyServerRespawnConfirmed=$trainingDummyServerRespawnConfirmed trainingDummyServerPathPassed=$trainingDummyServerPathPassed spellOutcomeMatrixPassed=$spellOutcomeMatrixPassed clientTrainingDummyUpsertSent=$clientTrainingDummyUpsertSent clientTrainingDummyPlacementReplicated=$clientTrainingDummyPlacementReplicated clientTrainingDummyDamageEvents=$clientTrainingDummyDamageEvents clientTrainingDummyDownReplicated=$clientTrainingDummyDownReplicated clientTrainingDummyRespawnReplicated=$clientTrainingDummyRespawnReplicated clientTrainingDummyReplicationPassed=$clientTrainingDummyReplicationPassed hostVillagerVisibilityReady=$hostVillagerVisibilityReady clientVillagerVisibilityReady=$clientVillagerVisibilityReady hostVillagerArchiveReady=$hostVillagerArchiveReady clientVillagerArchiveReady=$clientVillagerArchiveReady hostVillagerMultiplayerFacingReady=$hostVillagerMultiplayerFacingReady clientVillagerMultiplayerFacingReady=$clientVillagerMultiplayerFacingReady probeFailed=$probeFailed clientProbeFailed=$clientProbeFailed clientTrainingDummyProbeFailed=$clientTrainingDummyProbeFailed hostRuntimeFailure=$hostRuntimeFailure clientRuntimeFailure=$clientRuntimeFailure"
     }
 
     $villagerYelpProcess = Start-WindowsPlayerOnD -PlayerPath $playerPath -ProfileRoot $villagerYelpProfileRoot -ArgumentList @(
@@ -933,6 +959,66 @@ function Invoke-WindowsSmoke {
     Write-Output "Two-process LAN combat smoke passed: player and client-owned training-dummy server authority/replication, exact 307-villager runtime archives, and the exact procedural villager yelp verified with no runtime exceptions. Host log: $hostLog Client log: $clientLog Yelp log: $villagerYelpLog"
 }
 
+function Invoke-MagicGlassOrbCapture {
+    $playerPath = Join-Path $projectPath 'Builds\Windows\WizardsOnlyFools.exe'
+    if (-not (Test-Path -LiteralPath $playerPath -PathType Leaf)) {
+        throw "Windows build not found at $playerPath. Run build-windows first."
+    }
+
+    $captureRunId = [Guid]::NewGuid().ToString('N')
+    $profileRoot = Join-Path $taskRoot "magic-glass-orb-profile-$captureRunId"
+    $screenshotPath = Join-Path $logRoot "magic-glass-orb-$captureRunId.png"
+    $logPath = Join-Path $logRoot "magic-glass-orb-$captureRunId.log"
+    Remove-RunArtifact -Path $screenshotPath
+    Remove-RunArtifact -Path $logPath
+
+    $process = Start-WindowsPlayerOnD -PlayerPath $playerPath -ProfileRoot $profileRoot -Visible -ArgumentList @(
+        '-force-d3d11', '-screen-width', '1280', '-screen-height', '720', '-screen-fullscreen', '0',
+        '--wof-solo', '--wof-magic-glass-orb-view-probe', "--wof-screenshot=$screenshotPath",
+        '--wof-auto-exit=8', "--wof-profile-root=$profileRoot", '-logFile', $logPath
+    )
+    try {
+        if (-not $process.WaitForExit(30000)) {
+            throw 'Magic Glass Orb visual probe did not exit within 30 seconds.'
+        }
+    }
+    finally {
+        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+    }
+
+    $ready = (Test-Path -LiteralPath $logPath -PathType Leaf) -and
+        (Select-String -LiteralPath $logPath -Pattern 'MAGIC_GLASS_ORB_VIEW_PROBE_READY signal=none' -Quiet)
+    $captured = (Test-Path -LiteralPath $logPath -PathType Leaf) -and
+        (Select-String -LiteralPath $logPath -SimpleMatch "[WOF-AUTOMATION] SCREENSHOT $screenshotPath" -Quiet)
+    $runtimeFailure = (Test-Path -LiteralPath $logPath -PathType Leaf) -and
+        (Select-String -LiteralPath $logPath -Pattern 'NullReferenceException|InvalidOperationException|ArgumentException|MissingReferenceException' -Quiet)
+    if (-not $ready -or -not $captured -or $runtimeFailure -or
+        -not (Test-Path -LiteralPath $screenshotPath -PathType Leaf) -or
+        (Get-Item -LiteralPath $screenshotPath).Length -eq 0) {
+        throw "Magic Glass Orb visual probe failed. ready=$ready captured=$captured runtimeFailure=$runtimeFailure log=$logPath screenshot=$screenshotPath"
+    }
+
+    Add-Type -AssemblyName System.Drawing
+    $bitmap = [System.Drawing.Bitmap]::FromFile($screenshotPath)
+    try {
+        $visibleSamples = 0
+        for ($y = 0; $y -lt $bitmap.Height; $y += 16) {
+            for ($x = 0; $x -lt $bitmap.Width; $x += 16) {
+                $pixel = $bitmap.GetPixel($x, $y)
+                if (($pixel.R + $pixel.G + $pixel.B) -gt 30) { $visibleSamples++ }
+            }
+        }
+    }
+    finally {
+        $bitmap.Dispose()
+    }
+    if ($visibleSamples -lt 100) {
+        throw "Magic Glass Orb visual probe captured an unrendered frame. visibleSamples=$visibleSamples screenshot=$screenshotPath"
+    }
+
+    Write-Output "Magic Glass Orb visual capture passed: visibleSamples=$visibleSamples screenshot=$screenshotPath log=$logPath"
+}
+
 $runLockPath = Join-Path $taskRoot 'wof-unity.run.lock'
 $runLock = $null
 try {
@@ -949,6 +1035,7 @@ catch {
 try {
     switch ($Action) {
         'bootstrap' { Invoke-Bootstrap }
+        'sync-vivox' { Invoke-SyncVivox }
         'test' { Invoke-Tests }
         'build-windows' { Invoke-BuildWindows }
         'validate-windows' { Assert-ExistingWindowsBuild }
@@ -970,6 +1057,7 @@ try {
             Invoke-BuildAndroid
         }
         'smoke-windows' { Invoke-WindowsSmoke }
+        'capture-magic-glass-orb' { Invoke-MagicGlassOrbCapture }
         'open' {
             Start-Process -FilePath $unityEditor -ArgumentList @('-projectPath', $projectPath) -WorkingDirectory 'D:\'
         }

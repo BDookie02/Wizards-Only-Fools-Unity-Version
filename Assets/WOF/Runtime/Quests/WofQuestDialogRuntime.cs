@@ -64,6 +64,16 @@ namespace WOF
         public WofQuestDialogSession Session => _session;
         public int SelectedChoiceIndex => _selectedChoiceIndex;
 
+        internal static void InvalidateVillagerManagerCaches()
+        {
+            foreach (var runtime in FindObjectsByType<WofQuestDialogRuntime>(
+                         FindObjectsInactive.Include,
+                         FindObjectsSortMode.None))
+            {
+                runtime._villagerManagers = Array.Empty<WofVillagerManager>();
+            }
+        }
+
         public void ConfigureGeneratedView(WofHud generatedHud, Font generatedDialogFont)
         {
             hud = generatedHud;

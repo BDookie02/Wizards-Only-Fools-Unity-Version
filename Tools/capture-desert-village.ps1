@@ -22,12 +22,11 @@ using System;
 using System.Runtime.InteropServices;
 public static class WofDesertVillageCapture {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
-  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int command);
   [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
-  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
+  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
 }
 '@
 [WofDesertVillageCapture]::SetProcessDPIAware() | Out-Null
@@ -76,15 +75,21 @@ try {
 
     $rect = New-Object WofDesertVillageCapture+RECT
     if (-not [WofDesertVillageCapture]::GetClientRect($windowHandle, [ref]$rect)) { throw 'GetClientRect failed.' }
-    $point = New-Object WofDesertVillageCapture+POINT
-    if (-not [WofDesertVillageCapture]::ClientToScreen($windowHandle, [ref]$point)) { throw 'ClientToScreen failed.' }
     $width = $rect.Right - $rect.Left
     $height = $rect.Bottom - $rect.Top
     if ($width -ne 1280 -or $height -ne 720) { throw "Unexpected client dimensions: ${width}x${height}." }
     $bitmap = New-Object System.Drawing.Bitmap $width, $height
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
     try {
-        $graphics.CopyFromScreen($point.X, $point.Y, 0, 0, $bitmap.Size)
+        $deviceContext = $graphics.GetHdc()
+        try {
+            if (-not [WofDesertVillageCapture]::PrintWindow($windowHandle, $deviceContext, 3)) {
+                throw 'PrintWindow failed to capture the Unity client.'
+            }
+        }
+        finally {
+            $graphics.ReleaseHdc($deviceContext)
+        }
         $bitmap.Save($capturePath, [System.Drawing.Imaging.ImageFormat]::Png)
     }
     finally {

@@ -5,6 +5,7 @@ using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.EnhancedTouch;
 using UnityEngine.UI;
 
 namespace WOF
@@ -61,6 +62,8 @@ namespace WOF
         private bool _controllerBackHeld;
         private bool _controllerWaypointHeld;
         private bool _controllerClearWaypointHeld;
+        private float _touchPinchDistance = -1f;
+        private bool _enhancedTouchEnabled;
         private GameObject _mapPanPreservedSelection;
         private int _mapPanSelectionRestoreFrames;
         private bool _explorationSavePending;
@@ -95,6 +98,8 @@ namespace WOF
         private void Awake()
         {
             Instance = this;
+            EnhancedTouchSupport.Enable();
+            _enhancedTouchEnabled = true;
             foreach (var argument in Environment.GetCommandLineArgs())
             {
                 if (argument.Equals("--wof-map-probe", StringComparison.OrdinalIgnoreCase)) _mapProbe = true;
@@ -115,6 +120,11 @@ namespace WOF
         private void OnDestroy()
         {
             if (Instance == this) Instance = null;
+            if (_enhancedTouchEnabled)
+            {
+                EnhancedTouchSupport.Disable();
+                _enhancedTouchEnabled = false;
+            }
             SaveExplorationNow();
             if (_mapTexture != null)
             {
@@ -144,8 +154,18 @@ namespace WOF
                 return;
             }
 
-            var keyboardToggle = Keyboard.current?.mKey.wasPressedThisFrame ?? false;
             var gamepad = Gamepad.current;
+            if (!CanToggleExpandedForModalState(IsExpanded, WofInputRouter.GameplaySuppressed))
+            {
+                var suppressedHotbarModifierHeld =
+                    WofControllerBindings.IsPressed(gamepad, WofControllerActions.LeftHotbar) ||
+                    WofControllerBindings.IsPressed(gamepad, WofControllerActions.RightHotbar);
+                _controllerToggleHeld = !suppressedHotbarModifierHeld &&
+                                        WofControllerBindings.IsPressed(gamepad, WofControllerActions.Map);
+                return;
+            }
+
+            var keyboardToggle = Keyboard.current?.mKey.wasPressedThisFrame ?? false;
             var hotbarModifierHeld = WofControllerBindings.IsPressed(gamepad, WofControllerActions.LeftHotbar) ||
                                      WofControllerBindings.IsPressed(gamepad, WofControllerActions.RightHotbar);
             var controllerToggleHeld = !hotbarModifierHeld && WofControllerBindings.IsPressed(gamepad, WofControllerActions.Map);
@@ -203,10 +223,16 @@ namespace WOF
 
         public void ToggleExpanded()
         {
-            if (hud != null && hud.IsGameplayVisible && !WofSpellMenuRuntime.IsOpen)
+            if (hud != null && hud.IsGameplayVisible && !WofSpellMenuRuntime.IsOpen &&
+                CanToggleExpandedForModalState(IsExpanded, WofInputRouter.GameplaySuppressed))
             {
                 SetExpanded(!IsExpanded);
             }
+        }
+
+        internal static bool CanToggleExpandedForModalState(bool expanded, bool gameplaySuppressed)
+        {
+            return expanded || !gameplaySuppressed;
         }
 
         private void BuildView()
@@ -307,7 +333,9 @@ namespace WOF
             var controlsHint = CreateText(
                 "MapControlsHint",
                 _expandedRoot.transform,
-                "CONTROLLER  RT/LT ZOOM  |  RIGHT STICK CURSOR  |  X SET WAYPOINT  |  Y CLEAR",
+                WofPerformanceModeRuntime.IsMobilePerformanceMode
+                    ? "TOUCH MAP TO SET WAYPOINT  |  PINCH TO ZOOM"
+                    : "CONTROLLER  RT/LT ZOOM  |  RIGHT STICK CURSOR  |  X SET WAYPOINT  |  Y CLEAR",
                 12,
                 TextAnchor.MiddleCenter,
                 new Color32(207, 250, 254, 255));
@@ -330,7 +358,7 @@ namespace WOF
             foreach (var record in WofMapFastTravel.MenuDestinations)
             {
                 var capturedDestination = record.Destination;
-                var isDimension = capturedDestination == WofMapDestination.LilyCoil;
+                var isDimension = WofMapFastTravel.IsRemoteRealm(capturedDestination);
                 var button = CreateButton(
                     $"Travel{record.Destination}",
                     destinations.transform,
@@ -437,8 +465,9 @@ namespace WOF
             if (keyboard?.equalsKey.wasPressedThisFrame ?? false) SetExpandedZoom(_expandedZoom + 0.25f);
             if (keyboard?.minusKey.wasPressedThisFrame ?? false) SetExpandedZoom(_expandedZoom - 0.25f);
 
+            var touchHandled = UpdateExpandedMapTouchInput();
             var mouse = Mouse.current;
-            if (mouse != null && IsPointerInsideWorldMap(mouse.position.ReadValue()))
+            if (!touchHandled && mouse != null && IsPointerInsideWorldMap(mouse.position.ReadValue()))
             {
                 var scroll = mouse.scroll.ReadValue().y;
                 if (Mathf.Abs(scroll) > 0.01f) SetExpandedZoom(_expandedZoom + Mathf.Sign(scroll) * 0.22f);
@@ -470,6 +499,59 @@ namespace WOF
             if (keyboard?.spaceKey.wasPressedThisFrame ?? false) SetWaypoint(_mapCursorNormalized);
             if (keyboard?.deleteKey.wasPressedThisFrame ?? false) ClearWaypoint();
             UpdateExpandedMapTransform();
+        }
+
+        private bool UpdateExpandedMapTouchInput()
+        {
+            var touches = UnityEngine.InputSystem.EnhancedTouch.Touch.activeTouches;
+            if (touches.Count == 0)
+            {
+                _touchPinchDistance = -1f;
+                return false;
+            }
+
+            if (touches.Count >= 2)
+            {
+                var firstPosition = touches[0].screenPosition;
+                var secondPosition = touches[1].screenPosition;
+                if (IsPointerInsideWorldMap(firstPosition) && IsPointerInsideWorldMap(secondPosition))
+                {
+                    var pinchDistance = Vector2.Distance(firstPosition, secondPosition);
+                    if (_touchPinchDistance > 0f)
+                    {
+                        var referencePixels = Mathf.Min(Screen.width, Screen.height);
+                        SetExpandedZoom(_expandedZoom + GetTouchPinchZoomDelta(
+                            _touchPinchDistance,
+                            pinchDistance,
+                            referencePixels));
+                    }
+                    _touchPinchDistance = pinchDistance;
+                    var midpoint = (firstPosition + secondPosition) * 0.5f;
+                    if (TryGetMapNormalized(midpoint, out var pinchFocus))
+                    {
+                        _mapFocusNormalized = pinchFocus;
+                        _mapCursorNormalized = pinchFocus;
+                    }
+                    return true;
+                }
+            }
+
+            var wasPinching = _touchPinchDistance > 0f;
+            _touchPinchDistance = -1f;
+            if (wasPinching) return true;
+
+            var primaryTouch = touches[0];
+            if (primaryTouch.phase != UnityEngine.InputSystem.TouchPhase.Began) return false;
+            var position = primaryTouch.screenPosition;
+            if (!IsPointerInsideWorldMap(position) || !TryGetMapNormalized(position, out var touchMap))
+            {
+                return false;
+            }
+
+            _mapCursorNormalized = touchMap;
+            _mapFocusNormalized = touchMap;
+            SetWaypoint(touchMap);
+            return true;
         }
 
         private void SetExpandedZoom(float value)
@@ -589,6 +671,15 @@ namespace WOF
         internal static float ClampExpandedZoom(float value)
         {
             return Mathf.Clamp(value, MinimumExpandedZoom, MaximumExpandedZoom);
+        }
+
+        internal static float GetTouchPinchZoomDelta(
+            float previousDistance,
+            float currentDistance,
+            float referencePixels)
+        {
+            if (previousDistance <= 0f || currentDistance <= 0f || referencePixels <= 0f) return 0f;
+            return (currentDistance - previousDistance) / referencePixels * 2.5f;
         }
 
         internal static Vector2 GetExpandedMapPan(Vector2 focusNormalized, float zoom, Vector2 viewportSize)

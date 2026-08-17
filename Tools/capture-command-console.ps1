@@ -23,6 +23,29 @@ using System.Runtime.InteropServices;
 public static class WofCommandConsoleCapture {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
   [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
+  [StructLayout(LayoutKind.Sequential)] public struct MOUSEINPUT {
+    public int dx, dy;
+    public uint mouseData, dwFlags, time;
+    public UIntPtr dwExtraInfo;
+  }
+  [StructLayout(LayoutKind.Sequential)] public struct KEYBDINPUT {
+    public ushort wVk, wScan;
+    public uint dwFlags, time;
+    public UIntPtr dwExtraInfo;
+  }
+  [StructLayout(LayoutKind.Sequential)] public struct HARDWAREINPUT {
+    public uint uMsg;
+    public ushort wParamL, wParamH;
+  }
+  [StructLayout(LayoutKind.Explicit)] public struct INPUTUNION {
+    [FieldOffset(0)] public MOUSEINPUT mi;
+    [FieldOffset(0)] public KEYBDINPUT ki;
+    [FieldOffset(0)] public HARDWAREINPUT hi;
+  }
+  [StructLayout(LayoutKind.Sequential)] public struct INPUT {
+    public uint type;
+    public INPUTUNION data;
+  }
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
   [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
@@ -34,6 +57,7 @@ public static class WofCommandConsoleCapture {
   [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint mapType);
   [DllImport("user32.dll")] public static extern short VkKeyScan(char character);
   [DllImport("user32.dll")] public static extern void keybd_event(byte virtualKey, byte scanCode, uint flags, UIntPtr extraInfo);
+  [DllImport("user32.dll", SetLastError = true)] public static extern uint SendInput(uint inputCount, INPUT[] inputs, int inputSize);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
   [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
@@ -67,6 +91,38 @@ public static class WofCommandConsoleCapture {
     SendKeyDown(virtualKey);
     System.Threading.Thread.Sleep(milliseconds);
     SendKeyUp(virtualKey);
+  }
+
+  public static void SetKey(byte virtualKey, bool pressed) {
+    if (pressed) SendKeyDown(virtualKey); else SendKeyUp(virtualKey);
+  }
+
+  public static void SetScanKey(byte virtualKey, bool pressed) {
+    const uint KeyboardInput = 1;
+    const uint ScanCode = 0x0008;
+    const uint KeyUp = 0x0002;
+    INPUT[] inputs = new INPUT[] {
+      new INPUT {
+        type = KeyboardInput,
+        data = new INPUTUNION {
+          ki = new KEYBDINPUT {
+            wVk = 0,
+            wScan = (ushort)MapVirtualKey(virtualKey, 0),
+            dwFlags = ScanCode | (pressed ? 0u : KeyUp),
+            time = 0,
+            dwExtraInfo = UIntPtr.Zero
+          }
+        }
+      }
+    };
+    if (SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT))) != 1) {
+      throw new InvalidOperationException("SendInput scan-code packet failed: " + Marshal.GetLastWin32Error());
+    }
+  }
+
+  public static void MoveMouseRelative(int deltaX, int deltaY) {
+    mouse_event(0x0001, unchecked((uint)deltaX), unchecked((uint)deltaY), 0, UIntPtr.Zero);
+    System.Threading.Thread.Sleep(80);
   }
 
   public static void SendText(string value) {
@@ -117,11 +173,16 @@ $filterPath = Join-Path $resolvedOutputRoot 'command-console-inventory-filter.pn
 $vclipPath = Join-Path $resolvedOutputRoot 'command-console-vclip-on.png'
 $nightPath = Join-Path $resolvedOutputRoot 'command-console-night.png'
 $dayPath = Join-Path $resolvedOutputRoot 'command-console-day.png'
+$slidePath = Join-Path $resolvedOutputRoot 'player-motor-slide.png'
+$crouchPath = Join-Path $resolvedOutputRoot 'player-motor-crouch.png'
+$jumpPath = Join-Path $resolvedOutputRoot 'player-motor-jump.png'
+$collisionPath = Join-Path $resolvedOutputRoot 'player-motor-collision.png'
 $navigationRoot = Join-Path $resolvedBuildRoot 'NavigationRecordings'
 foreach ($requiredRoot in @($logRoot, $profileRoot)) {
     New-Item -ItemType Directory -Force -Path $requiredRoot | Out-Null
 }
-foreach ($target in @($logPath, $openPath, $filterPath, $vclipPath, $nightPath, $dayPath)) {
+foreach ($target in @($logPath, $openPath, $filterPath, $vclipPath, $nightPath, $dayPath,
+    $slidePath, $crouchPath, $jumpPath, $collisionPath)) {
     if (Test-Path -LiteralPath $target -PathType Leaf) {
         Remove-Item -LiteralPath $target -Force
     }
@@ -162,7 +223,7 @@ $profile = [ordered]@{
 
 $arguments = @(
     '-force-d3d11', '-screen-width', '1280', '-screen-height', '720', '-screen-fullscreen', '0',
-    '--wof-solo', '--wof-villager-view-probe', '--wof-auto-exit=150',
+    '--wof-solo', '--wof-auto-exit=150',
     "--wof-profile-root=$profileRoot", '-logFile', $logPath
 )
 $process = Start-Process -FilePath $executable -ArgumentList $arguments -PassThru
@@ -212,6 +273,15 @@ function Wait-WofNewLogMarker {
     return $count -gt $PreviousCount
 }
 
+function Release-WofSyntheticKeys {
+    # Always unwind the complete physical-input chord set so an aborted probe
+    # cannot contaminate the next player launch through global keyboard state.
+    [WofCommandConsoleCapture]::SetScanKey(0x43, $false)
+    foreach ($virtualKey in @(0x43, 0x57, 0x41, 0x53, 0x44, 0x20, 0x10, 0x11, 0x12)) {
+        [WofCommandConsoleCapture]::SetKey([byte]$virtualKey, $false)
+    }
+}
+
 function Open-WofCommandConsole {
     $openCount = if (Test-Path -LiteralPath $logPath -PathType Leaf) {
         @(Select-String -LiteralPath $logPath -Pattern 'COMMAND_CONSOLE_OPEN value=/').Count
@@ -226,12 +296,26 @@ function Open-WofCommandConsole {
 function Submit-WofCommand {
     param([string]$Text, [string]$Action)
     Open-WofCommandConsole
-    [WofCommandConsoleCapture]::SendText($Text)
+    [WofCommandConsoleCapture]::SetKey(0x11, $true)
+    [WofCommandConsoleCapture]::SendKey(0x41)
+    [WofCommandConsoleCapture]::SetKey(0x11, $false)
+    [WofCommandConsoleCapture]::SendKey(0x08)
+    [WofCommandConsoleCapture]::SendText('/' + $Text)
+    Start-Sleep -Milliseconds 250
+    $actionCount = if (Test-Path -LiteralPath $logPath -PathType Leaf) {
+        @(Select-String -LiteralPath $logPath -Pattern "action=$Action").Count
+    } else { 0 }
+    $closeCount = if (Test-Path -LiteralPath $logPath -PathType Leaf) {
+        @(Select-String -LiteralPath $logPath -Pattern 'COMMAND_CONSOLE_CLOSED relock=true').Count
+    } else { 0 }
     [WofCommandConsoleCapture]::SendKey(0x0D)
-    if (-not (Wait-WofLogMarker -Pattern "action=$Action" -Seconds 7)) {
+    if (-not (Wait-WofNewLogMarker -Pattern "action=$Action" -PreviousCount $actionCount -Seconds 7)) {
         throw "Physical command submission did not produce action $Action."
     }
-    Start-Sleep -Milliseconds 180
+    if (-not (Wait-WofNewLogMarker -Pattern 'COMMAND_CONSOLE_CLOSED relock=true' -PreviousCount $closeCount -Seconds 7)) {
+        throw "Physical command submission for $Action did not finish closing the command console."
+    }
+    Start-Sleep -Milliseconds 50
 }
 
 try {
@@ -239,17 +323,26 @@ try {
     do {
         Start-Sleep -Milliseconds 250
         $process.Refresh()
-        $ready = (Test-Path -LiteralPath $logPath -PathType Leaf) -and (Select-String -LiteralPath $logPath -Pattern 'VILLAGER_VIEW_PROBE_READY' -Quiet)
+        $ready = (Test-Path -LiteralPath $logPath -PathType Leaf) -and
+                 (Select-String -LiteralPath $logPath -Pattern 'SESSION_READY mode=Solo' -Quiet)
     } while (-not $ready -and -not $process.HasExited -and [DateTime]::UtcNow -lt $deadline)
     if (-not $ready) { throw 'Command-console player did not become ready.' }
 
     $windowHandle = $process.MainWindowHandle
     if ($windowHandle -eq [IntPtr]::Zero) { throw 'Command-console player has no main window.' }
-    [WofCommandConsoleCapture]::ForceForeground($windowHandle) | Out-Null
-    Start-Sleep -Milliseconds 450
+    $focusShell = New-Object -ComObject WScript.Shell
+    $foregroundDeadline = [DateTime]::UtcNow.AddSeconds(8)
+    do {
+        $focusShell.AppActivate($process.Id) | Out-Null
+        [WofCommandConsoleCapture]::ForceForeground($windowHandle) | Out-Null
+        Start-Sleep -Milliseconds 250
+    } while ([WofCommandConsoleCapture]::GetForegroundWindow() -ne $windowHandle -and
+             [DateTime]::UtcNow -lt $foregroundDeadline)
     if ([WofCommandConsoleCapture]::GetForegroundWindow() -ne $windowHandle) {
-        throw "Unity player did not become the foreground window (pid=$($process.Id))."
+        $foregroundHandle = [WofCommandConsoleCapture]::GetForegroundWindow()
+        throw "Unity player did not become the foreground window (pid=$($process.Id), expected=$windowHandle, actual=$foregroundHandle)."
     }
+    Release-WofSyntheticKeys
     [WofCommandConsoleCapture]::MoveClient($windowHandle, 1240, 680)
 
     Open-WofCommandConsole
@@ -303,16 +396,87 @@ try {
     if (-not (Wait-WofLogMarker -Pattern 'VCLIP_MOVEMENT velocity=.*collisions=false' -Seconds 5)) {
         throw 'Physical Space input did not produce collision-free VCLIP ascent.'
     }
+    # Relocate beyond the south village wall using the already verified collision-free
+    # mode. The normal-motor recording then runs on open terrain and returns to a solid
+    # wall segment for its explicit collision gate.
+    [WofCommandConsoleCapture]::SetKey(0x10, $true)
+    [WofCommandConsoleCapture]::HoldKey(0x57, 12000)
+    [WofCommandConsoleCapture]::SetKey(0x10, $false)
     Submit-WofCommand -Text 'vclip off' -Action 'SetVClipEnabled'
     if (-not (Wait-WofLogMarker -Pattern 'VCLIP_CHANGED owner=0 enabled=false' -Seconds 5)) {
         throw 'VCLIP off did not restore authoritative collision movement.'
     }
+    Start-Sleep -Milliseconds 2500
 
-    Submit-WofCommand -Text 'navrecord start console route' -Action 'StartNavigationRecording'
-    if (-not (Wait-WofLogMarker -Pattern 'NAV_RECORDING_STARTED label="console route"' -Seconds 5)) {
+    Submit-WofCommand -Text 'navrecord clear' -Action 'ClearNavigationRecordings'
+    Submit-WofCommand -Text 'navrecord start desktop motor route' -Action 'StartNavigationRecording'
+    if (-not (Wait-WofLogMarker -Pattern 'NAV_RECORDING_STARTED label="desktop motor route"' -Seconds 5)) {
         throw 'Navigation recorder did not start with the typed label.'
     }
-    [WofCommandConsoleCapture]::HoldKey(0x57, 800)
+
+    # Walk at the exact React base speed.
+    [WofCommandConsoleCapture]::HoldKey(0x57, 1400)
+    Start-Sleep -Milliseconds 300
+
+    # Hold keyboard Shift + W for the exact React sprint path.
+    [WofCommandConsoleCapture]::SetKey(0x10, $true)
+    [WofCommandConsoleCapture]::HoldKey(0x57, 1400)
+    [WofCommandConsoleCapture]::SetKey(0x10, $false)
+    Start-Sleep -Milliseconds 300
+
+    # Enter the one-second slide from an active sprint and capture its physical pose.
+    [WofCommandConsoleCapture]::SetKey(0x10, $true)
+    [WofCommandConsoleCapture]::SetKey(0x57, $true)
+    Start-Sleep -Milliseconds 350
+    [WofCommandConsoleCapture]::SetKey(0x43, $true)
+    Start-Sleep -Milliseconds 450
+    Save-WofCommandConsoleImage -WindowHandle $windowHandle -Path $slidePath
+    Start-Sleep -Milliseconds 500
+    [WofCommandConsoleCapture]::SetKey(0x43, $false)
+    [WofCommandConsoleCapture]::SetKey(0x57, $false)
+    [WofCommandConsoleCapture]::SetKey(0x10, $false)
+    Start-Sleep -Milliseconds 350
+
+    # React crouch requires a stationary three-second hold, then moves at 3.52 m/s.
+    [WofCommandConsoleCapture]::SetScanKey(0x43, $true)
+    # Unity's Windows Input System receives the held-key snapshot on the next
+    # distinct keyboard packet. F24 is intentionally unbound in WOF.
+    [WofCommandConsoleCapture]::SendKey(0x87)
+    Start-Sleep -Milliseconds 4000
+    [WofCommandConsoleCapture]::SetKey(0x57, $true)
+    Start-Sleep -Milliseconds 700
+    Save-WofCommandConsoleImage -WindowHandle $windowHandle -Path $crouchPath
+    Start-Sleep -Milliseconds 700
+    [WofCommandConsoleCapture]::SetKey(0x57, $false)
+    [WofCommandConsoleCapture]::SetScanKey(0x43, $false)
+    Start-Sleep -Milliseconds 350
+
+    # Hold Space long enough to verify jump/thruster lift and airborne grounding state.
+    [WofCommandConsoleCapture]::SetKey(0x20, $true)
+    Start-Sleep -Milliseconds 500
+    Save-WofCommandConsoleImage -WindowHandle $windowHandle -Path $jumpPath
+    Start-Sleep -Milliseconds 650
+    [WofCommandConsoleCapture]::SetKey(0x20, $false)
+    Start-Sleep -Milliseconds 900
+
+    # Offset from the south gate, sprint backward into the solid perimeter section,
+    # and keep pressing long enough for collision-stopped telemetry samples.
+    [WofCommandConsoleCapture]::HoldKey(0x44, 6000)
+    [WofCommandConsoleCapture]::SetKey(0x10, $true)
+    [WofCommandConsoleCapture]::SetKey(0x53, $true)
+    Start-Sleep -Milliseconds 20000
+    Save-WofCommandConsoleImage -WindowHandle $windowHandle -Path $collisionPath
+    [WofCommandConsoleCapture]::SetKey(0x53, $false)
+    [WofCommandConsoleCapture]::SetKey(0x10, $false)
+    Start-Sleep -Milliseconds 350
+
+    # Finish with real mouse delta so the exported yaw/aim vector proves camera look.
+    [WofCommandConsoleCapture]::MoveClient($windowHandle, 640, 360)
+    for ($lookIndex = 0; $lookIndex -lt 18; $lookIndex++) {
+        [WofCommandConsoleCapture]::MoveMouseRelative(32, -3)
+    }
+    Start-Sleep -Milliseconds 350
+
     Submit-WofCommand -Text 'navrecord stop' -Action 'StopNavigationRecording'
     if (-not (Wait-WofLogMarker -Pattern 'NAV_RECORDING_STOPPED samples=[1-9][0-9]*' -Seconds 5)) {
         throw 'Navigation recorder did not capture physical movement samples.'
@@ -327,12 +491,51 @@ try {
     if ($null -eq $navigationExport) { throw 'Navigation JSON is not beside the D-drive Windows build.' }
     $navigationPayload = Get-Content -LiteralPath $navigationExport.FullName -Raw | ConvertFrom-Json
     $latestNavigationSession = @($navigationPayload.sessions)[-1]
-    if ($latestNavigationSession.label -ne 'console route' -or
-        @($latestNavigationSession.samples).Count -lt 1 -or
-        $latestNavigationSession.sampleIntervalMs -ne 125 -or
-        [double]$latestNavigationSession.samples[0].pos[1] -ne 1.32) {
-        throw 'Navigation JSON does not preserve the React label, samples, 125 ms cadence, and rounded coordinates.'
+    $motorSamples = @($latestNavigationSession.samples)
+    if ($latestNavigationSession.label -ne 'desktop motor route' -or
+        $motorSamples.Count -lt 150 -or
+        $latestNavigationSession.sampleIntervalMs -ne 125) {
+        throw 'Navigation JSON does not preserve the desktop motor label, complete sample sequence, and 125 ms cadence.'
     }
+
+    function Get-PlanarSpeed([object]$sample) {
+        $x = [double]$sample.velocity[0]
+        $z = [double]$sample.velocity[2]
+        return [Math]::Sqrt(($x * $x) + ($z * $z))
+    }
+
+    $walkSamples = @($motorSamples | Where-Object {
+        [double]$_.input.forward -gt 0.9 -and -not $_.input.sprint -and -not $_.input.jump -and
+        -not $_.input.slide -and $_.state.moving -and (Get-PlanarSpeed $_) -ge 6.5 -and
+        (Get-PlanarSpeed $_) -le 9.5
+    })
+    $sprintSamples = @($motorSamples | Where-Object {
+        $_.input.sprint -and $_.state.sprinting -and -not $_.input.slide -and
+        (Get-PlanarSpeed $_) -ge 10.5
+    })
+    $slideSamples = @($motorSamples | Where-Object {
+        $_.input.slide -and $_.state.sliding -and (Get-PlanarSpeed $_) -ge 10.5
+    })
+    $crouchSamples = @($motorSamples | Where-Object {
+        $_.input.slide -and -not $_.state.sliding -and $_.state.moving -and
+        (Get-PlanarSpeed $_) -ge 2.5 -and (Get-PlanarSpeed $_) -le 4.5
+    })
+    $jumpSamples = @($motorSamples | Where-Object { $_.input.jump -and -not $_.state.grounded })
+    $groundedSamples = @($motorSamples | Where-Object { $_.state.grounded })
+    $yawValues = @($motorSamples | ForEach-Object { [double]$_.rot[1] })
+    $yawRange = ($yawValues | Measure-Object -Maximum).Maximum - ($yawValues | Measure-Object -Minimum).Minimum
+    $collisionSamples = @($motorSamples | Where-Object {
+        $_.input.sprint -and [double]$_.input.forward -lt -0.9 -and -not $_.input.slide -and
+        $_.state.grounded -and (Get-PlanarSpeed $_) -lt 1.0
+    })
+    if ($walkSamples.Count -lt 4) { throw 'Physical W input did not produce sustained React walk-speed samples.' }
+    if ($sprintSamples.Count -lt 4) { throw 'Physical Shift+W input did not produce sustained React sprint samples.' }
+    if ($slideSamples.Count -lt 2) { throw 'Physical C during sprint did not enter the React sliding state.' }
+    if ($crouchSamples.Count -lt 2) { throw 'Physical three-second C hold did not produce React crouch-speed samples.' }
+    if ($jumpSamples.Count -lt 2) { throw 'Physical Space hold did not produce airborne jump samples.' }
+    if ($groundedSamples.Count -lt 20) { throw 'Grounded movement was not sustained in the physical motor sequence.' }
+    if ($yawRange -lt 5.0) { throw "Physical mouse movement did not rotate the camera enough (yaw range $yawRange)." }
+    if ($collisionSamples.Count -lt 3) { throw 'Forward sprint input did not produce repeated collision-stopped samples at the village perimeter.' }
 
     Open-WofCommandConsole
     $closedCount = @(Select-String -LiteralPath $logPath -Pattern 'COMMAND_CONSOLE_CLOSED relock=true').Count
@@ -358,6 +561,10 @@ try {
         VClipCapture = $vclipPath
         NightCapture = $nightPath
         DayCapture = $dayPath
+        SlideCapture = $slidePath
+        CrouchCapture = $crouchPath
+        JumpCapture = $jumpPath
+        CollisionCapture = $collisionPath
         NavigationExport = $navigationExport.FullName
         Log = $logPath
         InventorySuggestion = $true
@@ -366,11 +573,22 @@ try {
         SkyCommands = $true
         VClip = $true
         NavigationRecording = $true
+        PlayerMotor = [pscustomobject]@{
+            WalkSamples = $walkSamples.Count
+            SprintSamples = $sprintSamples.Count
+            SlideSamples = $slideSamples.Count
+            CrouchSamples = $crouchSamples.Count
+            JumpSamples = $jumpSamples.Count
+            GroundedSamples = $groundedSamples.Count
+            CollisionStoppedSamples = $collisionSamples.Count
+            YawRange = [Math]::Round($yawRange, 2)
+        }
         EscapeClose = $true
         DraughtQuantity = [int]$draught[0].quantity
     }
 }
 finally {
+    Release-WofSyntheticKeys
     if (-not $process.HasExited) {
         $process.CloseMainWindow() | Out-Null
         if (-not $process.WaitForExit(3000)) { Stop-Process -Id $process.Id -Force }

@@ -117,6 +117,7 @@ namespace WOF.Editor
         [MenuItem("WOF/Automation/Bootstrap Project")]
         public static void BootstrapProject()
         {
+            WofVivoxProjectSync.SyncProductionCredentials();
             EnsureFolders();
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             ConfigureProjectSettings();
@@ -227,8 +228,8 @@ namespace WOF.Editor
         {
             PlayerSettings.companyName = "Wizards Only Fools";
             PlayerSettings.productName = "Wizards Only Fools";
-            PlayerSettings.bundleVersion = "0.4.14";
-            PlayerSettings.Android.bundleVersionCode = 17;
+            PlayerSettings.bundleVersion = "0.4.28";
+            PlayerSettings.Android.bundleVersionCode = 31;
             PlayerSettings.runInBackground = true;
             PlayerSettings.colorSpace = ColorSpace.Linear;
             PlayerSettings.defaultScreenWidth = 1280;
@@ -237,6 +238,11 @@ namespace WOF.Editor
             PlayerSettings.defaultWebScreenHeight = 720;
             PlayerSettings.fullScreenMode = FullScreenMode.Windowed;
             PlayerSettings.resizableWindow = true;
+            PlayerSettings.defaultInterfaceOrientation = UIOrientation.AutoRotation;
+            PlayerSettings.allowedAutorotateToPortrait = false;
+            PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
+            PlayerSettings.allowedAutorotateToLandscapeLeft = true;
+            PlayerSettings.allowedAutorotateToLandscapeRight = true;
             Physics.gravity = new Vector3(0f, WofGameConstants.Gravity, 0f);
             Time.fixedDeltaTime = 1f / WofGameConstants.ServerTickRate;
         }
@@ -2113,6 +2119,12 @@ namespace WOF.Editor
             leftSpellImage.raycastTarget = false;
             var spellImage = CreateImage("RightHeldFireball", gameplaySafeArea.transform, rightSpellFrames.FirstOrDefault(), Color.white);
             spellImage.raycastTarget = false;
+            var leftSpellIcon = CreateImage("LeftHeldSpellSprite", leftSpellImage.transform, null, Color.white);
+            leftSpellIcon.preserveAspect = true;
+            leftSpellIcon.raycastTarget = false;
+            var rightSpellIcon = CreateImage("RightHeldSpellSprite", spellImage.transform, null, Color.white);
+            rightSpellIcon.preserveAspect = true;
+            rightSpellIcon.raycastTarget = false;
             var magicHandsLayout = gameplaySafeArea.gameObject.AddComponent<WofMagicHandsLayout>();
             SetObjectReference(magicHandsLayout, "leftHandFrame", leftHandImage.rectTransform);
             SetObjectReference(magicHandsLayout, "rightHandFrame", rightHandImage.rectTransform);
@@ -2144,6 +2156,8 @@ namespace WOF.Editor
             SetObjectReference(hud, "rightHandImage", rightHandImage);
             SetObjectReference(hud, "leftHeldSpellImage", leftSpellImage);
             SetObjectReference(hud, "heldSpellImage", spellImage);
+            SetObjectReference(hud, "leftHeldSpellIcon", leftSpellIcon);
+            SetObjectReference(hud, "rightHeldSpellIcon", rightSpellIcon);
             SetObjectReference(hud, "magicHandsLayout", magicHandsLayout);
             SetObjectReferenceArray(hud, "leftHandFrames", leftHandFrames);
             SetObjectReferenceArray(hud, "rightHandFrames", rightHandFrames);
@@ -2151,6 +2165,13 @@ namespace WOF.Editor
             SetObjectReferenceArray(hud, "rightFiringHandFrames", rightFiringHandFrames);
             SetObjectReferenceArray(hud, "leftHeldSpellFrames", leftSpellFrames);
             SetObjectReferenceArray(hud, "rightHeldSpellFrames", rightSpellFrames);
+            SetObjectReferenceArray(
+                hud,
+                "heldSpellIcons",
+                WofSpellLoadout.PlayableSpells
+                    .Select(spell => LoadRequiredAsset<Sprite>(
+                        $"Assets/WOF/Art/Generated/React/HUD/SpellMenu/{WofSpellLoadout.GetReactId(spell)}.png"))
+                    .ToArray());
 
             // Construct the dialog hierarchy after scene load. Serializing the complete modal
             // object graph makes Unity 6 emit an unreadable level0 player payload.

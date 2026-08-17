@@ -33,6 +33,29 @@ namespace WOF
                 : value.Trim().ToUpperInvariant();
         }
 
+        public static string ResolveAuthenticationProfile(string[] arguments)
+        {
+            if (arguments == null) return string.Empty;
+            const string prefix = "--wof-auth-profile=";
+            foreach (var argument in arguments)
+            {
+                if (string.IsNullOrEmpty(argument) ||
+                    !argument.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+
+                var profile = argument.Substring(prefix.Length).Trim();
+                if (profile.Length is < 1 or > 30) return string.Empty;
+                foreach (var character in profile)
+                {
+                    if (char.IsLetterOrDigit(character) || character == '-' || character == '_') continue;
+                    return string.Empty;
+                }
+
+                return profile;
+            }
+
+            return string.Empty;
+        }
+
         public static string GetAvailabilityError(
             string cloudProjectId,
             bool hasNetworkManager,

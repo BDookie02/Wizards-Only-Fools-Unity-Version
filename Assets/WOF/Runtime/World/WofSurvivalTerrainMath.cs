@@ -47,6 +47,10 @@ namespace WOF
         private const double DesertExpansionMinZ = -4d * BlockSize - BlockSize * 0.5d;
         private const double DesertExpansionMaxZ = -3d * BlockSize + BlockSize * 0.5d;
         private const double DesertExpansionBlendDistance = 192d;
+        private const double DesertVillageCenterX = 4d * BlockSize;
+        private const double DesertVillageCenterZ = -4d * BlockSize;
+        private const double DesertVillageHalfSize = BlockSize * 0.5d;
+        private const double DesertVillageBaseHeight = 17.885722662941443d;
         private const double BaseVillageHalfSize = 256d;
         private const double BaseVillageExitHeight = 2d;
         private const double BaseVillageExitBlendDistance = 220d;
@@ -269,6 +273,16 @@ namespace WOF
             return GetWaterLevel(worldX, worldZ);
         }
 
+        internal static double GetReactWaterLevelAtWorld(double worldX, double worldZ)
+        {
+            return GetWaterLevel(worldX, worldZ, false);
+        }
+
+        internal static double GetRawTerrainHeightAtWorld(double worldX, double worldZ)
+        {
+            return GetRawTerrainHeight(worldX, worldZ);
+        }
+
         internal static bool IsWaterSuppressed(double worldX, double worldZ, double radius)
         {
             return IsRestoredMeadowWaterSuppressed(worldX, worldZ, radius);
@@ -276,11 +290,28 @@ namespace WOF
 
         internal static double GetTerrainHeight(int cx, int cz, double localX, double localZ)
         {
+            return GetTerrainHeightInternal(cx, cz, localX, localZ, true);
+        }
+
+        internal static double GetReactTerrainHeight(int cx, int cz, double localX, double localZ)
+        {
+            return GetTerrainHeightInternal(cx, cz, localX, localZ, false);
+        }
+
+        private static double GetTerrainHeightInternal(
+            int cx,
+            int cz,
+            double localX,
+            double localZ,
+            bool applyUnityDesertFoundationBlend)
+        {
             var worldX = cx * (double)BlockSize + localX;
             var worldZ = cz * (double)BlockSize + localZ;
-            var height = GetRawTerrainHeight(worldX, worldZ);
+            var height = applyUnityDesertFoundationBlend
+                ? GetRawTerrainHeight(worldX, worldZ)
+                : GetRawReactTerrainHeight(worldX, worldZ);
 
-            var riverCarve = GetRiverCarve(worldX, worldZ);
+            var riverCarve = GetRiverCarve(worldX, worldZ, applyUnityDesertFoundationBlend);
             var restoredMeadowRiverSuppression = IsRestoredMeadowWaterSuppressed(worldX, worldZ, 96d)
                 ? 1d
                 : SmoothstepRange(0.02d, 0.18d, GetRestoredMeadowMask(worldX, worldZ));
@@ -319,13 +350,28 @@ namespace WOF
             if (apron.Mask > 0d) height = Lerp(height, apron.Height, apron.Mask);
 
             var townRouteMask = GetTownRouteMask(worldX, worldZ);
-            if (townRouteMask > 0d && IsStrictDesert(worldX, worldZ))
+            if (townRouteMask > 0d && IsStrictDesert(worldX, worldZ, applyUnityDesertFoundationBlend))
             {
                 var restoredSuppression = SmoothstepRange(0.001d, 0.08d, GetRestoredMeadowMask(worldX, worldZ));
                 height -= SmoothstepRange(0.72d, 1d, townRouteMask) * 0.06d * (1d - restoredSuppression);
             }
 
+            if (applyUnityDesertFoundationBlend)
+            {
+                var desertFoundationMask = GetDesertVillageFoundationMaskAtWorld(worldX, worldZ);
+                if (desertFoundationMask > 0d)
+                    height = Lerp(height, DesertVillageBaseHeight, desertFoundationMask);
+            }
+
             return height;
+        }
+
+        internal static double GetDesertVillageFoundationMaskAtWorld(double worldX, double worldZ)
+        {
+            var outsideX = Math.Max(0d, Math.Abs(worldX - DesertVillageCenterX) - DesertVillageHalfSize);
+            var outsideZ = Math.Max(0d, Math.Abs(worldZ - DesertVillageCenterZ) - DesertVillageHalfSize);
+            var outsideDistance = Math.Sqrt(outsideX * outsideX + outsideZ * outsideZ);
+            return 1d - SmoothstepRange(0d, DesertExpansionBlendDistance, outsideDistance);
         }
 
         internal static Color GetRenderedTerrainColor(double worldX, double worldZ, double height)
@@ -501,6 +547,18 @@ namespace WOF
             return height;
         }
 
+        private static double GetRawReactTerrainHeight(double worldX, double worldZ)
+        {
+            GetBiomeWeights(worldX, worldZ, RawHeightWeights, false);
+            var height = 0d;
+            for (var index = 0; index < BiomeCount; index++)
+            {
+                var weight = RawHeightWeights[index];
+                if (weight > 0d) height += GetBiomeTerrainHeight((WofSurvivalBiome)index, worldX, worldZ) * weight;
+            }
+            return height;
+        }
+
         private static double GetBiomeTerrainHeight(WofSurvivalBiome biome, double worldX, double worldZ)
         {
             var elevation = Elevations[(int)biome];
@@ -596,7 +654,11 @@ namespace WOF
             return lift;
         }
 
-        private static void GetBiomeWeights(double worldX, double worldZ, double[] target)
+        private static void GetBiomeWeights(
+            double worldX,
+            double worldZ,
+            double[] target,
+            bool applyUnityDesertExpansion = true)
         {
             Array.Clear(target, 0, target.Length);
             var center = WorldToBiomeHex(worldX, worldZ);
@@ -635,6 +697,7 @@ namespace WOF
             // systems. Apply the requested six-chunk desert footprint in world
             // space, then feather only beyond its perimeter so every point inside
             // the village chunk and its five neighbors remains true desert.
+            if (!applyUnityDesertExpansion) return;
             var desertExpansion = GetDesertVillageExpansionMaskAtWorld(worldX, worldZ);
             if (desertExpansion <= 0d) return;
             var retained = 1d - desertExpansion;
@@ -661,7 +724,10 @@ namespace WOF
             return new HexCoord(roundedX, roundedZ);
         }
 
-        private static WofSurvivalRiverCarve GetRiverCarve(double worldX, double worldZ)
+        private static WofSurvivalRiverCarve GetRiverCarve(
+            double worldX,
+            double worldZ,
+            bool applyUnityDesertExpansion = true)
         {
             var centerCx = GetChunkCoordinate(worldX);
             var centerCz = GetChunkCoordinate(worldZ);
@@ -678,7 +744,8 @@ namespace WOF
                     IsRiverVertical(cx, cz), GetRiverOffset(cx, cz), worldX, worldZ);
                 if (carve <= strength) continue;
                 strength = carve;
-                bed = GetWaterLevel(worldX, worldZ) - (biome == WofSurvivalBiome.Swamp ? 2.6d : 3.4d);
+                bed = GetWaterLevel(worldX, worldZ, applyUnityDesertExpansion) -
+                      (biome == WofSurvivalBiome.Swamp ? 2.6d : 3.4d);
             }
             return new WofSurvivalRiverCarve(strength, bed);
         }
@@ -708,9 +775,12 @@ namespace WOF
             return (Hash01(cx, cz, 15) - 0.5d) * BlockSize * 0.32d;
         }
 
-        private static double GetWaterLevel(double worldX, double worldZ)
+        private static double GetWaterLevel(
+            double worldX,
+            double worldZ,
+            bool applyUnityDesertExpansion = true)
         {
-            GetBiomeWeights(worldX, worldZ, WaterWeights);
+            GetBiomeWeights(worldX, worldZ, WaterWeights, applyUnityDesertExpansion);
             var level = 0d;
             for (var index = 0; index < BiomeCount; index++) level += Elevations[index].WaterLevel * WaterWeights[index];
             return level;
@@ -741,10 +811,13 @@ namespace WOF
             return 1d - SmoothstepRange(0d, DesertExpansionBlendDistance, outsideDistance);
         }
 
-        private static bool IsStrictDesert(double worldX, double worldZ)
+        private static bool IsStrictDesert(
+            double worldX,
+            double worldZ,
+            bool applyUnityDesertExpansion = true)
         {
             if (GetRestoredMeadowMask(worldX, worldZ) > 0.015d) return false;
-            GetBiomeWeights(worldX, worldZ, StrictDesertWeights);
+            GetBiomeWeights(worldX, worldZ, StrictDesertWeights, applyUnityDesertExpansion);
             double desert = 0d;
             double meadow = 0d;
             double grassland = 0d;

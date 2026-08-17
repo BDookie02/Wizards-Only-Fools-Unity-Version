@@ -20,6 +20,7 @@ namespace WOF
         private GameObject _pauseHomeRoot;
         private GameObject _settingsRoot;
         private GameObject _scoreboardRoot;
+        private Button _mobilePauseButton;
         private Button[] _pauseButtons;
         private WofSettingsPanelRuntime _settingsPanel;
         private Text[] _scoreRows;
@@ -352,9 +353,33 @@ namespace WOF
                 new Color32(207, 250, 254, 115));
             SetRect(scoreFooter.rectTransform, new Vector2(0.035f, 0.015f), new Vector2(0.965f, 0.075f));
 
+            BuildMobilePauseButton();
+
             _settingsRoot.SetActive(false);
             _pauseRoot.SetActive(false);
             _scoreboardRoot.SetActive(false);
+        }
+
+        private void BuildMobilePauseButton()
+        {
+            var mobileControlsRoot = hud == null ? null : hud.MobileControlsRoot;
+            if (mobileControlsRoot == null || _mobilePauseButton != null) return;
+
+            _mobilePauseButton = CreateButton(
+                "MobilePause",
+                mobileControlsRoot,
+                "II",
+                new Color32(0, 0, 0, 140));
+            var rect = _mobilePauseButton.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = new Vector2(76f, -17f);
+            rect.sizeDelta = new Vector2(48f, 48f);
+            var outline = _mobilePauseButton.gameObject.AddComponent<Outline>();
+            outline.effectColor = new Color32(207, 250, 254, 105);
+            outline.effectDistance = new Vector2(2f, -2f);
+            _mobilePauseButton.onClick.AddListener(TogglePause);
         }
 
         private GameObject CreatePanel(string name, Transform parent, Vector2 min, Vector2 max, Color color)

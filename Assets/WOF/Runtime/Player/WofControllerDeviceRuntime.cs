@@ -271,6 +271,7 @@ namespace WOF
                 yield break;
             }
             yield return TapControllerButton(GamepadButton.DpadDown);
+            yield return TapControllerButton(GamepadButton.DpadDown);
             yield return new WaitForSecondsRealtime(0.15f);
             var selectedBaseDestination = UnityEngine.EventSystems.EventSystem.current?.currentSelectedGameObject;
             if (selectedBaseDestination == null || selectedBaseDestination.name != "TravelBase")
@@ -318,6 +319,29 @@ namespace WOF
             Debug.Log($"[WOF-AUTOMATION] CONTROLLER_LILY_COIL_FAST_TRAVEL_PASS position={player.transform.position}");
             yield return new WaitForSecondsRealtime(0.75f);
             yield return CaptureProbeScreenshot("controller-lily-coil-fast-travel.png");
+
+            yield return TapControllerButtonUntil(GamepadButton.DpadLeft, () => WofNavigationMapRuntime.IsExpanded, 5f);
+            yield return TapControllerButton(GamepadButton.DpadDown);
+            yield return new WaitForSecondsRealtime(0.15f);
+            var peacefulDestination = UnityEngine.EventSystems.EventSystem.current?.currentSelectedGameObject;
+            if (peacefulDestination == null || peacefulDestination.name != "TravelPeacefulSanctuary")
+            {
+                FailProbe($"controller-peaceful-sanctuary-selection-failed selected={peacefulDestination?.name ?? "none"}");
+                yield break;
+            }
+            yield return TapControllerButtonUntil(GamepadButton.A, () => !WofNavigationMapRuntime.IsExpanded, 5f);
+            var peacefulTravelDeadline = Time.realtimeSinceStartup + 12f;
+            while ((player.transform.position - WofDarrelGroveLayout.SpawnPosition).sqrMagnitude > 9f &&
+                   Time.realtimeSinceStartup < peacefulTravelDeadline) yield return null;
+            if (WofNavigationMapRuntime.IsExpanded ||
+                (player.transform.position - WofDarrelGroveLayout.SpawnPosition).sqrMagnitude > 9f)
+            {
+                FailProbe($"controller-peaceful-sanctuary-fast-travel-failed position={player.transform.position}");
+                yield break;
+            }
+            Debug.Log($"[WOF-AUTOMATION] CONTROLLER_PEACEFUL_SANCTUARY_FAST_TRAVEL_PASS position={player.transform.position}");
+            yield return new WaitForSecondsRealtime(1.25f);
+            yield return CaptureProbeScreenshot("controller-peaceful-sanctuary-fast-travel.png");
 
             yield return TapControllerButtonUntil(GamepadButton.DpadLeft, () => WofNavigationMapRuntime.IsExpanded, 5f);
             yield return TapControllerButtonUntil(GamepadButton.B, () => !WofNavigationMapRuntime.IsExpanded, 5f);

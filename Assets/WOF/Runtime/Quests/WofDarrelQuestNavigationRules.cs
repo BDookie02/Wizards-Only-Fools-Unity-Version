@@ -10,7 +10,8 @@ namespace WOF
         Field,
         Brew,
         Realm,
-        TurnIn
+        TurnIn,
+        Npc
     }
 
     public sealed class WofQuestNavigationTarget

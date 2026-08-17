@@ -84,5 +84,20 @@ namespace WOF.Tests
             Assert.That(_unityTransport.ConnectionData.Address, Is.EqualTo("game.example.test"));
             Assert.That(_unityTransport.ConnectionData.Port, Is.EqualTo(7777));
         }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void RelayTransportMatchesTheProtocolSelectedForTheBuild(bool useWebSockets)
+        {
+            _unityTransport.UseWebSockets = !useWebSockets;
+
+            WofTransportConfiguration.ConfigureRelayMultiplayer(
+                _networkManager,
+                _unityTransport,
+                useWebSockets);
+
+            Assert.That(_networkManager.NetworkConfig.NetworkTransport, Is.SameAs(_unityTransport));
+            Assert.That(_unityTransport.UseWebSockets, Is.EqualTo(useWebSockets));
+        }
     }
 }

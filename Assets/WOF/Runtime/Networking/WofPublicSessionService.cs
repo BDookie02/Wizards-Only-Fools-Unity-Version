@@ -76,12 +76,14 @@ namespace WOF
                         : sessionName.Trim(),
                     MaxPlayers = WofGameConstants.MaxPlayers,
                     IsPrivate = false
-                }.WithRelayNetwork();
+                }
+                    .WithNetworkOptions(new NetworkOptions { RelayProtocol = RelayProtocol.Default })
+                    .WithRelayNetwork();
 
                 _activeSession = await MultiplayerService.Instance.CreateSessionAsync(options);
                 State = WofPublicSessionState.Connected;
                 var joinCode = WofPublicSessionRules.NormalizeJoinCode(_activeSession.Code);
-                _setStatus?.Invoke($"PUBLIC LOBBY READY — INVITE CODE {joinCode}");
+                _setStatus?.Invoke($"PUBLIC LOBBY READY - INVITE CODE {joinCode}");
                 return WofPublicSessionResult.Success(joinCode);
             }
             catch (SessionException exception)
@@ -119,7 +121,11 @@ namespace WOF
                 State = WofPublicSessionState.Joining;
                 _setStatus?.Invoke($"JOINING PUBLIC LOBBY {normalizedCode}...");
                 SelectUnityTransport();
-                _activeSession = await MultiplayerService.Instance.JoinSessionByCodeAsync(normalizedCode);
+                var joinOptions = new JoinSessionOptions()
+                    .WithNetworkOptions(new NetworkOptions { RelayProtocol = RelayProtocol.Default });
+                _activeSession = await MultiplayerService.Instance.JoinSessionByCodeAsync(
+                    normalizedCode,
+                    joinOptions);
                 State = WofPublicSessionState.Connected;
                 _setStatus?.Invoke($"JOINED PUBLIC LOBBY {normalizedCode}");
                 return WofPublicSessionResult.Success(normalizedCode);
@@ -161,7 +167,18 @@ namespace WOF
         {
             if (UnityServices.State != ServicesInitializationState.Initialized)
             {
-                await UnityServices.InitializeAsync();
+                var profile = WofPublicSessionRules.ResolveAuthenticationProfile(
+                    Environment.GetCommandLineArgs());
+                if (string.IsNullOrEmpty(profile))
+                {
+                    await UnityServices.InitializeAsync();
+                }
+                else
+                {
+                    await UnityServices.InitializeAsync(
+                        new InitializationOptions().SetProfile(profile));
+                    Debug.Log($"[WOF-AUTOMATION] AUTH_PROFILE_READY profile={profile}");
+                }
             }
 
             if (!AuthenticationService.Instance.IsSignedIn)
@@ -172,8 +189,15 @@ namespace WOF
 
         private void SelectUnityTransport()
         {
-            _networkManager.NetworkConfig ??= new NetworkConfig();
-            _networkManager.NetworkConfig.NetworkTransport = _transport;
+#if UNITY_WEBGL && !UNITY_EDITOR
+            const bool useWebSockets = true;
+#else
+            const bool useWebSockets = false;
+#endif
+            WofTransportConfiguration.ConfigureRelayMultiplayer(
+                _networkManager,
+                _transport,
+                useWebSockets);
         }
 
         private WofPublicSessionResult Fail(string message)

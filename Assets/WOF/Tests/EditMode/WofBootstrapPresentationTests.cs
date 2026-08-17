@@ -1,9 +1,20 @@
+using System.IO;
 using NUnit.Framework;
 
 namespace WOF.Tests
 {
     public sealed class WofBootstrapPresentationTests
     {
+        [Test]
+        public void BuiltPlayerCustomLobbyProbeUsesTheRealCustomHostPath()
+        {
+            const string path = "Assets/WOF/Runtime/Bootstrap/WofBootstrap.cs";
+            var source = File.ReadAllText(path);
+            StringAssert.Contains("arg == \"--wof-custom-host\"", source);
+            StringAssert.Contains("SetSurvivalSession(false);", source);
+            StringAssert.Contains("StartHost();", source);
+        }
+
         [Test]
         public void SoloSessionLeavesReactNotificationCornerClear()
         {

@@ -40,6 +40,7 @@ namespace WOF
         private int _lastScreenWidth;
         private int _lastScreenHeight;
         private bool _submitting;
+        private bool _gameplayRestorePending;
 
         public bool IsOpen => _root != null && _root.activeSelf;
         public string CurrentValue => _input == null ? string.Empty : _input.text;
@@ -99,8 +100,9 @@ namespace WOF
 
         private void OnDestroy()
         {
-            if (IsOpen)
+            if (IsOpen || _gameplayRestorePending)
             {
+                _gameplayRestorePending = false;
                 RestoreGameplay(true);
             }
         }
@@ -285,8 +287,44 @@ namespace WOF
             EventSystem.current?.SetSelectedGameObject(null);
             _input.SetTextWithoutNotify("/");
             _root.SetActive(false);
-            RestoreGameplay(relockGameplay);
-            Debug.Log($"[WOF-AUTOMATION] COMMAND_CONSOLE_CLOSED relock={relockGameplay.ToString().ToLowerInvariant()}");
+            if (relockGameplay)
+            {
+                _gameplayRestorePending = true;
+                StartCoroutine(RestoreGameplayAfterInputRelease());
+                return;
+            }
+
+            RestoreGameplay(false);
+            Debug.Log("[WOF-AUTOMATION] COMMAND_CONSOLE_CLOSED relock=false");
+        }
+
+        private IEnumerator RestoreGameplayAfterInputRelease()
+        {
+            var closingFrameElapsed = false;
+            yield return null;
+            closingFrameElapsed = true;
+
+            while (!WofCommandConsoleRules.CanRestoreGameplayAfterClose(
+                       closingFrameElapsed,
+                       IsKeyboardInputActive()))
+            {
+                yield return null;
+            }
+
+            if (!_gameplayRestorePending || IsOpen)
+            {
+                yield break;
+            }
+
+            _gameplayRestorePending = false;
+            RestoreGameplay(true);
+            Debug.Log("[WOF-AUTOMATION] COMMAND_CONSOLE_CLOSED relock=true");
+        }
+
+        private static bool IsKeyboardInputActive()
+        {
+            var keyboard = Keyboard.current;
+            return keyboard != null && (keyboard.anyKey.isPressed || keyboard.anyKey.wasPressedThisFrame);
         }
 
         private void RestoreGameplay(bool relock)

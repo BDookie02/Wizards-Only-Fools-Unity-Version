@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -135,8 +136,20 @@ namespace WOF
             0d,
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Server);
+        private readonly NetworkVariable<float> _flashbangOpacity = new(
+            0f,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
+        private readonly NetworkVariable<bool> _isGrabbed = new(
+            false,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
         private readonly NetworkList<WofNetworkEnginePlaceableRecord> _enginePlaceables = new(
             null,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
+        private readonly NetworkVariable<FixedString64Bytes> _voiceChannelName = new(
+            default,
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Server);
 
@@ -157,7 +170,28 @@ namespace WOF
         private bool _lastLilyCoilGrounded = true;
         private bool _lastLilyCoilMoving;
         private float _lastGroundedAt;
-        private double _nextServerCastAt;
+        private double _nextServerLeftCastAt;
+        private double _nextServerRightCastAt;
+        private bool _serverLeftCastActive;
+        private bool _serverRightCastActive;
+        private float _serverLeftChannelTimer;
+        private float _serverRightChannelTimer;
+        private WofPlayerController _serverLeftGrabTarget;
+        private WofPlayerController _serverRightGrabTarget;
+        private WofPlayerController _serverGrabCaster;
+        private WofHandSide _serverGrabCasterHand;
+        private float _serverGrabDistance;
+        private double _serverGrabUntil;
+        private Vector3 _serverExternalPullVelocity;
+        private int _serverExternalPullFrames;
+        private Vector3 _serverImpulsePlanarVelocity;
+        private float _serverFlashbangInitialOpacity;
+        private double _serverFlashbangStartedAt;
+        private double _serverFlashbangEndsAt;
+        private bool _localLeftCastActive;
+        private bool _localRightCastActive;
+        private double _localNextLeftCastAt;
+        private double _localNextRightCastAt;
         private uint _inputSequence;
         private Vector3 _automationServerCastDirection;
         private int _remainingAutomationServerCasts;
@@ -176,6 +210,7 @@ namespace WOF
         private bool _mountainVillageViewProbe;
         private bool _grassViewProbe;
         private bool _grassOverheadViewProbe;
+        private bool _magicGlassOrbViewProbe;
         private bool _hasDarrelReturnPosition;
         private bool _darrelReturnArmed;
         private Vector3 _darrelReturnPosition;
@@ -185,6 +220,12 @@ namespace WOF
         private bool _meditationPresentationLogged;
         private double _nextManaDecayAt;
         private readonly Dictionary<string, double> _manaFlowerCooldowns = new();
+        private readonly Dictionary<WofManaSourceKind, double> _infiniteManaSourceDebounces = new();
+        private readonly HashSet<int> _collectedHutRunes = new();
+        private long _collectedHutRuneCycle = long.MinValue;
+        private WofVoiceChatRuntime _voiceChatRuntime;
+        private WofTreeHouseTraversalRuntime _treeHouseTraversalRuntime;
+        private WofDesertTraversalRuntime _desertTraversalRuntime;
 
         public float Health => _health.Value;
         public float Armor => _armor.Value;
@@ -200,6 +241,11 @@ namespace WOF
         public bool IsSlowEffectActive => IsTimedBuffActive(_slowUntil.Value);
         public bool IsPoisonEffectActive => IsTimedBuffActive(_poisonUntil.Value);
         public bool IsAcidEffectActive => IsTimedBuffActive(_acidUntil.Value);
+        internal bool IsSpeedBoostActiveForAutomation => IsSpeedBoostActive;
+        internal bool IsJumpBoostActiveForAutomation => IsJumpBoostActive;
+        internal bool IsMagicGlassOrbActiveForAutomation => IsTimedBuffActive(_magicGlassOrbUntil.Value);
+        public float FlashbangOpacity => _flashbangOpacity.Value;
+        public bool IsGrabbed => _isGrabbed.Value;
         public bool IsGrounded => IsMeditating || (!IsVClipEnabled && (IsLocalLilyCoilActive
             ? _lastLilyCoilGrounded
             : _controller != null && (!_controller.enabled || _controller.isGrounded)));
@@ -306,6 +352,10 @@ namespace WOF
                     _grassViewProbe = true;
                     _grassOverheadViewProbe = true;
                 }
+                else if (argument.Equals("--wof-magic-glass-orb-view-probe", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    _magicGlassOrbViewProbe = true;
+                }
             }
             _villagerViewProbe = WofPerformanceModeRuntime.IsVillagerViewProbe;
             _darrelDialogProbe = WofPerformanceModeRuntime.IsDarrelDialogProbe;
@@ -344,6 +394,7 @@ namespace WOF
             _isVClipEnabled.OnValueChanged += HandleVClipEnabledChanged;
             _leftEquippedSpell.OnValueChanged += HandleEquippedSpellChanged;
             _rightEquippedSpell.OnValueChanged += HandleEquippedSpellChanged;
+            _voiceChannelName.OnValueChanged += HandleVoiceChannelChanged;
 
             var hasLocalControl = IsServer || IsOwner;
             _controller.enabled = hasLocalControl && !_isDead.Value;
@@ -363,6 +414,10 @@ namespace WOF
 
             if (IsServer)
             {
+                var bootstrap = WofBootstrap.Instance;
+                SetServerVoiceChannel(bootstrap != null && bootstrap.Mode != WofSessionMode.Solo
+                    ? bootstrap.RoomCode
+                    : string.Empty);
                 var angle = OwnerClientId * 1.618f;
                 var spawnOffset = OwnerClientId == 0
                     ? Vector3.zero
@@ -412,11 +467,18 @@ namespace WOF
                 _rightMana.Value = 0f;
                 _nextManaDecayAt = NetworkManager.ServerTime.Time + 1d;
                 _manaFlowerCooldowns.Clear();
+                _infiniteManaSourceDebounces.Clear();
+                _collectedHutRunes.Clear();
+                _collectedHutRuneCycle = long.MinValue;
                 _isDead.Value = false;
                 _isMeditating.Value = false;
                 _castingUntil.Value = 0d;
                 _leftEquippedSpell.Value = (int)WofSpellLoadout.ReactDefaultLeft;
                 _rightEquippedSpell.Value = (int)WofSpellLoadout.ReactDefaultRight;
+                if (OwnerClientId == 0 && _magicGlassOrbViewProbe)
+                {
+                    _leftEquippedSpell.Value = (int)WofSpellId.MagicGlassOrb;
+                }
                 _speedBoostUntil.Value = 0d;
                 _jumpBoostUntil.Value = 0d;
                 _discShieldUntil.Value = 0d;
@@ -425,11 +487,32 @@ namespace WOF
                 _sleepUntil.Value = 0d;
                 _poisonUntil.Value = 0d;
                 _acidUntil.Value = 0d;
-                _magicGlassOrbUntil.Value = 0d;
+                _magicGlassOrbUntil.Value = OwnerClientId == 0 && _magicGlassOrbViewProbe
+                    ? double.MaxValue
+                    : 0d;
+                _flashbangOpacity.Value = 0f;
+                _isGrabbed.Value = false;
+            }
+
+            if (WofTreeHouseTraversalRules.RunsControllerSimulation(IsServer, IsOwner))
+            {
+                _treeHouseTraversalRuntime = gameObject.GetComponent<WofTreeHouseTraversalRuntime>() ??
+                                             gameObject.AddComponent<WofTreeHouseTraversalRuntime>();
+                _treeHouseTraversalRuntime.Configure(this);
+            }
+
+            if (IsOwner && WofDesertTraversalRuntime.IsProbeRequested())
+            {
+                _desertTraversalRuntime = gameObject.GetComponent<WofDesertTraversalRuntime>() ??
+                                           gameObject.AddComponent<WofDesertTraversalRuntime>();
+                _desertTraversalRuntime.Configure(this);
             }
 
             if (IsOwner)
             {
+                _voiceChatRuntime = gameObject.GetComponent<WofVoiceChatRuntime>() ??
+                                    gameObject.AddComponent<WofVoiceChatRuntime>();
+                _voiceChatRuntime.Configure(this, _voiceChannelName.Value.ToString());
                 WofAstralMeditationRules.SetAuthoritativeActive(
                     ref _localMeditationState,
                     _isMeditating.Value);
@@ -448,6 +531,10 @@ namespace WOF
                     _pitch = _grassOverheadViewProbe ? 82f : -8f;
                     ApplyCameraRotation();
                     Debug.Log($"[WOF-AUTOMATION] GRASS_VIEW_PROBE_READY variant={(_grassOverheadViewProbe ? "overhead" : "ground")} position={transform.position} yaw={_yaw} pitch={_pitch}");
+                }
+                else if (_magicGlassOrbViewProbe)
+                {
+                    Debug.Log("[WOF-AUTOMATION] MAGIC_GLASS_ORB_VIEW_PROBE_READY signal=none");
                 }
                 else if (_desertVillageViewProbe)
                 {
@@ -503,11 +590,31 @@ namespace WOF
             _isVClipEnabled.OnValueChanged -= HandleVClipEnabledChanged;
             _leftEquippedSpell.OnValueChanged -= HandleEquippedSpellChanged;
             _rightEquippedSpell.OnValueChanged -= HandleEquippedSpellChanged;
+            _voiceChannelName.OnValueChanged -= HandleVoiceChannelChanged;
+            if (_treeHouseTraversalRuntime != null) Destroy(_treeHouseTraversalRuntime);
+            _treeHouseTraversalRuntime = null;
+            if (_desertTraversalRuntime != null) Destroy(_desertTraversalRuntime);
+            _desertTraversalRuntime = null;
             if (IsOwner)
             {
+                if (_voiceChatRuntime != null) Destroy(_voiceChatRuntime);
+                _voiceChatRuntime = null;
                 WofAstralMeditationRules.SetAuthoritativeActive(ref _localMeditationState, false);
+                ClearOwnerCastPresentation();
                 WofHud.Instance?.SetMagicHandsVisible(true);
+                WofHud.Instance?.SetFlashbangOpacity(0f);
             }
+        }
+
+        internal void SetServerVoiceChannel(string sessionCode)
+        {
+            if (!IsServer) return;
+            _voiceChannelName.Value = new FixedString64Bytes(WofVoiceChatRules.CreateChannelName(sessionCode));
+        }
+
+        private void HandleVoiceChannelChanged(FixedString64Bytes previous, FixedString64Bytes current)
+        {
+            if (IsOwner) _voiceChatRuntime?.SetChannelName(current.ToString());
         }
 
         private void Update()
@@ -516,6 +623,8 @@ namespace WOF
             {
                 return;
             }
+
+            WofHud.Instance?.SetFlashbangOpacity(_flashbangOpacity.Value);
 
             UpdateAstralMeditationInput();
             if (_isDead.Value)
@@ -586,22 +695,7 @@ namespace WOF
                 RecordNavigationSample(command);
             }
 
-            if (WofInputRouter.ConsumeCast(out var castingHand))
-            {
-                if (WofDarrelGroveRuntime.TryInteractWithDragon(this))
-                {
-                    return;
-                }
-                WofHud.Instance?.PlayFiringPose(castingHand);
-                if (IsServer)
-                {
-                    TryCastFromAuthoritativePoseServer(castingHand);
-                }
-                else
-                {
-                    RequestCastRpc(castingHand);
-                }
-            }
+            HandleOwnerCastInput(WofInputRouter.ReadCastFrame());
 
             PublishMovementHud();
 
@@ -611,6 +705,87 @@ namespace WOF
                 var livePitch = cameraPivot == null ? float.NaN : cameraPivot.localEulerAngles.x;
                 Debug.Log($"[WOF-AUTOMATION] TREEHOUSE_VIEW_LIVE position={transform.position} internalYaw={_yaw:F1} commandYaw={_latestServerInput.Yaw:F1} yaw={transform.eulerAngles.y:F1} forward={transform.forward} pitch={livePitch:F1}");
             }
+        }
+
+        private void HandleOwnerCastInput(WofCastInputFrame frame)
+        {
+            if (WofInputRouter.GameplaySuppressed)
+            {
+                ReleaseOwnerCast(WofHandSide.Left);
+                ReleaseOwnerCast(WofHandSide.Right);
+                return;
+            }
+
+            if ((frame.LeftPressed || frame.RightPressed) && WofDarrelGroveRuntime.TryInteractWithDragon(this))
+            {
+                return;
+            }
+
+            if (frame.LeftPressed) StartOwnerCast(WofHandSide.Left);
+            if (frame.RightPressed) StartOwnerCast(WofHandSide.Right);
+            if (frame.LeftReleased) ReleaseOwnerCast(WofHandSide.Left);
+            if (frame.RightReleased) ReleaseOwnerCast(WofHandSide.Right);
+        }
+
+        private void StartOwnerCast(WofHandSide hand)
+        {
+            var spell = hand == WofHandSide.Left ? LeftEquippedSpell : RightEquippedSpell;
+            var now = Time.unscaledTimeAsDouble;
+            var nextCastAt = hand == WofHandSide.Left ? _localNextLeftCastAt : _localNextRightCastAt;
+            if (now < nextCastAt) return;
+            if (WofSpellCastingRules.ShouldConsumeCooldownOnStart(spell))
+            {
+                SetLocalNextCastAt(hand, now + WofSpellRuntimeTuning.GetCastCooldownSeconds(spell));
+            }
+            var remainsActive = WofSpellCastingRules.KeepsHandActiveAfterStart(spell);
+            if (hand == WofHandSide.Left) _localLeftCastActive = remainsActive;
+            else _localRightCastActive = remainsActive;
+
+            if (remainsActive)
+            {
+                WofHud.Instance?.SetHandCasting(hand, true);
+            }
+            else
+            {
+                WofHud.Instance?.PlayFiringPose(hand, WofSpellLoadout.SelfBuffHandChargeSeconds);
+            }
+
+            if (IsServer) TryStartCastServer(hand);
+            else RequestCastStartRpc(hand);
+        }
+
+        private void ReleaseOwnerCast(WofHandSide hand)
+        {
+            var active = hand == WofHandSide.Left ? _localLeftCastActive : _localRightCastActive;
+            if (!active) return;
+            if (hand == WofHandSide.Left) _localLeftCastActive = false;
+            else _localRightCastActive = false;
+            WofHud.Instance?.SetHandCasting(hand, false);
+
+            var spell = hand == WofHandSide.Left ? LeftEquippedSpell : RightEquippedSpell;
+            if (WofSpellCastingRules.ShouldConsumeCooldownOnRelease(spell))
+            {
+                SetLocalNextCastAt(
+                    hand,
+                    Time.unscaledTimeAsDouble + WofSpellRuntimeTuning.GetCastCooldownSeconds(spell));
+            }
+
+            if (IsServer) ReleaseCastServer(hand);
+            else RequestCastReleaseRpc(hand);
+        }
+
+        private void SetLocalNextCastAt(WofHandSide hand, double value)
+        {
+            if (hand == WofHandSide.Left) _localNextLeftCastAt = value;
+            else _localNextRightCastAt = value;
+        }
+
+        private void ClearOwnerCastPresentation()
+        {
+            _localLeftCastActive = false;
+            _localRightCastActive = false;
+            WofHud.Instance?.SetHandCasting(WofHandSide.Left, false);
+            WofHud.Instance?.SetHandCasting(WofHandSide.Right, false);
         }
 
         private void UpdateAstralMeditationInput()
@@ -728,11 +903,21 @@ namespace WOF
             RespawnExpiredTrainingDummies();
             if (_isDead.Value || !_controller.enabled) return;
 
+            UpdateServerFlashbang();
+            if (UpdateServerGrabbedState(Time.fixedDeltaTime))
+            {
+                return;
+            }
             ApplyToxicStatusDamage(Time.fixedDeltaTime);
             ApplyManaDecay();
-            if (_isDead.Value) return;
+            if (_isDead.Value)
+            {
+                CancelServerCasting();
+                return;
+            }
             if (_isMeditating.Value)
             {
+                CancelServerCasting();
                 _latestServerInput.Move = Vector2.zero;
                 _latestServerInput.Jump = false;
                 _latestServerInput.Sprint = false;
@@ -748,10 +933,15 @@ namespace WOF
             var simulatedInput = _latestServerInput;
             if (IsTimedBuffActive(_sleepUntil.Value))
             {
+                CancelServerCasting();
                 simulatedInput.Move = Vector2.zero;
                 simulatedInput.Jump = false;
                 simulatedInput.Sprint = false;
                 simulatedInput.Slide = false;
+            }
+            else
+            {
+                UpdateServerChannelledCasts(Time.fixedDeltaTime);
             }
             var movementFrame = Simulate(
                 ref _serverVerticalVelocity,
@@ -776,7 +966,6 @@ namespace WOF
             var hasPlanarInput = command.Move.sqrMagnitude > 0f;
             var moving = hasPlanarInput || (vclip && (command.Jump || command.Slide));
             var sprinting = moving && command.Sprint && !IsSliding && !IsCrouching;
-            var slideHeld = !vclip && command.Slide && (IsSliding || sprinting || hasPlanarInput);
             var velocity = vclip
                 ? WofMovementMath.ResolveVClipVelocity(
                     command.Move,
@@ -803,11 +992,12 @@ namespace WOF
                 command.Move,
                 sprinting,
                 command.Jump,
-                slideHeld,
+                command.Slide,
                 vclip,
                 IsGrounded,
                 moving,
                 IsSliding,
+                IsCrouching,
                 WofSpellMenuRuntime.IsOpen);
         }
 
@@ -891,6 +1081,7 @@ namespace WOF
 
             if (active)
             {
+                CancelServerCasting();
                 _latestServerInput.Move = Vector2.zero;
                 _latestServerInput.Jump = false;
                 _latestServerInput.Sprint = false;
@@ -929,6 +1120,18 @@ namespace WOF
             }
 
             TryCastFromAuthoritativePoseServer(hand);
+        }
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+        private void RequestCastStartRpc(WofHandSide hand)
+        {
+            TryStartCastServer(hand);
+        }
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+        private void RequestCastReleaseRpc(WofHandSide hand)
+        {
+            ReleaseCastServer(hand);
         }
 
         public void EquipSpell(WofHandSide hand, WofSpellId spell)
@@ -1246,6 +1449,8 @@ namespace WOF
 
             if (result.IsDead)
             {
+                CancelServerCasting();
+                EndServerGrab(applyThrow: false, Vector3.zero);
                 SetMeditatingServer(false);
                 _isDead.Value = true;
                 Debug.Log($"[WOF-AUTOMATION] PLAYER_DIED id={OwnerClientId}");
@@ -1264,6 +1469,18 @@ namespace WOF
 
             var damage = WofSpellRuntimeTuning.GetPlayerDamage(spell);
             if (damage > 0f) ApplyServerDamage(damage, sourceClientId);
+        }
+
+        public bool ShouldBlockServerSpellImpact(Vector3 incomingOrigin)
+        {
+            if (!IsServer || _isDead.Value || NetworkManager == null) return false;
+            var now = NetworkManager.ServerTime.Time;
+            if (now < _orbShieldUntil.Value) return true;
+            return now < _discShieldUntil.Value &&
+                   WofSpellOutcomeRules.DiscShieldBlocks(
+                       transform.position,
+                       transform.forward,
+                       incomingOrigin);
         }
 
         public void ApplyServerStatus(WofSpellId spell, ulong sourceClientId)
@@ -1302,6 +1519,19 @@ namespace WOF
             }
         }
 
+        public void ApplyServerFlashbang(float initialOpacity)
+        {
+            if (!IsServer || _isDead.Value || NetworkManager == null) return;
+            var opacity = Mathf.Clamp01(initialOpacity);
+            if (opacity <= 0f) return;
+            var now = NetworkManager.ServerTime.Time;
+            _serverFlashbangInitialOpacity = opacity;
+            _serverFlashbangStartedAt = now;
+            _serverFlashbangEndsAt = now + WofSpellRuntimeTuning.GetLifetimeSeconds(WofSpellId.IceSpell);
+            _flashbangOpacity.Value = opacity;
+            Debug.Log($"[WOF] FLASHBANG_APPLIED target={OwnerClientId} opacity={opacity:F2}");
+        }
+
         public void ApplyServerPortalTeleport(Vector3 position)
         {
             if (!IsServer || _isDead.Value) return;
@@ -1317,8 +1547,11 @@ namespace WOF
             var direction = hitPoint - transform.position;
             if (direction.sqrMagnitude <= 0.001f) return;
             direction.Normalize();
-            _serverVerticalVelocity = direction.y * 60f + 5f;
-            _controller.Move(new Vector3(direction.x * 2.4f, Mathf.Max(0f, direction.y * 2f), direction.z * 2.4f));
+            var velocity = direction * WofSpellRuntimeTuning.KunaiPullSpeed;
+            velocity.y += WofSpellRuntimeTuning.KunaiPullVerticalBoost;
+            _serverImpulsePlanarVelocity = new Vector3(velocity.x, 0f, velocity.z);
+            _serverVerticalVelocity = velocity.y;
+            Debug.Log($"[WOF] KUNAI_PULL owner={OwnerClientId} velocity={velocity}");
         }
 
         public void ApplyServerGrabPull(Vector3 casterPosition)
@@ -1332,10 +1565,107 @@ namespace WOF
         public void ApplyServerTornadoPull(Vector3 center)
         {
             if (!IsServer || _isDead.Value) return;
-            var direction = center - transform.position;
-            direction.y = 0f;
-            if (direction.sqrMagnitude <= 0.001f) return;
-            _controller.Move(direction.normalized * 2.4f + Vector3.up * 0.4f);
+            var velocity = WofSpellOutcomeRules.ResolveTornadoPullVelocity(transform.position, center);
+            if (velocity.sqrMagnitude <= 0.000001f) return;
+            _serverExternalPullVelocity = velocity;
+            _serverExternalPullFrames = WofSpellRuntimeTuning.ExternalPullFrames;
+        }
+
+        private void UpdateServerFlashbang()
+        {
+            if (!IsServer || _flashbangOpacity.Value <= 0f || NetworkManager == null) return;
+            var now = NetworkManager.ServerTime.Time;
+            if (now >= _serverFlashbangEndsAt)
+            {
+                _flashbangOpacity.Value = 0f;
+                return;
+            }
+            _flashbangOpacity.Value = WofSpellOutcomeRules.ResolveIceSpellOpacityAtTime(
+                _serverFlashbangInitialOpacity,
+                (float)(now - _serverFlashbangStartedAt));
+        }
+
+        private bool BeginServerGrab(
+            WofPlayerController caster,
+            WofHandSide casterHand,
+            float distance)
+        {
+            if (!IsServer || caster == null || caster == this || _isDead.Value || NetworkManager == null)
+            {
+                return false;
+            }
+
+            EndServerGrab(applyThrow: false, Vector3.zero);
+            _serverGrabCaster = caster;
+            _serverGrabCasterHand = casterHand;
+            _serverGrabDistance = WofSpellOutcomeRules.ClampGrabDistance(distance);
+            _serverGrabUntil = NetworkManager.ServerTime.Time + WofSpellRuntimeTuning.GrabMaximumDurationSeconds;
+            _serverImpulsePlanarVelocity = Vector3.zero;
+            _serverExternalPullFrames = 0;
+            _isGrabbed.Value = true;
+            CancelServerCasting();
+            Debug.Log(
+                $"[WOF] GRAB_APPLIED caster={caster.OwnerClientId} target={OwnerClientId} hand={casterHand} distance={_serverGrabDistance:F2}");
+            return true;
+        }
+
+        private bool UpdateServerGrabbedState(float deltaSeconds)
+        {
+            if (!IsServer || !_isGrabbed.Value) return false;
+            if (_serverGrabCaster == null || !_serverGrabCaster.IsSpawned ||
+                _serverGrabCaster.IsDead || NetworkManager.ServerTime.Time >= _serverGrabUntil ||
+                !_serverGrabCaster.IsServerCastActive(_serverGrabCasterHand))
+            {
+                var releaseDirection = _serverGrabCaster != null &&
+                                _serverGrabCaster.TryResolveAuthoritativeSpellLaunch(out _, out var resolved)
+                    ? resolved
+                    : transform.forward;
+                EndServerGrab(applyThrow: true, releaseDirection);
+                return false;
+            }
+
+            if (!_serverGrabCaster.TryResolveAuthoritativeSpellLaunch(out var origin, out var direction))
+            {
+                return true;
+            }
+
+            CancelServerCasting();
+            var holdPoint = WofSpellOutcomeRules.ResolveGrabHoldPoint(origin, direction, _serverGrabDistance);
+            var nextPosition = WofSpellOutcomeRules.ResolveGrabFollowPosition(
+                transform.position,
+                holdPoint,
+                deltaSeconds);
+            SetControllerPosition(nextPosition);
+            _serverVerticalVelocity = 0f;
+            _latestServerInput.Move = Vector2.zero;
+            _latestServerInput.Jump = false;
+            _latestServerInput.Sprint = false;
+            _latestServerInput.Slide = false;
+            _authoritativePosition.Value = transform.position;
+            _authoritativeYaw.Value = _latestServerInput.Yaw;
+            _authoritativePitch.Value = _latestServerInput.Pitch;
+            _isSprinting.Value = false;
+            _isSliding.Value = false;
+            _isCrouching.Value = false;
+            return true;
+        }
+
+        private void EndServerGrab(bool applyThrow, Vector3 direction)
+        {
+            if (!IsServer || !_isGrabbed.Value) return;
+            var caster = _serverGrabCaster;
+            var casterHand = _serverGrabCasterHand;
+            _serverGrabCaster = null;
+            _serverGrabUntil = 0d;
+            _isGrabbed.Value = false;
+            if (applyThrow)
+            {
+                var velocity = WofSpellOutcomeRules.ResolveGrabThrowVelocity(direction);
+                _serverImpulsePlanarVelocity = new Vector3(velocity.x, 0f, velocity.z);
+                _serverVerticalVelocity = velocity.y;
+                Debug.Log(
+                    $"[WOF] GRAB_THROW caster={(caster == null ? ulong.MaxValue : caster.OwnerClientId)} target={OwnerClientId} hand={casterHand} velocity={velocity}");
+            }
         }
 
         private void ApplyToxicStatusDamage(float deltaTime)
@@ -1420,6 +1750,7 @@ namespace WOF
             until = now + WofManaRules.FlowerRespawnSeconds;
             _manaFlowerCooldowns[flower.Id] = until;
             ConfirmManaFlowerCollectionOwnerRpc(chunkX, chunkZ, flowerIndex, until);
+            BroadcastManaPickupPulseRpc();
             Debug.Log($"[WOF-AUTOMATION] MANA_FLOWER_COLLECTED owner={OwnerClientId} id={flower.Id} hand={recharge.RechargedHand} until={until:F2}");
         }
 
@@ -1429,11 +1760,99 @@ namespace WOF
             WofSurvivalAmbientLifeRuntime.MarkFlowerCollected(chunkX, chunkZ, flowerIndex, until);
         }
 
+        public bool RequestManaSourceCollection(WofManaSourceKind kind, int sourceIndex, long cycle)
+        {
+            if (!IsOwner || !IsSpawned || _isDead.Value || !CanRechargeMana ||
+                !System.Enum.IsDefined(typeof(WofManaSourceKind), kind)) return false;
+            if (IsServer) CollectManaSourceServer(kind, sourceIndex, cycle);
+            else RequestManaSourceCollectionRpc(kind, sourceIndex, cycle);
+            return true;
+        }
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+        private void RequestManaSourceCollectionRpc(WofManaSourceKind kind, int sourceIndex, long cycle)
+        {
+            CollectManaSourceServer(kind, sourceIndex, cycle);
+        }
+
+        private void CollectManaSourceServer(WofManaSourceKind kind, int sourceIndex, long requestedCycle)
+        {
+            if (!IsServer || _isDead.Value || NetworkManager == null ||
+                !System.Enum.IsDefined(typeof(WofManaSourceKind), kind)) return;
+            var now = NetworkManager.ServerTime.Time;
+            var survival = WofBootstrap.Instance == null || WofBootstrap.Instance.IsSurvivalSession;
+            var currentCycle = WofManaSourceRules.GetRuneCycle(now);
+            WofManaSourceRecord source;
+            switch (kind)
+            {
+                case WofManaSourceKind.BaseInfinite:
+                    source = WofManaSourceRules.BaseSource;
+                    if (!WofManaSourceRules.ShouldShowBaseSources(survival, transform.position) ||
+                        IsInfiniteManaSourceDebounced(kind, now)) return;
+                    break;
+                case WofManaSourceKind.DesertWell:
+                    source = WofManaSourceRules.DesertWell;
+                    if (!WofManaSourceRules.ShouldShowDesertWell(survival, transform.position) ||
+                        IsInfiniteManaSourceDebounced(kind, now)) return;
+                    break;
+                case WofManaSourceKind.HutRune:
+                    if (requestedCycle != currentCycle ||
+                        !WofManaSourceRules.ShouldShowBaseSources(survival, transform.position) ||
+                        !WofManaSourceRules.IsRuneActive(sourceIndex, currentCycle) ||
+                        !WofManaSourceRules.TryGetHutRune(sourceIndex, out source)) return;
+                    if (_collectedHutRuneCycle != currentCycle)
+                    {
+                        _collectedHutRuneCycle = currentCycle;
+                        _collectedHutRunes.Clear();
+                    }
+                    if (_collectedHutRunes.Contains(sourceIndex)) return;
+                    break;
+                default:
+                    return;
+            }
+
+            if (!WofManaSourceRules.IsWithinHorizontalRadius(transform.position, source)) return;
+            var recharge = WofManaRules.RechargeMostEmpty(_leftMana.Value, _rightMana.Value);
+            if (!recharge.Changed) return;
+            _leftMana.Value = recharge.Left;
+            _rightMana.Value = recharge.Right;
+            if (kind == WofManaSourceKind.HutRune) _collectedHutRunes.Add(sourceIndex);
+            else _infiniteManaSourceDebounces[kind] = now + WofManaSourceRules.InfiniteSourceDebounceSeconds;
+            ConfirmManaSourceCollectionOwnerRpc(kind, sourceIndex, currentCycle);
+            BroadcastManaPickupPulseRpc();
+            Debug.Log($"[WOF-AUTOMATION] MANA_SOURCE_COLLECTED owner={OwnerClientId} kind={kind} id={source.Id} hand={recharge.RechargedHand} cycle={currentCycle}");
+        }
+
+        private bool IsInfiniteManaSourceDebounced(WofManaSourceKind kind, double now)
+        {
+            return _infiniteManaSourceDebounces.TryGetValue(kind, out var until) && until > now;
+        }
+
+        [Rpc(SendTo.Owner)]
+        private void ConfirmManaSourceCollectionOwnerRpc(WofManaSourceKind kind, int sourceIndex, long cycle)
+        {
+            WofManaSourceRuntime.ConfirmCollection(kind, sourceIndex, cycle);
+        }
+
+        [Rpc(SendTo.ClientsAndHost)]
+        private void BroadcastManaPickupPulseRpc()
+        {
+            WofManaSourceRuntime.SpawnPickupPulse(this);
+        }
+
         public bool RequestMapFastTravel(WofMapDestination destination)
         {
             if (!IsOwner || !IsSpawned || _isDead.Value || !WofMapFastTravel.TryGet(destination, out _))
             {
                 return false;
+            }
+
+            // Peaceful Sanctuary is the existing Darrel Grove alternate realm. Route it
+            // through the realm transition so the player's return position and return
+            // gate are armed exactly as they are when the quest sends the player there.
+            if (destination == WofMapDestination.PeacefulSanctuary)
+            {
+                return RequestDarrelGroveTeleport();
             }
 
             if (IsServer)
@@ -1554,6 +1973,9 @@ namespace WOF
         private void ResetTeleportMotion()
         {
             _serverVerticalVelocity = 0f;
+            _serverExternalPullVelocity = Vector3.zero;
+            _serverExternalPullFrames = 0;
+            _serverImpulsePlanarVelocity = Vector3.zero;
             _predictedVerticalVelocity = 0f;
             _latestServerInput = default;
             WofMovementMath.Reset(ref _serverMovementState);
@@ -1569,10 +1991,17 @@ namespace WOF
                 return false;
             }
 
+            WofFireballProjectile.DespawnAllAutomationServerProjectiles();
             _serverVerticalVelocity = 0f;
             _predictedVerticalVelocity = 0f;
             _latestServerInput = default;
-            _nextServerCastAt = 0d;
+            _nextServerLeftCastAt = 0d;
+            _nextServerRightCastAt = 0d;
+            CancelServerCasting();
+            EndServerGrab(applyThrow: false, Vector3.zero);
+            _serverExternalPullVelocity = Vector3.zero;
+            _serverExternalPullFrames = 0;
+            _serverImpulsePlanarVelocity = Vector3.zero;
             _automationServerCastDirection = Vector3.zero;
             _remainingAutomationServerCasts = 0;
             _health.Value = WofGameConstants.MaxHealth;
@@ -1586,9 +2015,54 @@ namespace WOF
             _poisonUntil.Value = 0d;
             _acidUntil.Value = 0d;
             _magicGlassOrbUntil.Value = 0d;
+            _flashbangOpacity.Value = 0f;
             Teleport(position, yaw);
             return true;
         }
+
+        internal bool RepositionForAutomationCombatProbe(Vector3 position, float yaw)
+        {
+            if (!IsServer || !IsSpawned || _isDead.Value) return false;
+            _serverVerticalVelocity = 0f;
+            _predictedVerticalVelocity = 0f;
+            _serverExternalPullVelocity = Vector3.zero;
+            _serverExternalPullFrames = 0;
+            _serverImpulsePlanarVelocity = Vector3.zero;
+            Teleport(position, yaw);
+            return true;
+        }
+
+        internal bool TryAutomationServerCastSpell(
+            WofHandSide hand,
+            WofSpellId spell,
+            Vector3 aimPoint)
+        {
+            if (!IsServer || !IsSpawned || _isDead.Value) return false;
+            SetEquippedSpellServer(hand, spell);
+            SetNextServerCastAt(hand, 0d);
+            if (!TryResolveAuthoritativeSpellLaunch(out var origin, out var fallbackDirection)) return false;
+            var requestedDirection = aimPoint - origin;
+            var direction = requestedDirection.sqrMagnitude > 0.000001f
+                ? requestedDirection.normalized
+                : fallbackDirection;
+            return TryCastResolvedSpellServer(hand, spell, origin, direction);
+        }
+
+        internal bool BeginAutomationServerHeldSpell(WofHandSide hand, WofSpellId spell)
+        {
+            if (!IsServer || !IsSpawned || _isDead.Value) return false;
+            SetEquippedSpellServer(hand, spell);
+            SetNextServerCastAt(hand, 0d);
+            return TryStartCastServer(hand);
+        }
+
+        internal bool ReleaseAutomationServerHeldSpell(WofHandSide hand)
+        {
+            return IsServer && IsSpawned && ReleaseCastServer(hand);
+        }
+
+        internal bool IsDiscShieldActiveForAutomation => IsTimedBuffActive(_discShieldUntil.Value);
+        internal bool IsOrbShieldActiveForAutomation => IsTimedBuffActive(_orbShieldUntil.Value);
 
         internal bool PrepareForAutomationNorthGateProbe()
         {
@@ -1956,13 +2430,190 @@ namespace WOF
                 $"[WOF-AUTOMATION] CLIENT_TRAINING_DUMMY_REPLICATION_FAILED reason={reason}");
         }
 
+        private bool TryStartCastServer(WofHandSide hand)
+        {
+            if (!IsServer || _isMeditating.Value || _isDead.Value || IsServerCastActive(hand))
+            {
+                return false;
+            }
+
+            var spell = GetServerEquippedSpell(hand);
+            var now = NetworkManager.ServerTime.Time;
+            if (!WofFireballCastMath.IsFinite(now) || now < GetNextServerCastAt(hand))
+            {
+                return false;
+            }
+
+            var startMode = WofSpellCastingRules.GetStartMode(spell);
+            if (startMode == WofSpellCastStartMode.Immediate &&
+                !TryCastFromAuthoritativePoseServer(hand, spell))
+            {
+                return false;
+            }
+
+            if (!WofSpellCastingRules.KeepsHandActiveAfterStart(spell))
+            {
+                return true;
+            }
+
+            SetServerCastActive(hand, true);
+            _castingUntil.Value = double.MaxValue;
+            Debug.Log($"[WOF] SPELL_CAST_STARTED owner={OwnerClientId} hand={hand} spell={spell} mode={startMode}");
+            return true;
+        }
+
+        private bool ReleaseCastServer(WofHandSide hand)
+        {
+            if (!IsServer || !IsServerCastActive(hand)) return false;
+            var spell = GetServerEquippedSpell(hand);
+            if (spell == WofSpellId.Grab)
+            {
+                ReleaseServerGrabTarget(hand, applyThrow: true);
+            }
+            SetServerCastActive(hand, false);
+            RefreshServerCastingPose();
+            Debug.Log($"[WOF] SPELL_CAST_RELEASED owner={OwnerClientId} hand={hand} spell={spell}");
+            if (_isMeditating.Value || _isDead.Value || WofSpellCastingRules.SuppressesReleaseEffect(spell))
+            {
+                return true;
+            }
+            return TryCastFromAuthoritativePoseServer(hand, spell);
+        }
+
+        private void UpdateServerChannelledCasts(float deltaSeconds)
+        {
+            UpdateServerChannelledCast(WofHandSide.Left, deltaSeconds);
+            UpdateServerChannelledCast(WofHandSide.Right, deltaSeconds);
+        }
+
+        private void UpdateServerChannelledCast(WofHandSide hand, float deltaSeconds)
+        {
+            if (!IsServerCastActive(hand) || deltaSeconds <= 0f) return;
+            var spell = GetServerEquippedSpell(hand);
+            if (spell == WofSpellId.Heal)
+            {
+                ref var healTimer = ref GetServerChannelTimer(hand);
+                var firstTick = healTimer <= 0f;
+                healTimer += deltaSeconds;
+                ApplyServerHealing(
+                    WofSpellCastingRules.GetHealAmount(
+                        deltaSeconds,
+                        WofSpellRuntimeTuning.HealSpellHealPerSecond),
+                    clearToxicEffects: true);
+                if (firstTick)
+                {
+                    Debug.Log(
+                        $"[WOF] CHANNEL_SPELL_TICK owner={OwnerClientId} hand={hand} spell={WofSpellId.Heal} rate={WofSpellRuntimeTuning.HealSpellHealPerSecond:F1}");
+                }
+                return;
+            }
+            if (spell != WofSpellId.Flamethrower) return;
+
+            ref var timer = ref GetServerChannelTimer(hand);
+            if (!WofSpellCastingRules.AdvanceFlamethrowerTimer(timer, deltaSeconds, out timer)) return;
+            TrySpawnChannelledFlamethrowerServer(hand);
+        }
+
+        private bool TrySpawnChannelledFlamethrowerServer(WofHandSide hand)
+        {
+            if (fireballPrefab == null ||
+                !TryResolveAuthoritativeSpellLaunch(out var origin, out var direction))
+            {
+                return false;
+            }
+            direction += new Vector3(
+                (UnityEngine.Random.value - 0.5f) * 0.15f,
+                (UnityEngine.Random.value - 0.5f) * 0.15f,
+                (UnityEngine.Random.value - 0.5f) * 0.15f);
+            if (!WofFireballCastMath.TryNormalizeFiniteDirection(direction, out var normalized)) return false;
+            SpawnSpellObject(WofSpellId.Flamethrower, origin, normalized);
+            Debug.Log($"[WOF] CHANNEL_SPELL_TICK owner={OwnerClientId} hand={hand} spell={WofSpellId.Flamethrower}");
+            return true;
+        }
+
+        private void CancelServerCasting()
+        {
+            if (!_serverLeftCastActive && !_serverRightCastActive) return;
+            ReleaseServerGrabTarget(WofHandSide.Left, applyThrow: false);
+            ReleaseServerGrabTarget(WofHandSide.Right, applyThrow: false);
+            SetServerCastActive(WofHandSide.Left, false);
+            SetServerCastActive(WofHandSide.Right, false);
+            RefreshServerCastingPose();
+        }
+
+        private bool IsServerCastActive(WofHandSide hand)
+        {
+            return hand == WofHandSide.Left ? _serverLeftCastActive : _serverRightCastActive;
+        }
+
+        private void SetServerCastActive(WofHandSide hand, bool active)
+        {
+            if (hand == WofHandSide.Left)
+            {
+                _serverLeftCastActive = active;
+                _serverLeftChannelTimer = 0f;
+            }
+            else
+            {
+                _serverRightCastActive = active;
+                _serverRightChannelTimer = 0f;
+            }
+        }
+
+        private ref float GetServerChannelTimer(WofHandSide hand)
+        {
+            if (hand == WofHandSide.Left) return ref _serverLeftChannelTimer;
+            return ref _serverRightChannelTimer;
+        }
+
+        private WofSpellId GetServerEquippedSpell(WofHandSide hand)
+        {
+            return hand == WofHandSide.Left ? LeftEquippedSpell : RightEquippedSpell;
+        }
+
+        private WofPlayerController GetServerGrabTarget(WofHandSide hand)
+        {
+            return hand == WofHandSide.Left ? _serverLeftGrabTarget : _serverRightGrabTarget;
+        }
+
+        private void SetServerGrabTarget(WofHandSide hand, WofPlayerController target)
+        {
+            if (hand == WofHandSide.Left) _serverLeftGrabTarget = target;
+            else _serverRightGrabTarget = target;
+        }
+
+        private void ReleaseServerGrabTarget(WofHandSide hand, bool applyThrow)
+        {
+            var target = GetServerGrabTarget(hand);
+            SetServerGrabTarget(hand, null);
+            if (target == null || !target.IsSpawned || target._serverGrabCaster != this ||
+                target._serverGrabCasterHand != hand)
+            {
+                return;
+            }
+
+            TryResolveAuthoritativeSpellLaunch(out _, out var direction);
+            target.EndServerGrab(applyThrow, direction);
+        }
+
+        private void RefreshServerCastingPose()
+        {
+            _castingUntil.Value = _serverLeftCastActive || _serverRightCastActive
+                ? double.MaxValue
+                : NetworkManager.ServerTime.Time;
+        }
+
         private bool TryCastFromAuthoritativePoseServer(WofHandSide hand = WofHandSide.Right)
+        {
+            return TryCastFromAuthoritativePoseServer(hand, GetServerEquippedSpell(hand));
+        }
+
+        private bool TryCastFromAuthoritativePoseServer(WofHandSide hand, WofSpellId equippedSpell)
         {
             if (_isMeditating.Value || _isDead.Value)
             {
                 return false;
             }
-            var equippedSpell = hand == WofHandSide.Left ? LeftEquippedSpell : RightEquippedSpell;
             if (_serverLilyCoilState.Active)
             {
                 var frame = WofLilyCoilLayout.GetFrame(_serverLilyCoilState.T);
@@ -2002,6 +2653,38 @@ namespace WOF
             return TryCastResolvedSpellServer(hand, equippedSpell, origin, direction);
         }
 
+        private bool TryResolveAuthoritativeSpellLaunch(out Vector3 origin, out Vector3 direction)
+        {
+            if (_serverLilyCoilState.Active)
+            {
+                var frame = WofLilyCoilLayout.GetFrame(_serverLilyCoilState.T);
+                var radial = WofLilyCoilLayout.GetRadial(frame, _serverLilyCoilState.SurfaceAngle);
+                var playerUp = -radial;
+                var bodyRotation = Quaternion.LookRotation(frame.Tangent, playerUp);
+                var viewRotation = bodyRotation * Quaternion.Euler(
+                    _authoritativePitch.Value,
+                    _authoritativeYaw.Value,
+                    0f);
+                var eyeHeight = _isSliding.Value
+                    ? WofMovementMath.ReactLowCameraHeight
+                    : WofMovementMath.ReactStandingCameraHeight;
+                return WofFireballCastMath.TryResolveOrientedLaunch(
+                    _authoritativePosition.Value,
+                    playerUp,
+                    eyeHeight,
+                    viewRotation * Vector3.forward,
+                    out origin,
+                    out direction);
+            }
+
+            return WofFireballCastMath.TryResolveAuthoritativeLaunch(
+                _authoritativePosition.Value,
+                _authoritativeYaw.Value,
+                _authoritativePitch.Value,
+                out origin,
+                out direction);
+        }
+
         private bool TryCastResolvedSpellServer(
             WofHandSide hand,
             WofSpellId spell,
@@ -2019,7 +2702,7 @@ namespace WOF
 
         private bool TryApplySelfSpellServer(WofHandSide hand, WofSpellId spell)
         {
-            if (!TryBeginSpellCastServer(spell, WofSpellLoadout.SelfBuffHandChargeSeconds, out var now))
+            if (!TryBeginSpellCastServer(hand, spell, WofSpellLoadout.SelfBuffHandChargeSeconds, out var now))
             {
                 return false;
             }
@@ -2061,7 +2744,7 @@ namespace WOF
                     _magicGlassOrbUntil.Value = double.MaxValue;
                     break;
                 default:
-                    _nextServerCastAt = now;
+                    SetNextServerCastAt(hand, now);
                     return false;
             }
             Debug.Log($"[WOF] SELF_SPELL_CAST owner={OwnerClientId} hand={hand} spell={spell}");
@@ -2074,7 +2757,7 @@ namespace WOF
             Vector3 origin,
             Vector3 direction)
         {
-            if (!TryBeginSpellCastServer(spell, 0.36f, out _)) return false;
+            if (!TryBeginSpellCastServer(hand, spell, 0.36f, out _)) return false;
             var normalized = direction.normalized;
             if (spell == WofSpellId.ArcaneBeam)
             {
@@ -2087,7 +2770,7 @@ namespace WOF
                     if (projection > 0f &&
                         Vector3.SqrMagnitude(player.transform.position + Vector3.up - closest) <=
                         WofSpellRuntimeTuning.HitscanRadius * WofSpellRuntimeTuning.HitscanRadius &&
-                        !player.HasActiveSpellShield)
+                        !player.ShouldBlockServerSpellImpact(origin))
                         player.ApplyServerDamage(35f, OwnerClientId);
                 }
                 WofTrainingDummyRuntime.ApplyServerHitscanSpellImpact(
@@ -2110,7 +2793,12 @@ namespace WOF
                 var target = FindNearestSpellTarget(origin, normalized, range, radius);
                 if (target != null)
                 {
-                    if (spell == WofSpellId.Grab) target.ApplyServerGrabPull(_authoritativePosition.Value);
+                    if (spell == WofSpellId.Grab)
+                    {
+                        var targetPoint = target.transform.position + Vector3.up * 0.85f;
+                        var distance = Vector3.Dot(targetPoint - origin, normalized);
+                        if (target.BeginServerGrab(this, hand, distance)) SetServerGrabTarget(hand, target);
+                    }
                     else target.ApplyServerStatus(WofSpellId.TungstonBallsack, OwnerClientId);
                 }
                 SpawnSpellObject(spell, origin + normalized * 3f, normalized);
@@ -2125,7 +2813,7 @@ namespace WOF
             Vector3 origin,
             Vector3 direction)
         {
-            if (!TryBeginSpellCastServer(spell, 0.36f, out var now)) return false;
+            if (!TryBeginSpellCastServer(hand, spell, 0.36f, out var now)) return false;
             var flatDirection = new Vector3(direction.x, 0f, direction.z);
             if (flatDirection.sqrMagnitude < 0.001f) flatDirection = transform.forward;
             flatDirection.Normalize();
@@ -2178,17 +2866,17 @@ namespace WOF
 
             var now = NetworkManager.ServerTime.Time;
             if (!WofFireballCastMath.IsFinite(now) ||
-                !WofFireballCastMath.IsFinite(_nextServerCastAt) ||
+                !WofFireballCastMath.IsFinite(GetNextServerCastAt(hand)) ||
                 !WofFireballCastMath.IsFinite(_authoritativePosition.Value) ||
                 !WofFireballCastMath.IsFinite(origin) ||
                 !WofFireballCastMath.TryNormalizeFiniteDirection(direction, out var normalizedDirection) ||
                 Vector3.Distance(origin, _authoritativePosition.Value) > 3.5f ||
-                now < _nextServerCastAt)
+                now < GetNextServerCastAt(hand))
             {
                 return false;
             }
 
-            _nextServerCastAt = now + WofSpellRuntimeTuning.GetCastCooldownSeconds(spell);
+            SetNextServerCastAt(hand, now + WofSpellRuntimeTuning.GetCastCooldownSeconds(spell));
             _castingUntil.Value = now + 0.36d;
             SpawnSpellObject(spell, origin, normalizedDirection);
             Debug.Log($"[WOF-AUTOMATION] SPELL_CAST owner={OwnerClientId} hand={hand} spell={spell}");
@@ -2205,13 +2893,30 @@ namespace WOF
             return projectileObject;
         }
 
-        private bool TryBeginSpellCastServer(WofSpellId spell, float poseSeconds, out double now)
+        private bool TryBeginSpellCastServer(
+            WofHandSide hand,
+            WofSpellId spell,
+            float poseSeconds,
+            out double now)
         {
             now = NetworkManager.ServerTime.Time;
-            if (!IsServer || _isDead.Value || fireballPrefab == null || now < _nextServerCastAt) return false;
-            _nextServerCastAt = now + WofSpellRuntimeTuning.GetCastCooldownSeconds(spell);
-            _castingUntil.Value = now + poseSeconds;
+            if (!IsServer || _isDead.Value || fireballPrefab == null || now < GetNextServerCastAt(hand)) return false;
+            SetNextServerCastAt(hand, now + WofSpellRuntimeTuning.GetCastCooldownSeconds(spell));
+            _castingUntil.Value = _serverLeftCastActive || _serverRightCastActive
+                ? double.MaxValue
+                : now + poseSeconds;
             return true;
+        }
+
+        private double GetNextServerCastAt(WofHandSide hand)
+        {
+            return hand == WofHandSide.Left ? _nextServerLeftCastAt : _nextServerRightCastAt;
+        }
+
+        private void SetNextServerCastAt(WofHandSide hand, double value)
+        {
+            if (hand == WofHandSide.Left) _nextServerLeftCastAt = value;
+            else _nextServerRightCastAt = value;
         }
 
         private bool IsValidSpellTarget(WofPlayerController player)
@@ -2353,19 +3058,19 @@ namespace WOF
             }
 
             var controllerVelocity = _controller.velocity;
+            var effectiveGrounded = (Time.time - _lastGroundedAt) <= WofGameConstants.GroundCoyoteSeconds;
             var movementFrame = WofMovementMath.ResolveFrame(
                 ref movementState,
                 command.Move,
                 command.Sprint,
                 command.Slide,
                 command.Jump,
-                _controller.isGrounded,
+                effectiveGrounded,
                 verticalVelocity,
                 controllerVelocity.x * controllerVelocity.x + controllerVelocity.z * controllerVelocity.z,
                 Time.time,
                 deltaTime);
 
-            var effectiveGrounded = (Time.time - _lastGroundedAt) <= WofGameConstants.GroundCoyoteSeconds;
             if (WofMovementMath.ApplyJumpThruster(
                     ref movementState,
                     command.Jump,
@@ -2389,7 +3094,21 @@ namespace WOF
                 movementSpeed *= WofSpellRuntimeTuning.TungstonSlowMultiplier;
             }
             var velocity = planar * movementSpeed + Vector3.up * verticalVelocity;
+            if (_serverExternalPullFrames > 0)
+            {
+                velocity.x += _serverExternalPullVelocity.x;
+                velocity.z += _serverExternalPullVelocity.z;
+                verticalVelocity = _serverExternalPullVelocity.y;
+                velocity.y = verticalVelocity;
+                _serverExternalPullFrames--;
+                if (_serverExternalPullFrames <= 0) _serverExternalPullVelocity = Vector3.zero;
+            }
+            velocity += _serverImpulsePlanarVelocity;
             _controller.Move(velocity * deltaTime);
+            if (_controller.isGrounded && _serverImpulsePlanarVelocity.sqrMagnitude > 0f)
+            {
+                _serverImpulsePlanarVelocity = Vector3.zero;
+            }
             transform.rotation = Quaternion.Euler(0f, command.Yaw, 0f);
             ApplyCameraHeight(movementFrame.IsSliding, movementFrame.IsCrouching);
             return new WofMovementFrame(
@@ -2506,6 +3225,9 @@ namespace WOF
             }
 
             _serverVerticalVelocity = 0f;
+            _serverExternalPullVelocity = Vector3.zero;
+            _serverExternalPullFrames = 0;
+            _serverImpulsePlanarVelocity = Vector3.zero;
             _latestServerInput = default;
             Teleport(
                 WofTreeHouseVillageLayout.DefaultPlayerSpawn,
@@ -2519,6 +3241,8 @@ namespace WOF
             _sleepUntil.Value = 0d;
             _poisonUntil.Value = 0d;
             _acidUntil.Value = 0d;
+            _flashbangOpacity.Value = 0f;
+            _isGrabbed.Value = false;
             Debug.Log($"[WOF-AUTOMATION] PLAYER_RESPAWNED id={OwnerClientId}");
         }
 
@@ -2608,6 +3332,7 @@ namespace WOF
             }
             if (current)
             {
+                ClearOwnerCastPresentation();
                 WofInputRouter.ResetTransientGameplayActions();
                 WofMovementMath.Reset(ref _predictedMovementState);
                 _predictedVerticalVelocity = 0f;
@@ -2631,6 +3356,7 @@ namespace WOF
             {
                 if (current)
                 {
+                    ClearOwnerCastPresentation();
                     WofAstralMeditationRules.SetAuthoritativeActive(ref _localMeditationState, false);
                 }
                 WofMovementMath.Reset(ref _predictedMovementState);
@@ -2677,9 +3403,10 @@ namespace WOF
                 WofSpellLoadout.GetDisplayName(LeftEquippedSpell),
                 WofSpellLoadout.GetDisplayName(RightEquippedSpell));
             WofHud.Instance?.SetMagicHandsVisible(!IsMeditating);
-            WofHud.Instance?.SetHeldSpellVisibility(
-                !IsMeditating && LeftEquippedSpell == WofSpellId.Fireball,
-                !IsMeditating && RightEquippedSpell == WofSpellId.Fireball);
+            if (!IsMeditating)
+            {
+                WofHud.Instance?.SetHeldSpellPresentation(LeftEquippedSpell, RightEquippedSpell, this);
+            }
             PublishMovementHud();
         }
 

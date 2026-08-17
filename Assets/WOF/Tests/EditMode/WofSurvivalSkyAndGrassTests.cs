@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -17,6 +18,106 @@ namespace WOF.Tests.EditMode
         }
 
         [Test]
+        public void ReactHorizonCylinderConstantsAndOpenGeometryRemainExact()
+        {
+            Assert.That(WofSurvivalSkyRuntime.HorizonRadius, Is.EqualTo(2816f));
+            Assert.That(WofSurvivalSkyRuntime.HorizonHeight, Is.EqualTo(2200f));
+            Assert.That(WofSurvivalSkyRuntime.HorizonY, Is.EqualTo(330f));
+            Assert.That(WofSurvivalSkyRuntime.HorizonSegments, Is.EqualTo(96));
+
+            var mesh = WofSurvivalSkyRuntime.CreateHorizonCylinderMesh(
+                WofSurvivalSkyRuntime.HorizonRadius,
+                WofSurvivalSkyRuntime.HorizonHeight,
+                WofSurvivalSkyRuntime.HorizonSegments);
+            try
+            {
+                Assert.That(mesh.name, Is.EqualTo("ReactHorizonCylinderMesh"));
+                Assert.That(mesh.vertexCount, Is.EqualTo((WofSurvivalSkyRuntime.HorizonSegments + 1) * 2));
+                Assert.That(mesh.triangles, Has.Length.EqualTo(WofSurvivalSkyRuntime.HorizonSegments * 6));
+                Assert.That(mesh.uv[0], Is.EqualTo(Vector2.zero));
+                Assert.That(mesh.uv[^1], Is.EqualTo(Vector2.one));
+                Assert.That(Vector3.Distance(mesh.vertices[0], mesh.vertices[^2]), Is.LessThan(0.01f));
+                Assert.That(mesh.bounds.size.y, Is.EqualTo(WofSurvivalSkyRuntime.HorizonHeight).Within(0.01f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(mesh);
+            }
+        }
+
+        [Test]
+        public void ReactCustomLobbyUsesTheSeparateClassicSkyContract()
+        {
+            var desktop = WofSurvivalSkyRuntime.ResolvePresentationLayout(false, false);
+            Assert.That(desktop.HorizonRadius, Is.EqualTo(400f));
+            Assert.That(desktop.HorizonHeight, Is.EqualTo(250f));
+            Assert.That(desktop.HorizonY, Is.EqualTo(40f));
+            Assert.That(desktop.HorizonSegments, Is.EqualTo(64));
+            Assert.That(desktop.FollowsCamera, Is.False);
+            Assert.That(desktop.FogEnabled, Is.False);
+            Assert.That(desktop.SurvivalSpritesVisible, Is.False);
+            Assert.That(desktop.ClassicAtmosphereVisible, Is.True);
+
+            var mobile = WofSurvivalSkyRuntime.ResolvePresentationLayout(false, true);
+            Assert.That(mobile.ClassicAtmosphereVisible, Is.False);
+
+            var survival = WofSurvivalSkyRuntime.ResolvePresentationLayout(true, false);
+            Assert.That(survival.HorizonRadius, Is.EqualTo(2816f));
+            Assert.That(survival.HorizonHeight, Is.EqualTo(2200f));
+            Assert.That(survival.HorizonY, Is.EqualTo(330f));
+            Assert.That(survival.HorizonSegments, Is.EqualTo(96));
+            Assert.That(survival.FollowsCamera, Is.True);
+            Assert.That(survival.FogEnabled, Is.True);
+            Assert.That(survival.SurvivalSpritesVisible, Is.True);
+            Assert.That(survival.ClassicAtmosphereVisible, Is.False);
+        }
+
+        [Test]
+        public void ClassicSkyShaderRetainsTheExactReactAtmosphereInputs()
+        {
+            const string shaderPath = "Assets/WOF/Shaders/WofSkyUnlit.shader";
+            var source = File.ReadAllText(shaderPath);
+            StringAssert.Contains("_UseClassicAtmosphere", source);
+            StringAssert.Contains("_ClassicTurbidity", source);
+            StringAssert.Contains("_ClassicRayleigh", source);
+            StringAssert.Contains("_ClassicMieCoefficient", source);
+            StringAssert.Contains("_ClassicMieDirectionalG", source);
+            StringAssert.Contains("0.9999566769464484", source);
+
+            const string runtimePath = "Assets/WOF/Runtime/World/WofSurvivalSkyRuntime.cs";
+            var runtime = File.ReadAllText(runtimePath);
+            StringAssert.Contains("SetFloat(\"_ClassicTurbidity\", 0.3f)", runtime);
+            StringAssert.Contains("SetFloat(\"_ClassicRayleigh\", 0.5f)", runtime);
+            StringAssert.Contains("SetFloat(\"_ClassicMieCoefficient\", 0.005f)", runtime);
+            StringAssert.Contains("SetFloat(\"_ClassicMieDirectionalG\", 0.8f)", runtime);
+            StringAssert.Contains("new Vector4(50f, 20f, 50f, 0f)", runtime);
+        }
+
+        [Test]
+        public void ReactHorizonTextureRetainsSeededLayersTreesAndWrapping()
+        {
+            var texture = WofSurvivalSkyTextures.CreateHorizonHills();
+            try
+            {
+                Assert.That(texture.width, Is.EqualTo(2048));
+                Assert.That(texture.height, Is.EqualTo(1024));
+                Assert.That(texture.wrapModeU, Is.EqualTo(TextureWrapMode.Repeat));
+                Assert.That(texture.wrapModeV, Is.EqualTo(TextureWrapMode.Clamp));
+                Assert.That(texture.filterMode, Is.EqualTo(FilterMode.Trilinear));
+                Assert.That(texture.mipmapCount, Is.GreaterThan(1));
+                Assert.That(texture.GetPixel(1024, 1023).a, Is.EqualTo(0f).Within(0.001f));
+                Assert.That(texture.GetPixel(1024, 0), Is.EqualTo((Color)new Color32(71, 137, 45, 255)));
+                Assert.That(System.Array.Exists(
+                    texture.GetPixels32(),
+                    pixel => pixel.Equals(new Color32(53, 111, 34, 255))), Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(texture);
+            }
+        }
+
+        [Test]
         public void ForcedDayAndNightResolveToOppositeLightingStates()
         {
             var day = WofSurvivalSkyRuntime.Evaluate(WofSurvivalSkyRuntime.ForcedDaySeconds);
@@ -25,6 +126,35 @@ namespace WOF.Tests.EditMode
             Assert.That(day.NightAmount, Is.LessThan(0.01f));
             Assert.That(night.DayAmount, Is.LessThan(0.01f));
             Assert.That(night.NightAmount, Is.GreaterThan(0.99f));
+        }
+
+        [Test]
+        public void HorizonTintMatchesReactDayAndNightCycleColors()
+        {
+            var day = WofSurvivalSkyRuntime.EvaluateHorizonTint(
+                WofSurvivalSkyRuntime.Evaluate(WofSurvivalSkyRuntime.ForcedDaySeconds));
+            var night = WofSurvivalSkyRuntime.EvaluateHorizonTint(
+                WofSurvivalSkyRuntime.Evaluate(WofSurvivalSkyRuntime.ForcedNightSeconds));
+            Assert.That(day, Is.EqualTo(Color.white));
+            Assert.That(night.r, Is.EqualTo(0x4b / 255f).Within(0.001f));
+            Assert.That(night.g, Is.EqualTo(0x54 / 255f).Within(0.001f));
+            Assert.That(night.b, Is.EqualTo(0x7c / 255f).Within(0.001f));
+        }
+
+        [Test]
+        public void SharedSkyShaderKeepsReactHorizonFogOptInAndIsolated()
+        {
+            const string shaderPath = "Assets/WOF/Shaders/WofSkyUnlit.shader";
+            var source = File.ReadAllText(shaderPath);
+            StringAssert.Contains("_UseFog (\"Use Fog\", Float) = 0", source);
+            StringAssert.Contains("#pragma multi_compile_fog", source);
+            StringAssert.Contains("ComputeFogFactor(output.positionHCS.z)", source);
+            StringAssert.Contains("MixFog(color.rgb, input.fogFactor)", source);
+
+            const string runtimePath = "Assets/WOF/Runtime/World/WofSurvivalSkyRuntime.cs";
+            var runtime = File.ReadAllText(runtimePath);
+            StringAssert.Contains("_horizonMaterial.SetFloat(\"_UseFog\", 1f);", runtime);
+            Assert.That(runtime.Split(new[] { "SetFloat(\"_UseFog\"" }, System.StringSplitOptions.None), Has.Length.EqualTo(2));
         }
 
         [Test]
@@ -40,6 +170,22 @@ namespace WOF.Tests.EditMode
             Assert.That(night.r, Is.EqualTo(0x3f / 255f).Within(0.001f));
             Assert.That(night.g, Is.EqualTo(0x4f / 255f).Within(0.001f));
             Assert.That(night.b, Is.EqualTo(0x45 / 255f).Within(0.001f));
+        }
+
+        [Test]
+        public void BotwGrassShaderAppliesTheSynchronizedSurvivalCycleTint()
+        {
+            const string shaderPath = "Assets/WOF/Shaders/WofBotwGrass.shader";
+            var source = File.ReadAllText(shaderPath);
+            StringAssert.Contains("half4 _WofSurvivalTerrainTint;", source);
+            StringAssert.Contains("* cycleTint", source);
+
+            var day = WofSurvivalSkyRuntime.EvaluateTerrainTint(
+                WofSurvivalSkyRuntime.Evaluate(WofSurvivalSkyRuntime.ForcedDaySeconds));
+            var night = WofSurvivalSkyRuntime.EvaluateTerrainTint(
+                WofSurvivalSkyRuntime.Evaluate(WofSurvivalSkyRuntime.ForcedNightSeconds));
+            Assert.That(day.maxColorComponent, Is.EqualTo(1f).Within(0.001f));
+            Assert.That(night.maxColorComponent, Is.LessThan(0.35f));
         }
 
         [Test]

@@ -12,6 +12,11 @@ namespace WOF
 
         private IEnumerator Start()
         {
+            var traversalProbe = WofGraveyardTraversalProbe.IsRequested();
+            var traversalRoute = traversalProbe
+                ? WofGraveyardTraversalRules.BuildChapelRoute()
+                : null;
+            WofPlayerController player = null;
             if (!SceneManager.GetSceneByName(SceneName).isLoaded)
             {
                 yield return WofAdditiveSceneLoadScheduler.LoadSceneAdditively(
@@ -31,7 +36,6 @@ namespace WOF
 
             if (IsViewProbeRequested())
             {
-                WofPlayerController player = null;
                 var deadline = Time.realtimeSinceStartup + 20f;
                 while (Time.realtimeSinceStartup < deadline && player == null)
                 {
@@ -46,19 +50,24 @@ namespace WOF
                     if (player == null) yield return null;
                 }
 
-                var variant = ResolveVariant();
-                var position = variant switch
+                var variant = traversalProbe ? "traversal" : ResolveVariant();
+                var position = traversalProbe
+                    ? traversalRoute[0] + Vector3.up * 1.4f
+                    : variant switch
                 {
                     "interior" => WofGraveyardVillageLayout.ChapelInteriorViewProbeSpawn,
                     "tombs" => WofGraveyardVillageLayout.TombsViewProbeSpawn,
                     "fence" => WofGraveyardVillageLayout.FenceViewProbeSpawn,
                     _ => WofGraveyardVillageLayout.ViewProbeSpawn
                 };
-                var yaw = variant == "tombs" ? 0f : 180f;
-                var pitch = variant == "exterior" ? -8f : variant == "interior" ? -2f :
-                    variant == "fence" ? -9f : -8f;
-                var positioned = player != null &&
-                                 player.PrepareForAutomationStaticViewProbe(position, yaw, pitch);
+                var yaw = traversalProbe
+                    ? WofGraveyardTraversalRules.ResolveHeading(traversalRoute[0], traversalRoute[1])
+                    : variant == "tombs" ? 0f : 180f;
+                var pitch = traversalProbe ? 0f : variant == "exterior" ? -8f :
+                    variant == "interior" ? -2f : variant == "fence" ? -9f : -8f;
+                var positioned = player != null && (traversalProbe
+                    ? player.PrepareForAutomationVillagerInteractionProbe(position, yaw, pitch)
+                    : player.PrepareForAutomationStaticViewProbe(position, yaw, pitch));
                 if (!positioned)
                 {
                     Debug.LogError("[WOF-AUTOMATION] GRAVEYARD_VILLAGE_SCENE_FAILED stage=probe-position");
@@ -68,6 +77,10 @@ namespace WOF
             }
 
             Debug.Log($"[WOF-AUTOMATION] GRAVEYARD_VILLAGE_SCENE_READY scene={scene.name} roots={scene.rootCount} origin={WofGraveyardVillageLayout.WorldOrigin}");
+            if (traversalProbe)
+            {
+                yield return WofGraveyardTraversalProbe.Run(player, traversalRoute);
+            }
         }
 
         private static bool IsViewProbeRequested()
@@ -75,7 +88,8 @@ namespace WOF
             foreach (var argument in Environment.GetCommandLineArgs())
             {
                 if (string.Equals(argument, "--wof-graveyard-village-view-probe", StringComparison.OrdinalIgnoreCase) ||
-                    argument.StartsWith("--wof-graveyard-village-view-probe=", StringComparison.OrdinalIgnoreCase))
+                    argument.StartsWith("--wof-graveyard-village-view-probe=", StringComparison.OrdinalIgnoreCase) ||
+                    WofGraveyardTraversalProbe.IsRequested())
                 {
                     return true;
                 }

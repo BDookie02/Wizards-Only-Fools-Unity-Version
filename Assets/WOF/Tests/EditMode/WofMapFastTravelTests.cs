@@ -6,10 +6,10 @@ namespace WOF.Tests.EditMode
     public sealed class WofMapFastTravelTests
     {
         [Test]
-        public void PlayerFacingDestinationListIncludesMainlandAndLilyCoil()
+        public void PlayerFacingDestinationListIncludesMainlandAndBothRemoteRealms()
         {
             var destinations = WofMapFastTravel.Destinations;
-            Assert.That(destinations.Length, Is.EqualTo(7));
+            Assert.That(destinations.Length, Is.EqualTo(8));
             Assert.That(destinations[0].Position, Is.EqualTo(new Vector3(0f, 15f, 30f)));
             Assert.That(destinations[1].Position, Is.EqualTo(new Vector3(-1536f, 140f, -1322f)));
             Assert.That(destinations[2].Position, Is.EqualTo(new Vector3(0f, 140f, -1322f)));
@@ -21,12 +21,21 @@ namespace WOF.Tests.EditMode
             Assert.That(destinations[6].Position, Is.EqualTo(WofLilyCoilLayout.PlayableSpawnPosition));
             Assert.That(destinations[6].ShowOnWorldMap, Is.False,
                 "The remote Lily Coil realm must not be drawn as a misleading clamped mainland marker.");
+            Assert.That(destinations[7].Destination, Is.EqualTo(WofMapDestination.PeacefulSanctuary));
+            Assert.That(destinations[7].Label, Is.EqualTo("PEACEFUL SANCTUARY"));
+            Assert.That(destinations[7].Position, Is.EqualTo(WofDarrelGroveLayout.SpawnPosition));
+            Assert.That(destinations[7].ShowOnWorldMap, Is.False,
+                "Peaceful Sanctuary is a remote realm and must not be clamped onto the mainland atlas.");
 
             var menuDestinations = WofMapFastTravel.MenuDestinations;
             Assert.That(menuDestinations.Length, Is.EqualTo(destinations.Length));
             Assert.That(menuDestinations[0].Destination, Is.EqualTo(WofMapDestination.LilyCoil),
-                "The remote dimension must be the first visible and controller-selected travel option.");
-            Assert.That(menuDestinations[1].Destination, Is.EqualTo(WofMapDestination.Base));
+                "The remote realms must be the first visible controller travel options.");
+            Assert.That(menuDestinations[1].Destination, Is.EqualTo(WofMapDestination.PeacefulSanctuary));
+            Assert.That(menuDestinations[2].Destination, Is.EqualTo(WofMapDestination.Base));
+            Assert.That(WofMapFastTravel.IsRemoteRealm(WofMapDestination.LilyCoil), Is.True);
+            Assert.That(WofMapFastTravel.IsRemoteRealm(WofMapDestination.PeacefulSanctuary), Is.True);
+            Assert.That(WofMapFastTravel.IsRemoteRealm(WofMapDestination.Base), Is.False);
         }
 
         [Test]
@@ -34,7 +43,8 @@ namespace WOF.Tests.EditMode
         {
             Assert.That(WofMapFastTravel.IsValid(-1), Is.False);
             Assert.That(WofMapFastTravel.IsValid(6), Is.True);
-            Assert.That(WofMapFastTravel.IsValid(7), Is.False);
+            Assert.That(WofMapFastTravel.IsValid(7), Is.True);
+            Assert.That(WofMapFastTravel.IsValid(8), Is.False);
             Assert.That(WofMapFastTravel.TryGet((WofMapDestination)99, out _), Is.False);
         }
 
@@ -111,6 +121,19 @@ namespace WOF.Tests.EditMode
         }
 
         [Test]
+        public void MobileMapPinchZoomUsesScreenRelativeDistanceAndRejectsInvalidSamples()
+        {
+            Assert.That(
+                WofNavigationMapRuntime.GetTouchPinchZoomDelta(200f, 400f, 1000f),
+                Is.EqualTo(0.5f).Within(0.0001f));
+            Assert.That(
+                WofNavigationMapRuntime.GetTouchPinchZoomDelta(400f, 200f, 1000f),
+                Is.EqualTo(-0.5f).Within(0.0001f));
+            Assert.That(WofNavigationMapRuntime.GetTouchPinchZoomDelta(-1f, 200f, 1000f), Is.Zero);
+            Assert.That(WofNavigationMapRuntime.GetTouchPinchZoomDelta(200f, 400f, 0f), Is.Zero);
+        }
+
+        [Test]
         public void WaypointCompassDirectionUsesWorldNorthAndEast()
         {
             Assert.That(
@@ -122,6 +145,15 @@ namespace WOF.Tests.EditMode
             Assert.That(
                 WofNavigationMapRuntime.GetWaypointCompassDirection(Vector2.one, Vector2.one),
                 Is.EqualTo(Vector2.zero));
+        }
+
+        [Test]
+        public void MapToggleCannotOpenThroughAnotherModalInputOwner()
+        {
+            Assert.That(WofNavigationMapRuntime.CanToggleExpandedForModalState(false, true), Is.False);
+            Assert.That(WofNavigationMapRuntime.CanToggleExpandedForModalState(false, false), Is.True);
+            Assert.That(WofNavigationMapRuntime.CanToggleExpandedForModalState(true, true), Is.True,
+                "An expanded map must still be able to close while it owns gameplay suppression.");
         }
 
         [Test]

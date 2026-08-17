@@ -236,5 +236,70 @@ namespace WOF.Tests
             Assert.That(WofEnginePlaceableStorage.SanitizeSlotId(" Slot 1 !! "), Is.EqualTo("slot-1-"));
             Assert.That(WofEnginePlaceableStorage.GetSlotLabel("slot-3"), Is.EqualTo("Slot 3"));
         }
+
+        [Test]
+        public void Storage_JsonRoundTripPreservesCurrentObjectsAndNamedSlotsForWebGlPersistence()
+        {
+            var current = new[]
+            {
+                new WofEnginePlaceableRecord
+                {
+                    instanceId = "engine-hut-log-cabin-current",
+                    placeableId = "hut-log-cabin",
+                    label = "Current Cabin",
+                    x = 12f,
+                    y = 3f,
+                    z = -8f,
+                    yaw = 1.25f
+                }
+            };
+            var document = new WofEnginePlaceableStorageDocument
+            {
+                current = WofEnginePlaceableStorage.SanitizeObjects(current)
+            };
+            WofEnginePlaceableStorage.SaveSlot(document, "slot-2", "Village Build", current, 123456L);
+
+            var restored = WofEnginePlaceableStorage.Deserialize(WofEnginePlaceableStorage.Serialize(document));
+
+            Assert.That(restored.current, Has.Count.EqualTo(1));
+            Assert.That(restored.current[0].instanceId, Is.EqualTo("engine-hut-log-cabin-current"));
+            var slot = WofEnginePlaceableStorage.FindSlot(restored, "slot-2");
+            Assert.That(slot, Is.Not.Null);
+            Assert.That(slot.label, Is.EqualTo("Village Build"));
+            Assert.That(slot.savedAt, Is.EqualTo(123456L));
+            Assert.That(slot.objects, Has.Count.EqualTo(1));
+            Assert.That(slot.objects[0].placeableId, Is.EqualTo("hut-log-cabin"));
+        }
+
+        [Test]
+        public void Storage_EmptyJsonRestoresAnEmptyDocument()
+        {
+            var restored = WofEnginePlaceableStorage.Deserialize(string.Empty);
+
+            Assert.That(restored, Is.Not.Null);
+            Assert.That(restored.current, Is.Empty);
+            Assert.That(restored.slots, Is.Empty);
+        }
+
+        [Test]
+        public void ControllerScroll_RevealsASelectedSaveActionAtTheBottom()
+        {
+            var offset = WofEngineMenuRuntime.ResolvePlacementScrollOffset(
+                0f, 570f, 334f, 548f, 568f);
+
+            Assert.That(offset, Is.EqualTo(236f));
+        }
+
+        [Test]
+        public void ControllerScroll_ReturnsTowardASelectedUpperControlAndLeavesVisibleControlsStable()
+        {
+            var moved = WofEngineMenuRuntime.ResolvePlacementScrollOffset(
+                236f, 570f, 334f, 208f, 240f);
+            var stable = WofEngineMenuRuntime.ResolvePlacementScrollOffset(
+                moved, 570f, 334f, 246f, 273f);
+
+            Assert.That(moved, Is.EqualTo(202f));
+            Assert.That(stable, Is.EqualTo(202f));
+        }
     }
 }

@@ -88,6 +88,27 @@ public static class WofEngineMenuCapture {
     System.Threading.Thread.Sleep(70);
     mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
   }
+
+  public static void DragClient(IntPtr hWnd, int startClientX, int startClientY, int endClientX, int endClientY) {
+    POINT start = new POINT { X = startClientX, Y = startClientY };
+    POINT end = new POINT { X = endClientX, Y = endClientY };
+    if (!ClientToScreen(hWnd, ref start) || !ClientToScreen(hWnd, ref end)) {
+      throw new InvalidOperationException("ClientToScreen failed.");
+    }
+    SetCursorPos(start.X, start.Y);
+    mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
+    System.Threading.Thread.Sleep(70);
+    const int steps = 18;
+    for (int step = 1; step <= steps; step++) {
+      int x = start.X + ((end.X - start.X) * step / steps);
+      int y = start.Y + ((end.Y - start.Y) * step / steps);
+      SetCursorPos(x, y);
+      mouse_event(0x0001, 0, 0, 0, UIntPtr.Zero);
+      System.Threading.Thread.Sleep(20);
+    }
+    mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
+    System.Threading.Thread.Sleep(140);
+  }
 }
 '@
 [WofEngineMenuCapture]::SetProcessDPIAware() | Out-Null
@@ -98,8 +119,12 @@ $profileRoot = Join-Path $resolvedOutputRoot ('engine-menu-profile-' + [Guid]::N
 $profilePath = Join-Path $profileRoot 'survival-save-v1.json'
 $logPath = Join-Path $logRoot 'engine-menu-runtime.log'
 $openPath = Join-Path $resolvedOutputRoot 'engine-menu-open.png'
+$systemsScrolledPath = Join-Path $resolvedOutputRoot 'engine-menu-systems-scrolled.png'
 $selectedPath = Join-Path $resolvedOutputRoot 'engine-menu-campfire-selected.png'
 $placedPath = Join-Path $resolvedOutputRoot 'engine-menu-campfire-placed.png'
+$placementScrolledPath = Join-Path $resolvedOutputRoot 'engine-menu-placement-scrolled.png'
+$placementRestoredTopPath = Join-Path $resolvedOutputRoot 'engine-menu-placement-restored-top.png'
+$dummySelectedPath = Join-Path $resolvedOutputRoot 'engine-menu-training-dummy-selected.png'
 $dummyPath = Join-Path $resolvedOutputRoot 'engine-menu-training-dummy.png'
 $dummyReadyPath = Join-Path $resolvedOutputRoot 'training-dummy-combat-ready.png'
 $dummyDownPath = Join-Path $resolvedOutputRoot 'training-dummy-combat-down.png'
@@ -110,7 +135,7 @@ foreach ($requiredRoot in @($logRoot, $profileRoot)) {
     New-Item -ItemType Directory -Force -Path $requiredRoot | Out-Null
 }
 foreach ($target in @(
-    $logPath, $openPath, $selectedPath, $placedPath, $dummyPath,
+    $logPath, $openPath, $systemsScrolledPath, $selectedPath, $placedPath, $placementScrolledPath, $placementRestoredTopPath, $dummySelectedPath, $dummyPath,
     $dummyReadyPath, $dummyDownPath, $dummyRespawnPath, $worldPath)) {
     if (Test-Path -LiteralPath $target -PathType Leaf) { Remove-Item -LiteralPath $target -Force }
 }
@@ -188,7 +213,15 @@ function Submit-WofCommand {
     if (-not (Wait-WofMarker -Pattern 'COMMAND_CONSOLE_OPEN value=/' -PreviousCount $openCount -Seconds 5)) {
         throw 'Physical Slash did not open the command console.'
     }
-    [WofEngineMenuCapture]::SendText($Text)
+    # The Unity input field focuses asynchronously. Select its contents only after
+    # that focus settles, then type the complete command including its slash so a
+    # late focus callback can never replace the prefix.
+    Start-Sleep -Milliseconds 220
+    [WofEngineMenuCapture]::SetKey(0x11, $true)
+    [WofEngineMenuCapture]::SendKey(0x41)
+    [WofEngineMenuCapture]::SetKey(0x11, $false)
+    [WofEngineMenuCapture]::SendKey(0x08)
+    [WofEngineMenuCapture]::SendText('/' + $Text)
     Start-Sleep -Milliseconds 250
     [WofEngineMenuCapture]::SendKey(0x0D)
     if (-not (Wait-WofMarker -Pattern "action=$Action" -Seconds 7)) {
@@ -219,6 +252,8 @@ try {
     if (-not (Wait-WofMarker -Pattern 'ENGINE_MENU open=true' -Seconds 7)) { throw '/engine did not open the menu.' }
     Start-Sleep -Milliseconds 450
     Save-WofEngineImage -WindowHandle $windowHandle -Path $openPath
+    [WofEngineMenuCapture]::DragClient($windowHandle, 1135, 462, 1135, 622)
+    Save-WofEngineImage -WindowHandle $windowHandle -Path $systemsScrolledPath
 
     [WofEngineMenuCapture]::ClickClient($windowHandle, 205, 213)
     Start-Sleep -Milliseconds 250
@@ -236,49 +271,62 @@ try {
     Start-Sleep -Milliseconds 350
     Save-WofEngineImage -WindowHandle $windowHandle -Path $placedPath
 
-    [WofEngineMenuCapture]::ClickClient($windowHandle, 950, 638)
+    for ($pageIndex = 0; $pageIndex -lt 3; $pageIndex++) {
+        [WofEngineMenuCapture]::ClickClient($windowHandle, 1144, 400)
+        Start-Sleep -Milliseconds 120
+    }
+    Start-Sleep -Milliseconds 250
+    Save-WofEngineImage -WindowHandle $windowHandle -Path $placementScrolledPath
+    [WofEngineMenuCapture]::ClickClient($windowHandle, 950, 412)
     if (-not (Wait-WofMarker -Pattern 'ENGINE_SLOT action=save slot=slot-1 count=1' -Seconds 7)) {
         throw 'Physical Save did not store slot 1.'
     }
     $storagePath = Join-Path $storageRoot 'engine-placeables-v1.json'
     if (-not (Test-Path -LiteralPath $storagePath -PathType Leaf)) { throw 'Engine save JSON is not beside the D-drive build.' }
 
-    [WofEngineMenuCapture]::ClickClient($windowHandle, 1026, 402)
+    [WofEngineMenuCapture]::ClickClient($windowHandle, 1026, 174)
     if (-not (Wait-WofMarker -Pattern 'ENGINE_PLACEABLE_EDIT action=select' -Seconds 7)) {
         throw 'Physical placed-object row click did not select the campfire.'
     }
-    [WofEngineMenuCapture]::ClickClient($windowHandle, 950, 502)
+    [WofEngineMenuCapture]::ClickClient($windowHandle, 950, 272)
     if (-not (Wait-WofMarker -Pattern 'ENGINE_PLACEABLE_EDIT action=preview' -Seconds 7)) {
         throw 'Physical Preview did not target the selected placed object.'
     }
     $placedCount = @(Select-String -LiteralPath $logPath -Pattern 'ENGINE_PLACEABLE_PLACED id=campfire-small').Count
-    [WofEngineMenuCapture]::ClickClient($windowHandle, 1024, 502)
+    [WofEngineMenuCapture]::ClickClient($windowHandle, 1024, 272)
     if (-not (Wait-WofMarker -Pattern 'ENGINE_PLACEABLE_EDIT action=move' -Seconds 7) -or
         -not (Wait-WofMarker -Pattern 'ENGINE_PLACEABLE_PLACED id=campfire-small' -PreviousCount $placedCount -Seconds 7)) {
         throw 'Physical Move did not replace the selected placed object.'
     }
-    [WofEngineMenuCapture]::ClickClient($windowHandle, 1101, 502)
+    [WofEngineMenuCapture]::ClickClient($windowHandle, 1101, 272)
     if (-not (Wait-WofMarker -Pattern 'ENGINE_PLACEABLE_EDIT action=delete' -Seconds 7)) {
         throw 'Physical Delete did not remove the selected placed object.'
     }
-    [WofEngineMenuCapture]::ClickClient($windowHandle, 1024, 638)
+    [WofEngineMenuCapture]::ClickClient($windowHandle, 1024, 412)
     if (-not (Wait-WofMarker -Pattern 'ENGINE_SLOT action=load slot=slot-1 count=1' -Seconds 7)) {
         throw 'Physical Load did not restore slot 1.'
     }
-    [WofEngineMenuCapture]::ClickClient($windowHandle, 1101, 638)
+    [WofEngineMenuCapture]::ClickClient($windowHandle, 1101, 412)
     if (-not (Wait-WofMarker -Pattern 'ENGINE_SLOT action=delete slot=slot-1' -Seconds 7)) {
         throw 'Physical slot Delete did not remove slot 1.'
     }
+    for ($pageIndex = 0; $pageIndex -lt 6; $pageIndex++) {
+        [WofEngineMenuCapture]::ClickClient($windowHandle, 1144, 105)
+        Start-Sleep -Milliseconds 120
+    }
+    Save-WofEngineImage -WindowHandle $windowHandle -Path $placementRestoredTopPath
     [WofEngineMenuCapture]::ClickClient($windowHandle, 1026, 355)
     if (-not (Wait-WofMarker -Pattern 'ENGINE_PLACEABLE_EDIT action=clear' -Seconds 7) -or
         -not (Wait-WofMarker -Pattern 'ENGINE_PLACEABLE_SYNC count=0' -PreviousCount 1 -Seconds 7)) {
         throw 'Physical Clear Placed did not empty the restored object list before the direct command test.'
     }
 
+    Start-Sleep -Milliseconds 500
     [WofEngineMenuCapture]::ClickClient($windowHandle, 205, 305)
-    Start-Sleep -Milliseconds 250
+    Start-Sleep -Milliseconds 500
     [WofEngineMenuCapture]::ClickClient($windowHandle, 360, 248)
-    Start-Sleep -Milliseconds 250
+    Start-Sleep -Milliseconds 500
+    Save-WofEngineImage -WindowHandle $windowHandle -Path $dummySelectedPath
     [WofEngineMenuCapture]::ClickClient($windowHandle, 1026, 317)
     if (-not (Wait-WofMarker -Pattern 'ENGINE_TRAINING_DUMMY_SPAWN.*persistent=false' -Seconds 7)) {
         throw 'Physical engine-menu placement did not spawn the nonpersistent React training dummy.'
@@ -339,8 +387,12 @@ try {
     [PSCustomObject]@{
         ProcessId = $process.Id
         OpenCapture = $openPath
+        SystemsScrolledCapture = $systemsScrolledPath
         SelectedCapture = $selectedPath
         PlacedCapture = $placedPath
+        PlacementScrolledCapture = $placementScrolledPath
+        PlacementRestoredTopCapture = $placementRestoredTopPath
+        TrainingDummySelectedCapture = $dummySelectedPath
         TrainingDummyCapture = $dummyPath
         TrainingDummyReadyCapture = $dummyReadyPath
         TrainingDummyDownCapture = $dummyDownPath

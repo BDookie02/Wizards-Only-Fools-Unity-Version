@@ -45,6 +45,8 @@ namespace WOF
         private Transform _categoryRoot;
         private Transform _placedContent;
         private Transform _slotRoot;
+        private ScrollRect _placementScroll;
+        private ScrollRect _systemsScroll;
         private InputField _search;
         private InputField _slotLabel;
         private Text _shownCount;
@@ -78,6 +80,7 @@ namespace WOF
         private string _selectedSlotId = "slot-1";
         private string _lastNetworkSignature = string.Empty;
         private string _lastLocalSignature = string.Empty;
+        private GameObject _lastPlacementSelection;
         private float _nextNetworkRefreshAt;
         private float _gridSize = 2f;
         private float _yawRadians;
@@ -93,6 +96,7 @@ namespace WOF
         public static bool IsOpen => Instance != null && Instance._overlay != null && Instance._overlay.activeSelf;
         public int PlacedObjectCount => _allRecords.Count;
         public string PlacementStatus => _placementStatus == null ? string.Empty : _placementStatus.text;
+        public int SystemCatalogCount => WofEngineSystemCatalog.Systems.Count;
 
         public void ConfigureGeneratedView(WofHud generatedHud, Transform generatedUiParent, Font generatedFont)
         {
@@ -143,6 +147,7 @@ namespace WOF
             {
                 if ((keyboard?.escapeKey.wasPressedThisFrame ?? false) ||
                     ControllerBackPressed(Gamepad.current)) Close();
+                EnsurePlacementSelectionVisible();
                 return;
             }
 
@@ -152,6 +157,47 @@ namespace WOF
         internal static bool ControllerBackPressed(Gamepad gamepad)
         {
             return WofControllerBindings.WasPressedThisFrame(gamepad, WofControllerActions.MenuBack);
+        }
+
+        internal static float ResolvePlacementScrollOffset(float currentOffset, float contentHeight,
+            float viewportHeight, float selectedTop, float selectedBottom, float margin = 6f)
+        {
+            var hiddenHeight = Mathf.Max(0f, contentHeight - viewportHeight);
+            if (hiddenHeight <= 0f) return 0f;
+            var offset = Mathf.Clamp(currentOffset, 0f, hiddenHeight);
+            var safeMargin = Mathf.Clamp(margin, 0f, viewportHeight * 0.25f);
+            if (selectedTop < offset + safeMargin)
+                offset = selectedTop - safeMargin;
+            else if (selectedBottom > offset + viewportHeight - safeMargin)
+                offset = selectedBottom - viewportHeight + safeMargin;
+            return Mathf.Clamp(offset, 0f, hiddenHeight);
+        }
+
+        private void EnsurePlacementSelectionVisible()
+        {
+            if (_placementScroll == null || _placementScroll.content == null || _placementScroll.viewport == null)
+                return;
+            var selected = EventSystem.current?.currentSelectedGameObject;
+            if (selected == _lastPlacementSelection) return;
+            _lastPlacementSelection = selected;
+            if (selected == null || !selected.transform.IsChildOf(_placementScroll.content)) return;
+            if (selected.transform is not RectTransform selectedRect) return;
+
+            Canvas.ForceUpdateCanvases();
+            var content = _placementScroll.content;
+            var viewport = _placementScroll.viewport;
+            var hiddenHeight = Mathf.Max(0f, content.rect.height - viewport.rect.height);
+            if (hiddenHeight <= 0f) return;
+            var selectionBounds = RectTransformUtility.CalculateRelativeRectTransformBounds(content, selectedRect);
+            var selectedTop = content.rect.yMax - selectionBounds.max.y;
+            var selectedBottom = content.rect.yMax - selectionBounds.min.y;
+            var currentOffset = (1f - _placementScroll.verticalNormalizedPosition) * hiddenHeight;
+            var resolvedOffset = ResolvePlacementScrollOffset(currentOffset, content.rect.height,
+                viewport.rect.height, selectedTop, selectedBottom);
+            if (Mathf.Approximately(currentOffset, resolvedOffset)) return;
+            _placementScroll.StopMovement();
+            _placementScroll.verticalNormalizedPosition = 1f - resolvedOffset / hiddenHeight;
+            Debug.Log($"[WOF-AUTOMATION] ENGINE_PLACEMENT_CONTROLLER_SCROLL selected={selected.name} offset={resolvedOffset:0.##}");
         }
 
         public void Open(bool enableDeveloperMode = true)
@@ -169,6 +215,7 @@ namespace WOF
             RefreshPlacedObjectList();
             RefreshSlotPanel();
             RefreshPixelScale();
+            _lastPlacementSelection = null;
             EventSystem.current?.SetSelectedGameObject(_categoryButtons.FirstOrDefault()?.gameObject);
             Debug.Log("[WOF-AUTOMATION] ENGINE_MENU open=true");
         }
@@ -585,6 +632,21 @@ namespace WOF
             }
             yield return CaptureControllerProbeScreenshot("engine-menu-controller-placed.png");
 
+            var lowerControlReached = false;
+            for (var index = 0; index < 7 && !lowerControlReached; index++)
+            {
+                yield return TapControllerButton(GamepadButton.DpadDown);
+                lowerControlReached = CurrentControllerSelectionName().StartsWith("Slot", StringComparison.Ordinal);
+            }
+            yield return new WaitForSecondsRealtime(0.25f);
+            if (!lowerControlReached || _placementScroll.verticalNormalizedPosition > 0.9f)
+            {
+                FailControllerProbe(
+                    $"lower-controls-scroll-failed selected={CurrentControllerSelectionName()} normalized={_placementScroll.verticalNormalizedPosition:0.###}");
+                yield break;
+            }
+            yield return CaptureControllerProbeScreenshot("engine-menu-controller-lower-controls.png");
+
             yield return TapControllerButton(GamepadButton.B);
             if (IsOpen)
             {
@@ -592,7 +654,7 @@ namespace WOF
                 yield break;
             }
 
-            Debug.Log($"[WOF-AUTOMATION] ENGINE_MENU_CONTROLLER_PROBE_COMPLETE navigation=true select=true place=true back=true placed={PlacedObjectCount}");
+            Debug.Log($"[WOF-AUTOMATION] ENGINE_MENU_CONTROLLER_PROBE_COMPLETE navigation=true select=true place=true scroll=true back=true placed={PlacedObjectCount}");
             RemoveControllerProbeGamepad();
         }
 
@@ -803,6 +865,7 @@ namespace WOF
             BuildCategories();
             BuildCatalog();
             BuildPlacementPanel();
+            BuildSystemsPanel();
 
             var footer = CreatePanel("Footer", _panel, new Color32(0, 0, 0, 45));
             SetBottomStretch(footer.GetComponent<RectTransform>(), 0f, 30f, 0f, 0f);
@@ -868,9 +931,22 @@ namespace WOF
 
         private void BuildPlacementPanel()
         {
-            var panel = CreatePanel("Placement", _panel, new Color32(254, 240, 138, 13));
-            SetTopLeft(panel.GetComponent<RectTransform>(), 818f, 76f, 250f, 570f);
-            AddOutline(panel, new Color32(254, 249, 195, 64));
+            var viewport = CreatePanel("PlacementViewport", _panel, new Color32(254, 240, 138, 13));
+            SetTopLeft(viewport.GetComponent<RectTransform>(), 818f, 76f, 250f, 334f);
+            AddOutline(viewport, new Color32(254, 249, 195, 64));
+            var placementMask = viewport.AddComponent<Mask>();
+            placementMask.showMaskGraphic = true;
+            var panel = CreatePanel("Placement", viewport.transform, new Color32(254, 240, 138, 3));
+            SetTopLeft(panel.GetComponent<RectTransform>(), 0f, 0f, 250f, 570f);
+            _placementScroll = viewport.AddComponent<ScrollRect>();
+            _placementScroll.viewport = viewport.GetComponent<RectTransform>();
+            _placementScroll.content = panel.GetComponent<RectTransform>();
+            _placementScroll.horizontal = false;
+            _placementScroll.vertical = true;
+            _placementScroll.movementType = ScrollRect.MovementType.Clamped;
+            _placementScroll.scrollSensitivity = 28f;
+            _placementScroll.verticalScrollbar = CreateVerticalScrollbar("PlacementScrollbar", viewport.transform);
+            _placementScroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
             var heading = CreateText("Heading", panel.transform, "PLACEMENT", 10, TextAnchor.MiddleLeft, Yellow);
             SetTopLeft(heading.rectTransform, 10f, 6f, 230f, 20f);
             _selectedName = CreateText("Selected", panel.transform,
@@ -980,6 +1056,64 @@ namespace WOF
             var deleteSlot = CreateButton("DeleteSlot", panel.transform, "DELETE", new Color32(239, 68, 68, 20), new Color32(254, 202, 202, 90));
             SetTopLeft(deleteSlot.GetComponent<RectTransform>(), 164f, 548f, 76f, 20f);
             deleteSlot.onClick.AddListener(DeleteSelectedSlot);
+        }
+
+        private void BuildSystemsPanel()
+        {
+            var panel = CreatePanel("Systems", _panel, new Color32(34, 211, 238, 7));
+            SetTopLeft(panel.GetComponent<RectTransform>(), 818f, 418f, 250f, 228f);
+            AddOutline(panel, CyanDimBorder);
+            var heading = CreateText("Heading", panel.transform, "SYSTEMS", 10, TextAnchor.MiddleLeft, Cyan50);
+            SetTopLeft(heading.rectTransform, 10f, 5f, 230f, 18f);
+
+            var viewport = CreatePanel("Viewport", panel.transform, new Color32(0, 0, 0, 32));
+            SetTopLeft(viewport.GetComponent<RectTransform>(), 8f, 28f, 234f, 192f);
+            var mask = viewport.AddComponent<Mask>();
+            mask.showMaskGraphic = true;
+            var content = new GameObject("Content", typeof(RectTransform)).GetComponent<RectTransform>();
+            content.SetParent(viewport.transform, false);
+            content.anchorMin = new Vector2(0f, 1f);
+            content.anchorMax = new Vector2(1f, 1f);
+            content.pivot = new Vector2(0.5f, 1f);
+            content.anchoredPosition = Vector2.zero;
+
+            var systems = WofEngineSystemCatalog.Systems;
+            var y = 0f;
+            for (var index = 0; index < systems.Count; index++)
+            {
+                var descriptor = systems[index];
+                var card = CreatePanel($"System-{descriptor.id}", content, new Color32(34, 211, 238, 7));
+                AddOutline(card, new Color32(207, 250, 254, 38));
+                var name = CreateText("Name", card.transform, descriptor.name.ToUpperInvariant(), 8,
+                    TextAnchor.UpperLeft, Yellow);
+                SetTopLeft(name.rectTransform, 8f, 7f, 214f, 16f);
+                var responsibility = CreateText("Responsibility", card.transform, descriptor.responsibility, 6,
+                    TextAnchor.UpperLeft, new Color32(207, 250, 254, 140));
+                responsibility.horizontalOverflow = HorizontalWrapMode.Wrap;
+                responsibility.verticalOverflow = VerticalWrapMode.Overflow;
+                SetTopLeft(responsibility.rectTransform, 8f, 25f, 214f, 10000f);
+                var responsibilityHeight = Mathf.Max(20f, Mathf.Ceil(responsibility.preferredHeight));
+                SetTopLeft(responsibility.rectTransform, 8f, 25f, 214f, responsibilityHeight);
+                var target = CreateText("ExtractionTarget", card.transform, descriptor.extractionTarget, 6,
+                    TextAnchor.UpperLeft, new Color32(207, 250, 254, 89));
+                SetTopLeft(target.rectTransform, 8f, 30f + responsibilityHeight, 214f, 14f);
+                target.horizontalOverflow = HorizontalWrapMode.Overflow;
+                var cardHeight = responsibilityHeight + 52f;
+                SetTopLeft(card.GetComponent<RectTransform>(), 2f, y, 230f, cardHeight);
+                y += cardHeight + 8f;
+            }
+
+            content.sizeDelta = new Vector2(0f, Mathf.Max(192f, y));
+            _systemsScroll = viewport.AddComponent<ScrollRect>();
+            _systemsScroll.viewport = viewport.GetComponent<RectTransform>();
+            _systemsScroll.content = content;
+            _systemsScroll.horizontal = false;
+            _systemsScroll.vertical = true;
+            _systemsScroll.movementType = ScrollRect.MovementType.Clamped;
+            _systemsScroll.scrollSensitivity = 34f;
+            _systemsScroll.verticalScrollbar = CreateVerticalScrollbar("SystemsScrollbar", viewport.transform);
+            _systemsScroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
+            Debug.Log($"[WOF-AUTOMATION] ENGINE_SYSTEMS_PANEL_READY count={systems.Count}");
         }
 
         private void RefreshCategoryButtons()
@@ -1279,6 +1413,26 @@ namespace WOF
             item.transform.SetParent(parent, false);
             item.GetComponent<Image>().color = color;
             return item;
+        }
+
+        private static Scrollbar CreateVerticalScrollbar(string name, Transform parent)
+        {
+            var track = CreatePanel(name, parent, new Color32(207, 250, 254, 18));
+            var trackRect = track.GetComponent<RectTransform>();
+            trackRect.anchorMin = new Vector2(1f, 0f);
+            trackRect.anchorMax = Vector2.one;
+            trackRect.pivot = new Vector2(1f, 0.5f);
+            trackRect.offsetMin = new Vector2(-6f, 2f);
+            trackRect.offsetMax = new Vector2(-1f, -2f);
+
+            var handle = CreatePanel("Handle", track.transform, new Color32(103, 232, 249, 155));
+            SetFull(handle.GetComponent<RectTransform>());
+            var scrollbar = track.AddComponent<Scrollbar>();
+            scrollbar.handleRect = handle.GetComponent<RectTransform>();
+            scrollbar.targetGraphic = handle.GetComponent<Image>();
+            scrollbar.direction = Scrollbar.Direction.BottomToTop;
+            scrollbar.numberOfSteps = 0;
+            return scrollbar;
         }
 
         private static void SetButtonColors(Button button, Color fill, Color border)

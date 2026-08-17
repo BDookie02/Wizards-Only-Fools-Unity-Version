@@ -99,6 +99,7 @@ namespace WOF
             bool grounded,
             bool moving,
             bool sliding,
+            bool crouching,
             bool spellMenuOpen,
             long? nowMilliseconds = null)
         {
@@ -137,6 +138,7 @@ namespace WOF
                     grounded = grounded,
                     moving = moving,
                     sliding = sliding,
+                    crouching = crouching,
                     sprinting = sprint,
                     spellMenuOpen = spellMenuOpen
                 },
@@ -352,6 +354,7 @@ namespace WOF
         public bool grounded;
         public bool moving;
         public bool sliding;
+        public bool crouching;
         public bool sprinting;
         public bool spellMenuOpen;
     }

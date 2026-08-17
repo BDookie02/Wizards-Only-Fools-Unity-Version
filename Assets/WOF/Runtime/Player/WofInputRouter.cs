@@ -12,6 +12,36 @@ namespace WOF
         Right
     }
 
+    public readonly struct WofCastInputFrame
+    {
+        public WofCastInputFrame(
+            bool leftPressed,
+            bool leftHeld,
+            bool leftReleased,
+            bool rightPressed,
+            bool rightHeld,
+            bool rightReleased)
+        {
+            LeftPressed = leftPressed;
+            LeftHeld = leftHeld;
+            LeftReleased = leftReleased;
+            RightPressed = rightPressed;
+            RightHeld = rightHeld;
+            RightReleased = rightReleased;
+        }
+
+        public bool LeftPressed { get; }
+        public bool LeftHeld { get; }
+        public bool LeftReleased { get; }
+        public bool RightPressed { get; }
+        public bool RightHeld { get; }
+        public bool RightReleased { get; }
+
+        public bool IsPressed(WofHandSide hand) => hand == WofHandSide.Left ? LeftPressed : RightPressed;
+        public bool IsHeld(WofHandSide hand) => hand == WofHandSide.Left ? LeftHeld : RightHeld;
+        public bool IsReleased(WofHandSide hand) => hand == WofHandSide.Left ? LeftReleased : RightReleased;
+    }
+
     public static class WofInputRouter
     {
         private const float LegacyMouseAxisScale = 0.1f;
@@ -31,6 +61,10 @@ namespace WOF
         private static bool s_ControllerGameplayArmed;
         private static bool s_ControllerLeftCastHeld;
         private static bool s_ControllerRightCastHeld;
+        private static bool s_MouseLeftCastHeld;
+        private static bool s_MouseRightCastHeld;
+        private static bool s_LeftCastHeld;
+        private static bool s_RightCastHeld;
         private static bool s_ControllerSprintHeld;
         private static bool s_ControllerSprintLatched;
         private static bool s_GameplaySuppressed;
@@ -142,38 +176,66 @@ namespace WOF
 
         public static bool ConsumeCast(out WofHandSide hand)
         {
+            var frame = ReadCastFrame();
+            if (frame.LeftPressed)
+            {
+                hand = WofHandSide.Left;
+                return true;
+            }
+            hand = WofHandSide.Right;
+            return frame.RightPressed;
+        }
+
+        public static WofCastInputFrame ReadCastFrame()
+        {
             if (s_GameplaySuppressed)
             {
                 s_MobileLeftCastQueued = false;
                 s_MobileRightCastQueued = false;
-                hand = WofHandSide.Right;
-                return false;
+                s_MouseLeftCastHeld = false;
+                s_MouseRightCastHeld = false;
+                s_LeftCastHeld = false;
+                s_RightCastHeld = false;
+                return default;
             }
+
             var mouse = Mouse.current;
-            var leftMousePressed = mouse?.leftButton.wasPressedThisFrame ?? false;
-            var rightMousePressed = mouse?.rightButton.wasPressedThisFrame ?? false;
+            var pointerOverUi = IsMousePointerOverUi(mouse);
+            var rawMouseLeftHeld = mouse?.leftButton.isPressed ?? false;
+            var rawMouseRightHeld = mouse?.rightButton.isPressed ?? false;
+            var mouseLeftPressed = (mouse?.leftButton.wasPressedThisFrame ?? false) && !pointerOverUi;
+            var mouseRightPressed = (mouse?.rightButton.wasPressedThisFrame ?? false) && !pointerOverUi;
+            s_MouseLeftCastHeld = rawMouseLeftHeld && (s_MouseLeftCastHeld || mouseLeftPressed);
+            s_MouseRightCastHeld = rawMouseRightHeld && (s_MouseRightCastHeld || mouseRightPressed);
+
             var gamepad = Gamepad.current;
             var controllerActive = IsControllerInputActive(gamepad);
             var controllerLeftHeld = controllerActive &&
                                      WofControllerBindings.IsPressed(gamepad, WofControllerActions.LeftCast, ControllerTriggerThreshold);
             var controllerRightHeld = controllerActive &&
                                       WofControllerBindings.IsPressed(gamepad, WofControllerActions.RightCast, ControllerTriggerThreshold);
-            var controllerLeftPressed = controllerLeftHeld && !s_ControllerLeftCastHeld;
-            var controllerRightPressed = controllerRightHeld && !s_ControllerRightCastHeld;
             s_ControllerLeftCastHeld = controllerLeftHeld;
             s_ControllerRightCastHeld = controllerRightHeld;
-            var cast = ResolveCastHand(
-                leftMousePressed,
-                rightMousePressed,
-                (leftMousePressed || rightMousePressed) && IsMousePointerOverUi(mouse),
-                controllerLeftPressed,
-                controllerRightPressed,
-                s_MobileLeftCastQueued,
-                s_MobileRightCastQueued,
-                out hand);
+
+            var mobileLeft = s_MobileLeftCastQueued;
+            var mobileRight = s_MobileRightCastQueued;
             s_MobileLeftCastQueued = false;
             s_MobileRightCastQueued = false;
-            return cast;
+            var leftHeld = s_MouseLeftCastHeld || controllerLeftHeld;
+            var rightHeld = s_MouseRightCastHeld || controllerRightHeld;
+            var leftPressed = leftHeld && !s_LeftCastHeld;
+            var rightPressed = rightHeld && !s_RightCastHeld;
+            var leftReleased = !leftHeld && s_LeftCastHeld;
+            var rightReleased = !rightHeld && s_RightCastHeld;
+            s_LeftCastHeld = leftHeld;
+            s_RightCastHeld = rightHeld;
+            return new WofCastInputFrame(
+                leftPressed || mobileLeft,
+                leftHeld,
+                leftReleased || mobileLeft,
+                rightPressed || mobileRight,
+                rightHeld,
+                rightReleased || mobileRight);
         }
 
         public static bool HasTouchscreen => Touchscreen.current != null;
@@ -205,6 +267,10 @@ namespace WOF
             s_ControllerGameplayArmed = false;
             s_ControllerLeftCastHeld = false;
             s_ControllerRightCastHeld = false;
+            s_MouseLeftCastHeld = false;
+            s_MouseRightCastHeld = false;
+            s_LeftCastHeld = false;
+            s_RightCastHeld = false;
             s_ControllerSprintHeld = false;
             s_ControllerSprintLatched = false;
         }
@@ -215,6 +281,10 @@ namespace WOF
             s_ControllerGameplayArmed = false;
             s_ControllerLeftCastHeld = false;
             s_ControllerRightCastHeld = false;
+            s_MouseLeftCastHeld = false;
+            s_MouseRightCastHeld = false;
+            s_LeftCastHeld = false;
+            s_RightCastHeld = false;
             s_ControllerSprintHeld = false;
             s_ControllerSprintLatched = false;
         }
@@ -227,6 +297,7 @@ namespace WOF
                 return;
             }
 
+            s_ControllerGameplayArmed = false;
             ResetTransientGameplayActions();
         }
 
@@ -235,6 +306,10 @@ namespace WOF
             ResetMobile();
             s_ControllerLeftCastHeld = false;
             s_ControllerRightCastHeld = false;
+            s_MouseLeftCastHeld = false;
+            s_MouseRightCastHeld = false;
+            s_LeftCastHeld = false;
+            s_RightCastHeld = false;
             s_ControllerSprintHeld = false;
             s_ControllerSprintLatched = false;
         }

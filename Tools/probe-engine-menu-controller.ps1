@@ -20,7 +20,8 @@ $env:TMP = $tempRoot
 foreach ($artifact in @(
     $logPath,
     (Join-Path $resolvedOutputRoot 'engine-menu-controller-selected.png'),
-    (Join-Path $resolvedOutputRoot 'engine-menu-controller-placed.png'))) {
+    (Join-Path $resolvedOutputRoot 'engine-menu-controller-placed.png'),
+    (Join-Path $resolvedOutputRoot 'engine-menu-controller-lower-controls.png'))) {
     if (Test-Path -LiteralPath $artifact -PathType Leaf) { Remove-Item -LiteralPath $artifact -Force }
 }
 
@@ -55,7 +56,7 @@ try {
         Start-Sleep -Milliseconds 100
         if (Test-Path -LiteralPath $logPath -PathType Leaf) {
             $failure = Select-String -LiteralPath $logPath -Pattern 'ENGINE_MENU_CONTROLLER_PROBE_FAIL|NullReferenceException|MissingReferenceException'
-            $complete = Select-String -LiteralPath $logPath -Pattern 'ENGINE_MENU_CONTROLLER_PROBE_COMPLETE navigation=true select=true place=true back=true placed=1' -Quiet
+            $complete = Select-String -LiteralPath $logPath -Pattern 'ENGINE_MENU_CONTROLLER_PROBE_COMPLETE navigation=true select=true place=true scroll=true back=true placed=[1-9][0-9]*' -Quiet
         }
         $process.Refresh()
     } while (-not $failure -and -not $complete -and -not $process.HasExited -and
@@ -72,7 +73,8 @@ try {
 
     $screenshots = @(
         (Join-Path $resolvedOutputRoot 'engine-menu-controller-selected.png'),
-        (Join-Path $resolvedOutputRoot 'engine-menu-controller-placed.png'))
+        (Join-Path $resolvedOutputRoot 'engine-menu-controller-placed.png'),
+        (Join-Path $resolvedOutputRoot 'engine-menu-controller-lower-controls.png'))
     foreach ($screenshot in $screenshots) {
         if (-not (Test-Path -LiteralPath $screenshot -PathType Leaf) -or
             (Get-Item -LiteralPath $screenshot).Length -eq 0) {
@@ -82,9 +84,10 @@ try {
 
     [pscustomobject]@{
         Status = 'PASS'
-        Marker = 'ENGINE_MENU_CONTROLLER_PROBE_COMPLETE navigation=true select=true place=true back=true placed=1'
+        Marker = 'ENGINE_MENU_CONTROLLER_PROBE_COMPLETE navigation=true select=true place=true scroll=true back=true placed=<positive>'
         SelectedScreenshot = $screenshots[0]
         PlacedScreenshot = $screenshots[1]
+        LowerControlsScreenshot = $screenshots[2]
         Log = $logPath
     }
 }
